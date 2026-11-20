@@ -58,7 +58,7 @@ struct VPNStatusView: View {
                          : "This saved full-tunnel profile is blocked for safety. Disconnect and switch to split tunnel before connecting.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text("After changing modes, wait for disconnect to finish, then tap Connect.")
+                    Text("For route changes: turn off Connect on demand, disconnect, wait for Disconnected, then choose the new mode and connect manually.")
                         .font(.footnote)
                 }
                 Section("Reliability") {

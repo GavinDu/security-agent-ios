@@ -87,11 +87,11 @@ final class TunnelManager: NSObject, ObservableObject {
                 if let error {
                     self.errorMessage = "Could not disable legacy VPN auto-connect: " +
                         error.localizedDescription
-                } else {
-                    // Re-read system state; do not replace the public
-                    // profile or claim that an active tunnel was stopped.
-                    self.reload()
                 }
+                // In-memory manager fields were modified before the native
+                // write. Reload on denial as well as success so a later
+                // route edit never trusts the optimistic on-demand value.
+                self.reload()
             }
         }
     }
@@ -185,10 +185,24 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
             return
         }
-        // Mode transitions require a full tunnel restart. Do not reconnect
-        // until the previous tunnel has actually stopped.
-        disconnect()
+        // Stop is asynchronous: do not save route preferences until native
+        // NetworkExtension confirms the old session is disconnected. Never
+        // let OS on-demand reconnect the old route during preference changes.
+        let nativeStatus = manager?.connection.status ?? .invalid
+        let disconnected = nativeStatus == .disconnected || nativeStatus == .invalid
+        guard RouteEditSafetyPolicy.permitsEdit(
+            nativeDisconnected: disconnected,
+            nativeOnDemandEnabled: manager?.isOnDemandEnabled ?? false,
+            saveInFlight: profileSave.isBusy || legacyOnDemandDisableInFlight
+        ) else {
+            errorMessage = "Turn off Connect on demand, disconnect the VPN, " +
+                "and wait for Disconnected before changing routing mode."
+            return
+        }
         updated.routeMode = mode
+        // Recovering from an old full-route profile must never silently
+        // recreate its on-demand connection policy during this save.
+        updated.onDemand = false
         save(updated)
     }
 

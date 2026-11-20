@@ -64,6 +64,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
             Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
           "$RUNNER_TEMP/provider-state-tests"
+          # Exercise safe asynchronous route edit prerequisites in real Swift.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/route-edit-tests" \
+            Shared/RouteEditSafetyPolicy.swift Tests/build/route_edit_safety_smoke.swift
+          "$RUNNER_TEMP/route-edit-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |

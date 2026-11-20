@@ -24,11 +24,35 @@ The full superseded implementation review is retained in Git history.
   for the normal/build Cargo dependency declaration inventory; distribution
   notices, actual binary link map and final legal review remain #55/#31.
 
+## Verified native iOS foundation checkpoint — 2026-11-20
+
+[Actions #44807258027](https://github.com/GavinDu/security-agent-ios/actions/runs/44807258027)
+on exact commit `18c0565110ed96ced13f82abb6b0b087b64d97f8`
+passed **real Xcode 16.4 iPhoneOS AgentApp + PacketTunnel compilation
+and link** using pinned Rust BoringTun and **iOS Simulator XCTest:
+24 tests, zero failures**. The Linux foundation/C ABI job also passed.
+The prior `NWEndpoint` ambiguity is resolved in native Swift compilation.
+
+Independently verified and CLOSED on this evidence: #52 (Rust iPhoneOS +
+simulator static build/link), #66 (qualified Network.NWEndpoint),
+#67 (native profile transaction tests), #68 (origin policy),
+#69 (bounded diagnostics), #70 (IP packet envelopes), #71 (fail-closed
+full-route policy), #73 (stale callback epochs), and #74 (provider
+start/stop ownership). These closures cover only each issue's atomic
+scope. Native macOS companion build was still QUEUED at inspection.
+Neither unsigned Xcode success nor simulator unit tests prove that a
+signed iPhone VPN extension can authenticate, route or reconnect.
+
+**New atomic remaining work**: latest Epic #11 #75 rejects route-mode
+edits until system VPN disconnection is confirmed and native on-demand
+is disabled. Legacy #30 still owns real async stop/rollback; signed
+upgrade #72 and extension lifecycle #14 remain open.
+
 ## Blocking principal-level findings
 
 | Finding | Severity | Acceptance gate |
 | --- | --- | --- |
-| iPhoneOS final link and simulator XCTest | P0 | #52/#13/#39: Rust iPhoneOS staticlib compiled; Swift app/extension must compile and link, then simulator XCTest |
+| Native Mac companion and complete required CI | P0 | #13/#39: iPhoneOS build and 24 XCTest passed; Mac job still queued, complete three-check gate outstanding |
 | Swift/Rust opaque lifetime and unsafe upstream FFI | P0 | #53/#58: crash/malformed input, race and stop/restart testing on native target |
 | Successful UDP open is not a WireGuard handshake | P0 | #54: signed iPhone real-peer authenticated connection |
 | Full-route UDP recursion or leaked underlay | P0 | #65/#29: prove server socket routing and fail-safe IPv4/IPv6/DNS |
@@ -48,10 +72,10 @@ Atomic issue #63 was closed on this narrowly scoped evidence.
 Swift compilation then failed because `Network` and `NetworkExtension`
 both declare `NWEndpoint`. Commit
 [7b91685](https://github.com/GavinDu/security-agent-ios/commit/7b91685d948e6e43d6be7f263d0be6adcf29479a)
-qualifies `Network.NWEndpoint`; new issue #66 is pending a successful
-native Xcode compile. Neither successful Cargo compilation nor this
-source-level Swift fix proves a fully linked app, simulator XCTest or
-signed physical-device VPN.
+qualified `Network.NWEndpoint`. Subsequent native Actions #44807258027
+successfully compiled/linked the app and Rust PacketTunnel and passed 24
+simulator XCTest cases; #66 is CLOSED. This still does not establish
+signed physical-device VPN operation.
 
 ## Additional review findings
 
