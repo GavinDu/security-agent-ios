@@ -81,6 +81,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-binding-tests" \
             Shared/NativeProfileBindingPolicy.swift Tests/build/native_profile_binding_smoke.swift
           "$RUNNER_TEMP/profile-binding-tests"
+          # Refuse ambiguous duplicate native VPN managers (real Swift).
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-manager-inventory-tests" \
+            ios/AgentApp/VPN/NativeVPNManagerInventory.swift \
+            Tests/build/native_vpn_manager_inventory_smoke.swift
+          "$RUNNER_TEMP/native-manager-inventory-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
