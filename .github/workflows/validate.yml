@@ -1,0 +1,20 @@
+name: Swift source and configuration checks
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Swift files (syntax only)
+        run: |
+          set -euo pipefail
+          find . -name '*.swift' -print0 | while IFS= read -r -d '' file; do
+            xcrun swiftc -frontend -parse "$file"
+          done
+      - name: Validate entitlements
+        run: |
+          plutil -lint ios/Entitlements/AgentApp.entitlements
+          plutil -lint ios/Entitlements/PacketTunnel.entitlements
