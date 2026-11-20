@@ -47,3 +47,22 @@ to actually run the server.
 - [Cloudflare BoringTun](https://github.com/cloudflare/boringtun) — BSD-3-Clause, pinned tag 0.7.1, commit `253f7afb2b3df9e952065d10bf2af19913cb176b`. Audit all statically linked Cargo crates and the reported liveness regression before release.
 - [Proton Lumo iOS](https://github.com/ProtonLumo/ios-lumo) — Tuist / SwiftUI architectural reference; GPL-3.0. No source copied.
 - [Apple NetworkExtension](https://developer.apple.com/documentation/networkextension) — system VPN API.
+
+## Automated Rust dependency declaration inventory (#64)
+
+The Linux CI job runs `cargo metadata --locked --no-default-features --features
+ffi-bindings --filter-platform aarch64-apple-ios` against pinned BoringTun
+0.7.1. The checked-in `scripts/audit-boringtun-licenses.py` joins every
+resolved package to the immutable Cargo.lock record and checks its declared
+SPDX expression against a deliberately small reviewed permissive-license
+set. Registry packages require a 64-character lockfile checksum. Unreviewed
+SPDX IDs, local path/git sources, absent metadata and missing lockfile records
+fail the CI job rather than being silently omitted.
+
+The CI artifact is deterministic JSON containing names, versions, registry
+checksums and declared licenses only. It has **no signing keys, private
+WireGuard data or user profiles**. This is an *inventory of the Cargo
+resolution graph*, including build and possibly dev packages, not a
+linker map or a complete audit of statically linked code. It does not include
+full third-party notice texts; before distributing the signed app, review all
+transitive notices, the built binary and license obligations under #55/#31.
