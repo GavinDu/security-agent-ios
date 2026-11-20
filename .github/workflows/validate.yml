@@ -1,4 +1,4 @@
-name: Native Xcode build and tests
+name: Native Xcode Rust WireGuard build and tests
 on:
   push:
     branches: [main]
@@ -22,47 +22,36 @@ jobs:
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: '6.0'
-      - name: Parse Swift files without platform typechecking
+      - name: Parse Swift sources without Apple SDK typecheck
         shell: bash
         run: |
           set -euo pipefail
-          find . -name '*.swift' -print0 | while IFS= read -r -d '' path; do
+          find ios macos Shared Tests -name '*.swift' -print0 | while IFS= read -r -d '' path; do
             swiftc -frontend -parse "$path"
           done
-      - name: Validate Apple entitlements using Python plistlib
+      - name: Validate iPhone extension entitlements
         shell: bash
         run: |
           python3 - <<'PY'
           import pathlib, plistlib
-          app, extension = [
-              plistlib.loads(pathlib.Path(path).read_bytes())
-              for path in (
-                  "ios/Entitlements/AgentApp.entitlements",
-                  "ios/Entitlements/PacketTunnel.entitlements",
-              )
-          ]
-          for target in (app, extension):
-              assert "group.com.gavindu.securityagent" in target[
-                  "com.apple.security.application-groups"
-              ]
-              assert "packet-tunnel-provider" in target[
-                  "com.apple.developer.networking.networkextension"
-              ]
+          for path in ("ios/Entitlements/AgentApp.entitlements", "ios/Entitlements/PacketTunnel.entitlements"):
+              entry = plistlib.loads(pathlib.Path(path).read_bytes())
+              assert "group.com.gavindu.securityagent" in entry["com.apple.security.application-groups"]
+              assert "packet-tunnel-provider" in entry["com.apple.developer.networking.networkextension"]
           print("App/extension entitlement invariants OK")
           PY
-      - name: Run static and wrapper regression tests
+      - name: Rust pins and negative-case regression tests
         shell: bash
         run: |
           set -euo pipefail
-          bash -n scripts/bootstrap-wireguard.sh
-          python3 -m unittest discover -s Tests/build -p 'test_*.py' -v
-          bash -n scripts/build-wireguard-go.sh
+          bash -n scripts/bootstrap-boringtun.sh
+          bash -n scripts/build-boringtun.sh
           bash -n scripts/verify-foundation-pins.sh
-          bash -n Tests/build/bridge-wrapper-tests.sh
-          bash -n Tests/build/pin-validation-tests.sh
+          bash -n Tests/build/rust-wrapper-tests.sh
           bash scripts/verify-foundation-pins.sh
           bash Tests/build/pin-validation-tests.sh
-          bash Tests/build/bridge-wrapper-tests.sh
+          bash Tests/build/rust-wrapper-tests.sh
+          python3 -m unittest discover -s Tests/build -p 'test_*.py' -v
 
   native-ios:
     name: Tuist + iOS device and simulator XCTest
@@ -76,55 +65,50 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install: true
-      - name: Verify pinned toolchain
+      - name: Install pinned iOS Rust targets
         shell: bash
         run: |
           set -euo pipefail
-          xcodebuild -version
-          tuist version
-          go version
-          test "$(go version | awk '{print $3}')" = "go1.19.13"
-      - name: Resolve packages and generate Xcode project
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup target add --toolchain 1.90.0 aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          test "$(rustc --version | awk '{print $2}')" = "1.90.0"
+      - name: Bootstrap pinned BoringTun source and generate Xcode project
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/bootstrap-wireguard.sh
-          tuist install
+          bash scripts/bootstrap-boringtun.sh
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj
-          # No secrets: report only file-status codes and bounded relative paths
-          # when vendor source integrity differs from the pinned checkout.
-          python3 scripts/patch-wireguard-manifest.py Vendor/wireguard-apple --check
-      - name: Compile and link iOS app + PacketTunnel (device SDK, no signing)
+      - name: Compile and link iPhone app and Rust PacketTunnel (unsigned)
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
             -configuration Debug -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO build
-      - name: Run deterministic iOS XCTest on simulator
+      - name: Run simulator XCTest with Rust PacketTunnel link
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
             -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
-      - name: Record toolchain and phase outcomes
+      - name: Record safe build summary
         if: always()
         shell: bash
         run: |
           {
-            echo "# Native build"
-            echo "Xcode: $(xcodebuild -version | tr '\n' ' ')"
-            echo "Go: $(go version)"
-            echo "Tuist: $(tuist version)"
-            echo "Checks are recorded in the Actions job results; this file has no secret material."
-          } > "$RUNNER_TEMP/native-summary.md"
+            echo "# Native iOS Rust build"
+            xcodebuild -version
+            rustc --version
+            tuist version
+            echo "Check status lives in Actions; no keys or provisioning files."
+          } > "$RUNNER_TEMP/native-rust-summary.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: native-build-summary
-          path: ${{ runner.temp }}/native-summary.md
+          name: native-rust-build-summary
+          path: ${{ runner.temp }}/native-rust-summary.txt
           retention-days: 7
 
   native-mac:
@@ -139,19 +123,13 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           install: true
-      - name: Generate project from clean source
+      - name: Generate project from clean Swift source
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/bootstrap-wireguard.sh
-          tuist install
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj
-          # No secrets: report only file-status codes and bounded relative paths
-          # when vendor source integrity differs from the pinned checkout.
-          python3 scripts/patch-wireguard-manifest.py Vendor/wireguard-apple --check
-          xcodebuild -list -project SecurityAgent.xcodeproj
-      - name: Compile macOS pairing companion without signing
+      - name: Build macOS SwiftUI companion
         shell: bash
         run: |
           set -euo pipefail
