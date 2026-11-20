@@ -206,7 +206,39 @@ final class TunnelManager: NSObject, ObservableObject {
 
         profileSave.run(
             saveNative: { callback in selected.saveToPreferences(completionHandler: callback) },
-            reloadNative: { callback in selected.loadFromPreferences(completionHandler: callback) },
+            reloadNative: { callback in
+                selected.loadFromPreferences { error in
+                    guard error == nil else {
+                        callback(error)
+                        return
+                    }
+                    // NetworkExtension callbacks may be delivered off-main.
+                    // Verify the freshly reloaded native state before the
+                    // sequencer may commit the App Group public profile.
+                    DispatchQueue.main.async {
+                        let native = selected.protocolConfiguration as? NETunnelProviderProtocol
+                        let snapshot = NativePreferenceCommitSnapshot(
+                            providerBundleIdentifier: native?.providerBundleIdentifier,
+                            serverAddress: native?.serverAddress,
+                            metadata: native?.providerConfiguration,
+                            isEnabled: selected.isEnabled,
+                            isOnDemandEnabled: selected.isOnDemandEnabled,
+                            onDemandRuleCount: selected.onDemandRules?.count ?? 0
+                        )
+                        guard NativePreferenceCommitVerifier.matches(
+                            snapshot,
+                            expectedBundleID: AgentConstants.tunnelBundleID,
+                            expectedServerAddress: validated.endpoint,
+                            expectedProfileDigest: bindingDigest,
+                            expectedOnDemand: validated.onDemand
+                        ) else {
+                            callback(AgentConfigurationError.nativeProfileMismatch)
+                            return
+                        }
+                        callback(nil)
+                    }
+                }
+            },
             commitPublicProfile: { try SharedProfileStore.save(validated) },
             completed: { [weak self] result in
                 guard let self else { return }

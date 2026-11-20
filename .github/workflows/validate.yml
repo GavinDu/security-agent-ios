@@ -86,6 +86,13 @@ jobs:
             ios/AgentApp/VPN/NativeVPNManagerInventory.swift \
             Tests/build/native_vpn_manager_inventory_smoke.swift
           "$RUNNER_TEMP/native-manager-inventory-tests"
+          # A successful native reload callback alone must not publish stale
+          # or mismatched system preferences into App Group metadata.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-commit-verifier-tests" \
+            Shared/NativeProfileBindingPolicy.swift \
+            Shared/NativePreferenceCommitVerifier.swift \
+            Tests/build/native_preference_commit_verifier_smoke.swift
+          "$RUNNER_TEMP/native-commit-verifier-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
