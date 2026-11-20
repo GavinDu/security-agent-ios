@@ -3,7 +3,10 @@ import PackageDescription
 
 #if TUIST
 import ProjectDescription
-let packageSettings = PackageSettings(productTypes: ["WireGuardKit": .framework])
+// WireGuardKitGo is linked as a static Go archive by PacketTunnel.
+// A dynamic WireGuardKit framework may attempt to resolve -lwg-go in its
+// own framework link step, before PacketTunnel builds the archive.
+let packageSettings = PackageSettings(productTypes: ["WireGuardKit": .staticFramework])
 #endif
 
 let package = Package(

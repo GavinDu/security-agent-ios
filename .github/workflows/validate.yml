@@ -12,26 +12,50 @@ concurrency:
 
 jobs:
   syntax:
-    name: Swift syntax and entitlements
-    runs-on: macos-15
+    name: Foundation static checks (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Parse all Swift sources
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
+      - name: Parse Swift files without platform typechecking
         shell: bash
         run: |
           set -euo pipefail
           find . -name '*.swift' -print0 | while IFS= read -r -d '' path; do
-            xcrun swiftc -frontend -parse "$path"
+            swiftc -frontend -parse "$path"
           done
-      - name: Validate plist entitlements
-        run: |
-          plutil -lint ios/Entitlements/AgentApp.entitlements
-          plutil -lint ios/Entitlements/PacketTunnel.entitlements
-      - name: Check native bridge script syntax
-        run: bash -n scripts/build-wireguard-go.sh
-      - name: Validate static toolchain pins and bridge wrapper
+      - name: Validate Apple entitlements using Python plistlib
         shell: bash
         run: |
+          python3 - <<'PY'
+          import pathlib, plistlib
+          app, extension = [
+              plistlib.loads(pathlib.Path(path).read_bytes())
+              for path in (
+                  "ios/Entitlements/AgentApp.entitlements",
+                  "ios/Entitlements/PacketTunnel.entitlements",
+              )
+          ]
+          for target in (app, extension):
+              assert "group.com.gavindu.securityagent" in target[
+                  "com.apple.security.application-groups"
+              ]
+              assert "packet-tunnel-provider" in target[
+                  "com.apple.developer.networking.networkextension"
+              ]
+          print("App/extension entitlement invariants OK")
+          PY
+      - name: Run static and wrapper regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-wireguard-go.sh
+          bash -n scripts/verify-foundation-pins.sh
+          bash -n Tests/build/bridge-wrapper-tests.sh
+          bash -n Tests/build/pin-validation-tests.sh
           bash scripts/verify-foundation-pins.sh
           bash Tests/build/pin-validation-tests.sh
           bash Tests/build/bridge-wrapper-tests.sh

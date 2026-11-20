@@ -32,3 +32,24 @@ tool version or checkout SHA.
 merge. Requires a green device-SDK compile/link, simulator XCTest, macOS
 companion compile and signing/real iPhone evidence for Epic #6. Resolve
 specific CI failures instead of bypassing native jobs.
+
+## Follow-up challenge — static-vs-dynamic linkage and ABI validation
+
+Review date: 2026-11-19. **Not an independent external reviewer.**
+
+- **Blocker addressed in source:** `PackageSettings` incorrectly declared
+  `WireGuardKit: .framework` (dynamic). Its own target would resolve linked
+  `wg-go` symbols before the app extension's Go pre-build. Tuist's
+  `PackageSettings` defaults to `.staticFramework`, verified against the
+  upstream ProjectDescription source. Changed mapping to `.staticFramework`,
+  keeping the final `libwg-go.a` linker input in PacketTunnel.
+- **Blocker addressed in source:** `lipo -info` does not prove the archive
+  contains every architecture Xcode requested. Added `-verify_arch` for
+  each `ARCHS` slice, with a negative mock test for missing architecture.
+- **Verification isolation:** moved syntax/plist/wrapper tests to Linux,
+  leaving macOS Xcode for native build proof. A passing static workflow is not
+  evidence of native linker correctness.
+
+**Acceptance:** Static manifest/test review may pass independently.
+Keep #2/#12/#13/#36–#40 open until actual matching native CI/device evidence
+exists. The macOS runner remains the deciding compile/link gate.

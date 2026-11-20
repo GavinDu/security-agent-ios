@@ -84,3 +84,14 @@ alignment. `bash Tests/build/bridge-wrapper-tests.sh` tests failure paths with
 mock Go, SDK and Make executables (it does **not** prove real Go compilation).
 See [architect review](ARCHITECT_REVIEW_P0.md) for remaining native and
 physical-device blockers.
+
+## Static framework linkage and architecture guard
+
+The `WireGuardKit` Tuist SPM product must be a `.staticFramework` so its
+undefined Go bridge symbols resolve in the final PacketTunnel link, after
+the extension's pre-build phase has produced `libwg-go.a`. A dynamic
+`.framework` product can fail before the PacketTunnel target is linked.
+
+The wrapper runs `xcrun lipo -verify_arch` for every Xcode-requested
+`ARCHS` slice. `lipo -info` alone cannot enforce compatible archives.
+These checks do not replace the macOS native CI job.

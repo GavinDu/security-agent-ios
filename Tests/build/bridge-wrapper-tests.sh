@@ -23,6 +23,8 @@ if [[ "$1" == "--sdk" ]]; then
   echo "/mock/sdk/$2"
 elif [[ "$1" == "lipo" && "$2" == "-info" ]]; then
   echo "Architectures in fat file: arm64"
+elif [[ "$1" == "lipo" && "$2" == "-verify_arch" ]]; then
+  [[ "${FAKE_MISSING_ARCH:-}" != "$3" ]]
 else
   exit 2
 fi
@@ -62,5 +64,8 @@ if PLATFORM_NAME=macosx bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/nu
 fi
 if ARCHS=armv7 PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/null 2>&1; then
   echo "Unsupported architecture was accepted" >&2; exit 1
+fi
+if FAKE_MISSING_ARCH=arm64 PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/null 2>&1; then
+  echo "Archive missing requested CPU slice was accepted" >&2; exit 1
 fi
 echo "Bridge wrapper validation passed (mocked SDK/build tools only)."

@@ -20,4 +20,11 @@ if FOUNDATION_ROOT="$test_root" bash "$repo_root/scripts/verify-foundation-pins.
   echo "A mismatched upstream revision passed static pin verification" >&2
   exit 1
 fi
+# For the static Go archive, reject a dynamic-framework dependency mapping.
+sed 's/\.staticFramework/\.framework/' \
+  "$repo_root/Tuist/Package.swift" > "$test_root/Tuist/Package.swift"
+if FOUNDATION_ROOT="$test_root" bash "$repo_root/scripts/verify-foundation-pins.sh" >/dev/null 2>&1; then
+  echo "Dynamic WireGuardKit framework mapping passed static dependency check" >&2
+  exit 1
+fi
 echo "Pin consistency and negative-case tests passed."
