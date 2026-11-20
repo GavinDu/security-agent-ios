@@ -89,7 +89,14 @@ def inventory(metadata, cargo_lock):
             raise InventoryError("dangling Cargo resolution dependency")
         node_ids.add(current)
         for dependency in node_map[current].get("deps", []):
-            pending.append(dependency.get("pkg"))
+            # cargo metadata resolves test/bench dependencies even when the
+            # shipped iOS staticlib uses only normal and build dependencies.
+            # Require dep_kinds rather than silently pulling workspace tests.
+            kinds = dependency.get("dep_kinds")
+            if not isinstance(kinds, list) or not kinds:
+                raise InventoryError("missing Cargo dependency-kind metadata")
+            if any(k.get("kind") in (None, "build") for k in kinds):
+                pending.append(dependency.get("pkg"))
     lock_index = {}
     for pkg in cargo_lock.get("package", []):
         key = (pkg.get("name"), pkg.get("version"), pkg.get("source"))
@@ -145,7 +152,7 @@ def inventory(metadata, cargo_lock):
         "schema_version": 1,
         "target": "aarch64-apple-ios",
         "features": ["ffi-bindings"],
-        "evidence": "Cargo metadata resolved graph and Cargo.lock only; not a binary link map",
+        "evidence": "Normal/build Cargo resolution and Cargo.lock only; no dev dependencies or binary link map",
         "package_count": len(packages),
         "packages": packages,
     }
