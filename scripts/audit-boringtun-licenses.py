@@ -73,9 +73,23 @@ def inventory(metadata, cargo_lock):
     root_pkg = by_id[root]
     if (root_pkg.get("name"), root_pkg.get("version")) != (ROOT_NAME, ROOT_VERSION):
         raise InventoryError("unexpected BoringTun package version")
-    node_ids = {node.get("id") for node in resolved["nodes"]}
-    if not node_ids or root not in node_ids or not node_ids <= by_id.keys():
-        raise InventoryError("invalid Cargo resolution package IDs")
+    # Cargo metadata for a workspace also resolves sibling programs such as
+    # boringtun-cli. They are NOT iOS staticlib dependencies; traverse only
+    # the actual boringtun package's reachable dependency graph.
+    node_map = {node.get("id"): node for node in resolved["nodes"]}
+    if root not in node_map:
+        raise InventoryError("root absent from Cargo resolution graph")
+    node_ids = set()
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        if current in node_ids:
+            continue
+        if current not in node_map or current not in by_id:
+            raise InventoryError("dangling Cargo resolution dependency")
+        node_ids.add(current)
+        for dependency in node_map[current].get("deps", []):
+            pending.append(dependency.get("pkg"))
     lock_index = {}
     for pkg in cargo_lock.get("package", []):
         key = (pkg.get("name"), pkg.get("version"), pkg.get("source"))
