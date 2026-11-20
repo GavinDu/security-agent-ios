@@ -44,3 +44,7 @@ SHA-256 fingerprint of the key and requires user confirmation against the same
 fingerprint on a trusted Mac display before saving. This is still manual
 out-of-band authentication; it does not authenticate a QR automatically.
 Issue #18 tracks full pairing acceptance and negative tests.
+
+### Foundation SwiftPM compatibility issue
+
+- [#42: Repair pinned WireGuard Apple manifest](https://github.com/GavinDu/security-agent-ios/issues/42): immutable vendor source + fail-closed tools-version overlay, tracked separately from #2/#12/#38. Requires native CI evidence to close.

@@ -77,3 +77,38 @@ The runner used Ubuntu 26.04.1; `swift-actions/setup-swift@v2` reported:
 for `setup-swift@v2` and the selected Swift parser. Add a static pin
 invariant and a negative runner-migration test. Do not mark #35/#39
 complete until the corrected workflow passes.
+
+
+## 2026-11-20: Concrete native CI failure and corrective design
+
+The latest completed native jobs from [Actions #44660852753](https://github.com/GavinDu/security-agent-ios/actions/runs/44660852753)
+both fail at `tuist install`: the pinned WireGuard Apple
+`Package.swift` declares tools 5.3 while using `.macOS(.v12)` and
+`.iOS(.v15)` APIs introduced with PackageDescription 5.5.
+
+**Principal iOS review finding (P0):** The original remote SwiftPM dependency
+cannot be used unchanged with the pinned toolchain. Floating `master`,
+copying unreviewed WireGuard code, disabling native CI, or globally editing
+SwiftPM caches would be unacceptable.
+
+**Corrective design:** A local `.package(path:)` WireGuard source prepared by
+`scripts/bootstrap-wireguard.sh`. It fetches an immutable upstream Git SHA,
+compares HEAD, and invokes a small audited Python patcher to modify **only**
+the tools-version header after comparing the entire upstream manifest to
+the Git object. The local vendor checkout is ignored in the app repository,
+and both CI platforms run bootstrap before Tuist resolution.
+
+**Challenge / remaining risks:**
+- A clean checkout requires `bash scripts/setup-project.sh` (or an explicit
+  bootstrap) before `tuist install`. This deviates from the literal
+  two-command installation and is tracked in #42; native CI must establish
+  whether the local package integration is supported by Tuist 4.218.1.
+- The Go backend is still from 2023 and may fail with modern Apple SDK,
+  architecture or runtime patches; keep #2/#12/#36/#37 open until proven.
+- Source revision provenance is pinned; transitive module licensing and
+  active upstream security support still require audit.
+- A green static job is not native build evidence, and a native simulator
+  test is not a signed iPhone VPN test.
+
+**Disposition:** source fix proposed and pushed, not independently approved
+by a human reviewer and not accepted until native CI verifies it.

@@ -21,5 +21,27 @@ class ManifestTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 overlay.fixed_manifest(data)
 
+    def test_idempotent_checkout_patch_and_tamper_rejection(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = Path(folder)
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            manifest = checkout / "Package.swift"
+            manifest.write_bytes(overlay.OLD + b"import PackageDescription\n")
+            subprocess.run(["git", "-C", str(checkout), "add", "Package.swift"], check=True)
+            subprocess.run(
+                ["git", "-C", str(checkout), "-c", "user.name=CI Fixture",
+                 "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"],
+                check=True
+            )
+            overlay.apply(checkout)
+            expected = manifest.read_bytes()
+            overlay.apply(checkout)
+            self.assertEqual(manifest.read_bytes(), expected)
+            manifest.write_bytes(expected + b"// unauthorized mutation\n")
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout)
+
 if __name__ == "__main__":
     unittest.main()

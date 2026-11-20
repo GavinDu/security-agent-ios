@@ -28,8 +28,10 @@ See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
    Network Extensions / Packet Tunnel, App Groups and App Group access on both
    iPhone bundle IDs. Use the same Team ID for both. Register the App Group.
 2. Set `AGENT_APP_TEAM_ID=<YOUR_TEAM_ID>` in your shell.
-3. Run `mise install`, `tuist install` and `tuist generate --no-open`.
-   The PacketTunnel build phase builds the pinned **WireGuardKitGo** archive
+3. Run `mise install` followed by `bash scripts/setup-project.sh`.
+   The setup script fetches the exact pinned WireGuard source, applies the
+   narrowly-scoped SwiftPM manifest compatibility header patch and generates
+   the Xcode project. The PacketTunnel build phase then builds its Go archive
    automatically. See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md)
    for supported toolchain versions and native CI requirements.
 4. Run `tuist install && tuist generate`, open the generated project and
