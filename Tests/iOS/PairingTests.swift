@@ -29,4 +29,23 @@ final class PairingTests: XCTestCase {
         XCTAssertEqual(RouteMode.split.allowedIPs, ["10.8.0.0/24"])
         XCTAssertEqual(RouteMode.full.allowedIPs, ["0.0.0.0/0", "::/0"])
     }
+
+    func testFingerprintIsStableAndChangesForAnotherMacKey() throws {
+        let profile = ServerProfile(publicKey: validKey, endpoint: "home.example.org:51820")
+        XCTAssertEqual(try profile.publicKeyFingerprint(),
+                       "544E62CE-E8033709-E389E5B2-755343D0-D0FA8C48-50215CFB-6331717E-80D1AEA3")
+        let anotherKey = Data(repeating: 0x2b, count: 32).base64EncodedString()
+        let otherProfile = ServerProfile(publicKey: anotherKey, endpoint: "home.example.org:51820")
+        XCTAssertNotEqual(try profile.publicKeyFingerprint(), try otherProfile.publicKeyFingerprint())
+    }
+
+    func testRejectsUnsupportedQrVersionAndMalformedJson() throws {
+        let encoded = try PairingQRCode(
+            kind: .mac, publicKey: validKey, endpoint: "home.example.org:51820"
+        ).encodedText()
+        XCTAssertThrowsError(try PairingQRCode.decodeMac(encoded.replacingOccurrences(
+            of: "\"version\":1", with: "\"version\":999"
+        )))
+        XCTAssertThrowsError(try PairingQRCode.decodeMac("not json"))
+    }
 }

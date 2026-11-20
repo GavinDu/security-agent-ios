@@ -6,6 +6,7 @@ struct PairingView: View {
     @State private var pairingError: String?
     @State private var isScanning = false
     @State private var macPreview: ServerProfile?
+    @State private var fingerprintConfirmed = false
 
     var body: some View {
         Form {
@@ -32,12 +33,21 @@ struct PairingView: View {
                     LabeledContent("Endpoint", value: preview.endpoint)
                     LabeledContent("Mac public key", value: preview.publicKey)
                         .font(.caption.monospaced())
-                    Text("Verify this key against the value displayed on your trusted Mac.")
+                    if let fingerprint = try? preview.publicKeyFingerprint() {
+                        LabeledContent("SHA-256 key fingerprint", value: fingerprint)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                    Text("Compare the entire fingerprint with the trusted Mac Mini screen, not with this QR code alone.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    Toggle("I verified the fingerprint on my Mac", isOn: $fingerprintConfirmed)
                     Button("Trust Mac and save VPN") {
+                        guard fingerprintConfirmed else { return }
                         tunnel.save(preview)
                         macPreview = nil
+                        fingerprintConfirmed = false
                     }
+                    .disabled(!fingerprintConfirmed)
                     .buttonStyle(.borderedProminent)
                 }
                 if let current = tunnel.profile {
@@ -54,6 +64,8 @@ struct PairingView: View {
             NavigationStack {
                 QRScannerView { scanned in
                     isScanning = false
+                    fingerprintConfirmed = false
+                    macPreview = nil
                     do { macPreview = try PairingQRCode.decodeMac(scanned) }
                     catch { pairingError = error.localizedDescription }
                 }

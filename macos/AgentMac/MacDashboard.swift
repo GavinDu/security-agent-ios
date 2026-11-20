@@ -87,6 +87,12 @@ struct MacDashboard: View {
                         .frame(width: 215, height: 215)
                     Text("Scan from iPhone → Pair")
                         .font(.caption).foregroundStyle(.secondary)
+                    Text("SHA-256 key fingerprint")
+                        .font(.caption.bold())
+                    Text((try? profile.publicKeyFingerprint()) ?? "Unavailable")
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.center)
                 } else {
                     ContentUnavailableView(
                         "Server details needed",

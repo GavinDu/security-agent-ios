@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum AgentConstants {
@@ -59,6 +60,22 @@ struct ServerProfile: Codable, Equatable {
             throw AgentConfigurationError.invalidEndpoint
         }
         return self
+    }
+
+    // Full SHA-256 digest of the canonical WireGuard public key bytes.
+    // This is a *comparison aid*, not proof of authenticity by itself:
+    // the user must compare it through a trusted out-of-band channel.
+    func publicKeyFingerprint() throws -> String {
+        _ = try validated()
+        guard let bytes = Data(base64Encoded: publicKey), bytes.count == 32 else {
+            throw AgentConfigurationError.invalidPublicKey
+        }
+        let digest = Array(SHA256.hash(data: bytes))
+        return stride(from: 0, to: digest.count, by: 4).map { index in
+            digest[index..<(index + 4)]
+                .map { String(format: "%02X", $0) }
+                .joined()
+        }.joined(separator: "-")
     }
 }
 

@@ -37,6 +37,9 @@ See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
 6. Pair: generate iPhone identity → register its public key as a Mac peer
    (`10.8.0.2/32`) → scan the Mac pairing QR → Save VPN → Connect.
 
+Track all six phases and their independently verifiable work items in
+[docs/ROADMAP.md](docs/ROADMAP.md). The GitHub epic checklist is the live issue tracker.
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md), and [docs/MAC_SERVER.md](docs/MAC_SERVER.md).
 
