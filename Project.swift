@@ -64,7 +64,7 @@ let project = Project(
             entitlements: "ios/Entitlements/PacketTunnel.entitlements",
             scripts: [
                 .pre(
-                    script: "bash \"\(String(repeating: "$", count: 1)){SRCROOT}/scripts/build-wireguard-go.sh\"",
+                    script: "bash \"$SRCROOT/scripts/build-wireguard-go.sh\"",
                     name: "Build pinned WireGuard Go bridge",
                     basedOnDependencyAnalysis: false
                 )

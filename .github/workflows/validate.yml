@@ -29,6 +29,11 @@ jobs:
           plutil -lint ios/Entitlements/PacketTunnel.entitlements
       - name: Check native bridge script syntax
         run: bash -n scripts/build-wireguard-go.sh
+      - name: Validate static toolchain pins and bridge wrapper
+        shell: bash
+        run: |
+          bash scripts/verify-foundation-pins.sh
+          bash Tests/build/bridge-wrapper-tests.sh
 
   native:
     name: Tuist + iOS device/simulator + macOS + XCTest

@@ -75,3 +75,12 @@ own module licenses. Review the effective dependency inventory before shipping.
 Proton Lumo iOS is GPLv3 and used only as a UI/architecture reference — no
 Proton source is copied. Do not include any signing material or WireGuard
 secrets in the repository or CI artifacts.
+
+
+## Deterministic wrapper tests
+
+`bash scripts/verify-foundation-pins.sh` validates manifest/script/CI version
+alignment. `bash Tests/build/bridge-wrapper-tests.sh` tests failure paths with
+mock Go, SDK and Make executables (it does **not** prove real Go compilation).
+See [architect review](ARCHITECT_REVIEW_P0.md) for remaining native and
+physical-device blockers.
