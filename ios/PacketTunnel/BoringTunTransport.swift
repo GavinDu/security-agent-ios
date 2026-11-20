@@ -9,6 +9,8 @@ final class BoringTunTransport {
     private let queue = DispatchQueue(label: "com.gavindu.securityagent.boringtun")
     private weak var provider: NEPacketTunnelProvider?
     private var codec: BoringTunCodec?
+    // Queue-confined epoch invalidates callbacks after stop/restart.
+    private var lifecycle = TunnelLifecycleGeneration()
     private var udp: NWConnection?
     private var tickTimer: DispatchSourceTimer?
     private var handshakeDeadline: DispatchSourceTimer?
@@ -30,6 +32,7 @@ final class BoringTunTransport {
                 return
             }
             self.active = true
+            let epoch = self.lifecycle.advance()
             self.startCompletion = completion
             do {
                 let validated = try profile.validated()
@@ -55,7 +58,8 @@ final class BoringTunTransport {
                 let settings = self.networkSettings(profile: validated, remoteHost: host)
                 provider.setTunnelNetworkSettings(settings) { [weak self] error in
                     self?.queue.async {
-                        guard let self, self.active else { return }
+                        guard let self, self.active,
+                              self.lifecycle.matches(epoch) else { return }
                         if let error {
                             self.fail(error)
                             return
@@ -95,17 +99,23 @@ final class BoringTunTransport {
 
     private func connect(host: Network.NWEndpoint.Host, port: Network.NWEndpoint.Port) {
         guard active else { return }
+        let epoch = lifecycle.current
         let connection = NWConnection(host: host, port: port, using: .udp)
         udp = connection
         connection.stateUpdateHandler = { [weak self] state in
-            self?.queue.async { [weak self] in self?.connectionChanged(state) }
+            self?.queue.async { [weak self] in
+                guard let self, self.active,
+                      self.lifecycle.matches(epoch) else { return }
+                self.connectionChanged(state)
+            }
         }
         connection.start(queue: queue)
 
         let deadline = DispatchSource.makeTimerSource(queue: queue)
         deadline.schedule(deadline: .now() + .seconds(15))
         deadline.setEventHandler { [weak self] in
-            guard let self, self.active, self.startCompletion != nil else { return }
+            guard let self, self.active, self.lifecycle.matches(epoch),
+                  self.startCompletion != nil else { return }
             self.fail(BoringTunError.handshakeTimedOut)
         }
         handshakeDeadline = deadline
@@ -122,8 +132,10 @@ final class BoringTunTransport {
                 timer.schedule(deadline: .now() + .milliseconds(100),
                                repeating: .milliseconds(100),
                                leeway: .milliseconds(20))
+                let epoch = lifecycle.current
                 timer.setEventHandler { [weak self] in
-                    guard let self, self.active, let codec = self.codec else { return }
+                    guard let self, self.active, self.lifecycle.matches(epoch),
+                          let codec = self.codec else { return }
                     do { try self.process(codec.tick()) }
                     catch { self.fail(error) }
                 }
@@ -150,9 +162,11 @@ final class BoringTunTransport {
     private func receiveDatagram() {
         guard active, let udp, !receivingDatagram else { return }
         receivingDatagram = true
+        let epoch = lifecycle.current
         udp.receiveMessage { [weak self] packet, _, _, error in
             self?.queue.async { [weak self] in
-                guard let self, self.active else { return }
+                guard let self, self.active,
+                      self.lifecycle.matches(epoch) else { return }
                 self.receivingDatagram = false
                 if let error {
                     self.fail(error)
@@ -187,9 +201,11 @@ final class BoringTunTransport {
             // grow unbounded memory in the constrained iOS extension.
             guard pendingSends < maxPendingSends else { throw BoringTunError.engineError }
             pendingSends += 1
+            let epoch = lifecycle.current
             udp.send(content: datagram, completion: .contentProcessed { [weak self] error in
                 self?.queue.async { [weak self] in
-                    guard let self, self.active else { return }
+                    guard let self, self.active,
+                          self.lifecycle.matches(epoch) else { return }
                     self.pendingSends -= 1
                     if let error { self.fail(error) }
                 }
@@ -207,9 +223,11 @@ final class BoringTunTransport {
     private func readPackets() {
         guard active, !readingPackets, let provider else { return }
         readingPackets = true
+        let epoch = lifecycle.current
         provider.packetFlow.readPackets { [weak self] packets, protocols in
             self?.queue.async { [weak self] in
-                guard let self, self.active else { return }
+                guard let self, self.active,
+                      self.lifecycle.matches(epoch) else { return }
                 self.readingPackets = false
                 if let codec = self.codec {
                     for (packet, proto) in zip(packets, protocols) {
@@ -229,7 +247,9 @@ final class BoringTunTransport {
                 if packets.isEmpty {
                     // Never tight-spin when packetFlow returns an empty batch.
                     self.queue.asyncAfter(deadline: .now() + .milliseconds(25)) { [weak self] in
-                        self?.readPackets()
+                        guard let self, self.active,
+                              self.lifecycle.matches(epoch) else { return }
+                        self.readPackets()
                     }
                 } else {
                     self.readPackets()
@@ -256,6 +276,9 @@ final class BoringTunTransport {
     }
 
     private func teardown() {
+        // Advance before releasing sockets/codec. Any older queued async
+        // callback must not touch a subsequently started Rust session.
+        _ = lifecycle.advance()
         active = false
         tickTimer?.cancel()
         tickTimer = nil

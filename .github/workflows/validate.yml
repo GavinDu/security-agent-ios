@@ -56,6 +56,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
           "$RUNNER_TEMP/legacy-recovery-tests"
+          # Execute the production generation token in real Linux Swift.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/tunnel-lifecycle-tests" \
+            Shared/TunnelLifecycleGeneration.swift Tests/build/tunnel_lifecycle_smoke.swift
+          "$RUNNER_TEMP/tunnel-lifecycle-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
