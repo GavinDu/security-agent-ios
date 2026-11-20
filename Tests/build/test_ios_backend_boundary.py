@@ -26,6 +26,15 @@ class BackendBoundaryTests(unittest.TestCase):
                     self.assertNotRegex(source, r"(?m)^\s*import\s+(WireGuardKit|BoringTun)\b")
                     self.assertNotIn("new_tunnel(", source)
 
+    def test_network_endpoint_is_disambiguated(self):
+        # NetworkExtension also declares NWEndpoint in the native iOS SDK.
+        source = (ROOT / "ios/PacketTunnel/BoringTunTransport.swift").read_text()
+        self.assertIn("Network.NWEndpoint.Host", source)
+        self.assertIn("Network.NWEndpoint.Port", source)
+        self.assertNotIn("host: NWEndpoint.Host", source)
+        self.assertNotIn("port: NWEndpoint.Port", source)
+        self.assertNotIn("let port = NWEndpoint.Port", source)
+
     def test_single_source_of_truth_ffi_header(self):
         bridge = (ROOT / "ios/PacketTunnel/BoringTunBridge.h").read_text()
         self.assertIn('#include "wireguard_ffi.h"', bridge)

@@ -41,7 +41,7 @@ final class BoringTunTransport {
                 guard let components = URLComponents(string: "udp://\(validated.endpoint)"),
                       let host = components.host, !host.isEmpty,
                       let portNumber = components.port,
-                      let port = NWEndpoint.Port(rawValue: UInt16(portNumber)),
+                      let port = Network.NWEndpoint.Port(rawValue: UInt16(portNumber)),
                       let provider = self.provider else {
                     throw AgentConfigurationError.invalidEndpoint
                 }
@@ -55,7 +55,7 @@ final class BoringTunTransport {
                             self.fail(error)
                             return
                         }
-                        self.connect(host: NWEndpoint.Host(host), port: port)
+                        self.connect(host: Network.NWEndpoint.Host(host), port: port)
                     }
                 }
             } catch {
@@ -88,7 +88,7 @@ final class BoringTunTransport {
         return settings
     }
 
-    private func connect(host: NWEndpoint.Host, port: NWEndpoint.Port) {
+    private func connect(host: Network.NWEndpoint.Host, port: Network.NWEndpoint.Port) {
         guard active else { return }
         let connection = NWConnection(host: host, port: port, using: .udp)
         udp = connection
