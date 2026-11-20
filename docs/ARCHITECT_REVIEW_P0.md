@@ -103,3 +103,17 @@ signed physical-device VPN operation.
 **Verdict: NOT APPROVED for merge or release** until all relevant native
 and physical-device gates pass. Never claim simulated testing proves signed
 NetworkExtension lifecycle, battery behavior or safe VPN routes.
+
+
+## Async native save callback identity guard (#76) — 2026-11-20
+
+`ProfileSaveSequencer` previously guarded delayed native save/reload callbacks
+only by phase. A late first-transaction callback could be replayed while a
+second transaction was in the same stage and commit the old public profile.
+A queue-confined monotonically advancing transaction epoch now gates both
+callbacks and is invalidated *before* invoking the user completion, which
+may start a new transaction. Native XCTest and real Linux Swift executable
+cover both stale save-after-denial and stale reload-after-success, without
+modifying the Rust BoringTun engine or exposing secrets. This is #76 under
+successor Epic #11, separate from signed iPhone system-preference behavior
+#15/#40 and any independent external reviewer sign-off.

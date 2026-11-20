@@ -21,6 +21,16 @@ final class ProfileSaveSequencer {
 
     private enum Stage { case idle, saving, loading }
     private var stage: Stage = .idle
+    // Main-queue-confined identity. A stale native callback must not be
+    // accepted when a later transaction happens to be in the same stage.
+    private var transactionEpoch: UInt64 = 0
+
+    @discardableResult
+    private func advanceTransactionEpoch() -> UInt64 {
+        transactionEpoch &+= 1
+        if transactionEpoch == 0 { transactionEpoch = 1 }
+        return transactionEpoch
+    }
 
     var isBusy: Bool { stage != .idle }
 
@@ -48,9 +58,11 @@ final class ProfileSaveSequencer {
             return
         }
         stage = .saving
+        let epoch = advanceTransactionEpoch()
         saveNative { [weak self] error in
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.stage == .saving else { return }
+                guard let self, self.stage == .saving,
+                      self.transactionEpoch == epoch else { return }
                 if let error {
                     self.finish(.failure(error), completed: completed)
                     return
@@ -59,7 +71,8 @@ final class ProfileSaveSequencer {
                 self.stage = .loading
                 reloadNative { [weak self] error in
                     DispatchQueue.main.async { [weak self] in
-                        guard let self, self.stage == .loading else { return }
+                        guard let self, self.stage == .loading,
+                              self.transactionEpoch == epoch else { return }
                         if let error {
                             self.finish(.failure(error), completed: completed)
                             return
@@ -81,6 +94,9 @@ final class ProfileSaveSequencer {
         completed: (Result<Void, Error>) -> Void
     ) {
         stage = .idle
+        // Invalidate before the client completion, which may immediately
+        // start a new transaction on this same sequencer instance.
+        advanceTransactionEpoch()
         completed(result)
     }
 }

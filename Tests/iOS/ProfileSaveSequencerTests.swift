@@ -182,4 +182,116 @@ final class ProfileSaveSequencerTests: XCTestCase {
         wait(for: [finished], timeout: 3)
         XCTAssertFalse(sequencer.isBusy)
     }
+    func testLateSaveCallbackCannotHijackLaterSavingTransaction() {
+        let sequencer = ProfileSaveSequencer()
+        var oldSave: ((Error?) -> Void)?
+        var newSave: ((Error?) -> Void)?
+        var newReload: ((Error?) -> Void)?
+        var completedOld = 0
+        var completedNew = 0
+        var commits = 0
+        let failedOld = expectation(description: "old denied save")
+        let reloadedNew = expectation(description: "new transaction reload")
+        let succeededNew = expectation(description: "new transaction completed")
+
+        sequencer.run(
+            saveNative: { oldSave = $0 },
+            reloadNative: { _ in XCTFail("old denied save cannot reload") },
+            commitPublicProfile: { XCTFail("old denied save cannot commit") },
+            completed: { result in
+                if case .success = result { XCTFail("old save must fail") }
+                completedOld += 1
+                failedOld.fulfill()
+            }
+        )
+        oldSave?(FakeError.denied)
+        wait(for: [failedOld], timeout: 3)
+
+        sequencer.run(
+            saveNative: { newSave = $0 },
+            reloadNative: { newReload = $0; reloadedNew.fulfill() },
+            commitPublicProfile: { commits += 1 },
+            completed: { result in
+                if case .failure = result { XCTFail("new save unexpectedly failed") }
+                completedNew += 1
+                succeededNew.fulfill()
+            }
+        )
+        XCTAssertTrue(sequencer.isBusy)
+        oldSave?(nil) // replay from earlier transaction while phase is saving
+        let drained = expectation(description: "late old save callback drained")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 3)
+        XCTAssertNil(newReload)
+        XCTAssertEqual(completedOld, 1)
+        XCTAssertTrue(sequencer.isBusy)
+
+        newSave?(nil)
+        wait(for: [reloadedNew], timeout: 3)
+        newReload?(nil)
+        wait(for: [succeededNew], timeout: 3)
+        XCTAssertEqual(commits, 1)
+        XCTAssertEqual(completedOld, 1)
+        XCTAssertEqual(completedNew, 1)
+        XCTAssertFalse(sequencer.isBusy)
+    }
+
+    func testLateReloadCannotCommitOldProfileDuringLaterLoadingTransaction() {
+        let sequencer = ProfileSaveSequencer()
+        var oldReload: ((Error?) -> Void)?
+        var newSave: ((Error?) -> Void)?
+        var newReload: ((Error?) -> Void)?
+        var committed: [String] = []
+        var oldCompletions = 0
+        var newCompletions = 0
+        let oldDone = expectation(description: "first transaction completed")
+        let newReloadStarted = expectation(description: "second reload started")
+        let newDone = expectation(description: "second transaction completed")
+
+        sequencer.run(
+            saveNative: { $0(nil) },
+            reloadNative: { oldReload = $0 },
+            commitPublicProfile: { committed.append("first") },
+            completed: { result in
+                if case .failure = result { XCTFail("first transaction failed") }
+                oldCompletions += 1
+                oldDone.fulfill()
+            }
+        )
+        // Save callback dispatches through main, so wait for reload capture.
+        let oldReloadReady = expectation(description: "first reload captured")
+        DispatchQueue.main.async { oldReloadReady.fulfill() }
+        wait(for: [oldReloadReady], timeout: 3)
+        XCTAssertNotNil(oldReload)
+        oldReload?(nil)
+        wait(for: [oldDone], timeout: 3)
+
+        sequencer.run(
+            saveNative: { newSave = $0 },
+            reloadNative: { newReload = $0; newReloadStarted.fulfill() },
+            commitPublicProfile: { committed.append("second") },
+            completed: { result in
+                if case .failure = result { XCTFail("second transaction failed") }
+                newCompletions += 1
+                newDone.fulfill()
+            }
+        )
+        newSave?(nil)
+        wait(for: [newReloadStarted], timeout: 3)
+        oldReload?(nil) // replay from earlier transaction while phase is loading
+        let drained = expectation(description: "late old reload callback drained")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 3)
+        XCTAssertTrue(sequencer.isBusy)
+        XCTAssertEqual(committed, ["first"])
+        XCTAssertEqual(oldCompletions, 1)
+
+        newReload?(nil)
+        wait(for: [newDone], timeout: 3)
+        XCTAssertEqual(committed, ["first", "second"])
+        XCTAssertEqual(oldCompletions, 1)
+        XCTAssertEqual(newCompletions, 1)
+        XCTAssertFalse(sequencer.isBusy)
+    }
+
 }

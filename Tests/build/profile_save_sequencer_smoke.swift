@@ -64,6 +64,76 @@ struct ProfileSaveSequencerSmoke {
         denied?(FakeError.permissionDenied)
         pumpUntil { completed }
         precondition(!sequencer.isBusy)
-        print("VPN profile success order, overlapping-save rejection and denial recovery passed")
+        // Replay a failed transaction's save callback after a newer
+        // transaction starts. Stage-only guards would incorrectly accept it.
+        let first = ProfileSaveSequencer()
+        var oldSave: ((Error?) -> Void)?
+        var newSave: ((Error?) -> Void)?
+        var newReload: ((Error?) -> Void)?
+        var oldCompleted = 0
+        var newCompleted = 0
+        var committed: [String] = []
+        first.run(
+            saveNative: { oldSave = $0 },
+            reloadNative: { _ in preconditionFailure("denied old save reloaded") },
+            commitPublicProfile: { preconditionFailure("denied old save committed") },
+            completed: { _ in oldCompleted += 1 }
+        )
+        oldSave?(FakeError.permissionDenied)
+        pumpUntil { oldCompleted == 1 }
+        first.run(
+            saveNative: { newSave = $0 },
+            reloadNative: { newReload = $0 },
+            commitPublicProfile: { committed.append("new") },
+            completed: { result in
+                if case .failure = result { preconditionFailure("new save failed") }
+                newCompleted += 1
+            }
+        )
+        oldSave?(nil) // must not invoke stale reload/commit
+        var drained = false
+        DispatchQueue.main.async { drained = true }
+        pumpUntil { drained }
+        precondition(first.isBusy && newReload == nil && oldCompleted == 1)
+        newSave?(nil)
+        pumpUntil { newReload != nil }
+        newReload?(nil)
+        pumpUntil { newCompleted == 1 }
+        precondition(committed == ["new"] && oldCompleted == 1 && !first.isBusy)
+
+        // Replay a previously successful reload while next save is loading.
+        let second = ProfileSaveSequencer()
+        var firstReload: ((Error?) -> Void)?
+        var secondSave: ((Error?) -> Void)?
+        var secondReload: ((Error?) -> Void)?
+        var completions = 0
+        var publications: [String] = []
+        second.run(
+            saveNative: { $0(nil) },
+            reloadNative: { firstReload = $0 },
+            commitPublicProfile: { publications.append("first") },
+            completed: { _ in completions += 1 }
+        )
+        pumpUntil { firstReload != nil }
+        firstReload?(nil)
+        pumpUntil { completions == 1 }
+        second.run(
+            saveNative: { secondSave = $0 },
+            reloadNative: { secondReload = $0 },
+            commitPublicProfile: { publications.append("second") },
+            completed: { _ in completions += 1 }
+        )
+        secondSave?(nil)
+        pumpUntil { secondReload != nil }
+        firstReload?(nil)
+        drained = false
+        DispatchQueue.main.async { drained = true }
+        pumpUntil { drained }
+        precondition(publications == ["first"] && second.isBusy && completions == 1)
+        secondReload?(nil)
+        pumpUntil { completions == 2 }
+        precondition(publications == ["first", "second"] && !second.isBusy)
+
+        print("VPN staged save ordering, denial, busy guard and stale/duplicate native callbacks passed")
     }
 }
