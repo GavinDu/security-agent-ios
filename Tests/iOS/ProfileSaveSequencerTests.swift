@@ -128,6 +128,31 @@ final class ProfileSaveSequencerTests: XCTestCase {
         XCTAssertEqual(count, 2)
     }
 
+    func testBackgroundCallerRunsTransactionOnMainWithoutCrashing() {
+        let sequencer = ProfileSaveSequencer()
+        let completed = expectation(description: "background request completed")
+        DispatchQueue.global(qos: .userInitiated).async {
+            sequencer.run(
+                saveNative: { reply in
+                    XCTAssertTrue(Thread.isMainThread)
+                    reply(nil)
+                },
+                reloadNative: { reply in
+                    XCTAssertTrue(Thread.isMainThread)
+                    reply(nil)
+                },
+                commitPublicProfile: {
+                    XCTAssertTrue(Thread.isMainThread)
+                },
+                completed: { result in
+                    XCTAssertTrue(Thread.isMainThread)
+                    if case .failure = result { XCTFail("Background request failed") }
+                    completed.fulfill()
+                }
+            )
+        }
+        wait(for: [completed], timeout: 3)
+    }
     func testConcurrentSaveIsRejectedWithoutStartingItsNativeWork() {
         let sequencer = ProfileSaveSequencer()
         var firstReply: ((Error?) -> Void)?

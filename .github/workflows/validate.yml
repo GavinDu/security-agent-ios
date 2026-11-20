@@ -29,6 +29,9 @@ jobs:
           find ios macos Shared Tests -name '*.swift' -print0 | while IFS= read -r -d '' path; do
             swiftc -frontend -parse "$path"
           done
+          # Pure Foundation transaction also admits a real Linux Swift typecheck.
+          # Native NetworkExtension/WKWebView and XCTest remain macOS-only gates.
+          swiftc -swift-version 5 -typecheck ios/AgentApp/VPN/ProfileSaveSequencer.swift
       - name: Validate VPN entitlements
         shell: bash
         run: |

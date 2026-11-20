@@ -11,7 +11,6 @@ struct ChatWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        configuration.userContentController.add(context.coordinator, name: "agentNative")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.isInspectable = false
@@ -23,12 +22,11 @@ struct ChatWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.stopLoading()
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "agentNative")
         webView.navigationDelegate = nil
         webView.loadHTMLString("", baseURL: nil)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate {
         let onLoadState: (Bool) -> Void
 
         init(onLoadState: @escaping (Bool) -> Void) { self.onLoadState = onLoadState }
@@ -50,23 +48,21 @@ struct ChatWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView,
                      decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            guard let url = action.request.url else {
+            guard let destination = action.request.url else {
                 decisionHandler(.cancel)
                 return
             }
-            if url.scheme == "about" || (url.scheme == "http" &&
-                url.host == AgentConstants.serverIPv4 && url.port == 8080) {
-                decisionHandler(.allow)
-            } else {
-                decisionHandler(.cancel)
-            }
+            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
         }
 
-        func userContentController(_ userContentController: WKUserContentController,
-                                   didReceive message: WKScriptMessage) {
-            // No native actions or secrets exposed by default.
-            guard message.frameInfo.isMainFrame,
-                  message.frameInfo.securityOrigin.host == AgentConstants.serverIPv4 else { return }
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationResponse: WKNavigationResponse,
+                     decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            guard let destination = navigationResponse.response.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
         }
     }
 }

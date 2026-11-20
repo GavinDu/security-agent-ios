@@ -25,12 +25,24 @@ final class ProfileSaveSequencer {
     var isBusy: Bool { stage != .idle }
 
     func run(
-        saveNative: NativeStep,
+        saveNative: @escaping NativeStep,
         reloadNative: @escaping NativeStep,
         commitPublicProfile: @escaping () throws -> Void,
         completed: @escaping (Result<Void, Error>) -> Void
     ) {
-        precondition(Thread.isMainThread, "VPN profile writes must start on main")
+        // UI normally calls on main, but an unexpected background caller
+        // must not crash the app. Marshal the entire transaction instead.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.run(
+                    saveNative: saveNative,
+                    reloadNative: reloadNative,
+                    commitPublicProfile: commitPublicProfile,
+                    completed: completed
+                )
+            }
+            return
+        }
         guard stage == .idle else {
             completed(.failure(TransactionError.busy))
             return

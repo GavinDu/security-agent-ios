@@ -30,6 +30,9 @@ final class TunnelManager: NSObject, ObservableObject {
     func reload() {
         NETunnelProviderManager.loadAllFromPreferences { managers, error in
             DispatchQueue.main.async {
+                // Never overwrite an in-flight native preference transaction
+                // with an older asynchronous loadAllFromPreferences result.
+                guard !self.profileSave.isBusy else { return }
                 if let error { self.errorMessage = error.localizedDescription }
                 self.manager = managers?.first(where: {
                     ($0.protocolConfiguration as? NETunnelProviderProtocol)?
