@@ -38,12 +38,17 @@ for arch in $archs; do
     *) echo "Unsupported iOS SDK/ABI: ${PLATFORM_NAME}/$arch" >&2; exit 2 ;;
   esac
   export CARGO_TARGET_DIR="$temp/$triple"
-  # Xcode exports SDKROOT=iPhoneOS/iPhoneSimulator, but Cargo also compiles
-  # build.rs/proc-macros for the *macOS host*. Inheriting iPhoneOS SDKROOT
-  # makes macOS host cc fail to find libSystem. Remove only SDKROOT for Cargo;
-  # the explicit --target triple still selects the appropriate iOS SDK.
-  # Keep PLATFORM_NAME/ARCHS checks, pinned sources, and archive validation.
-  env -u SDKROOT cargo build --manifest-path "$checkout/boringtun/Cargo.toml" \
+  # Xcode exports an iPhoneOS SDKROOT, but Cargo also links macOS-host
+  # build.rs and proc-macro executables. Merely unsetting SDKROOT leaves the
+  # host linker without a MacOSX SDK on modern Xcode (missing -lSystem).
+  # Select the actual host macOS SDK explicitly. Rust/cc's Apple target logic
+  # detects SDK/platform mismatch and independently resolves the iOS SDK
+  # from the explicit --target triple. Never pass the iPhone SDK to the host.
+  host_sdk="$(xcrun --sdk macosx --show-sdk-path)"
+  [[ -d "$host_sdk" && "$host_sdk" == *MacOSX*.sdk ]] || {
+    echo "Could not resolve a valid macOS host SDK" >&2; exit 2;
+  }
+  SDKROOT="$host_sdk" cargo build --manifest-path "$checkout/boringtun/Cargo.toml" \
     --lib --release --no-default-features --features ffi-bindings \
     --locked --target "$triple"
   archive="$CARGO_TARGET_DIR/$triple/release/libboringtun.a"
