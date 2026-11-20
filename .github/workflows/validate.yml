@@ -32,6 +32,11 @@ jobs:
           # Pure Foundation transaction also admits a real Linux Swift typecheck.
           # Native NetworkExtension/WKWebView and XCTest remain macOS-only gates.
           swiftc -swift-version 5 -typecheck ios/AgentApp/VPN/ProfileSaveSequencer.swift
+          # Compile and actually execute the production Foundation-only
+          # diagnostic codec against malformed/private/oversized inputs.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
+            Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
+          "$RUNNER_TEMP/vpn-event-history-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |

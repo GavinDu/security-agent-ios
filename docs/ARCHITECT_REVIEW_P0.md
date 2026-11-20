@@ -62,6 +62,12 @@ signed physical-device VPN.
   and load-from-preferences succeed. Atomic save and denial recovery are #15.
 - BoringTun's upstream panic hook can terminate the extension; malformed
   packet host tests do not substitute for signed-device stress (#58).
+- App Group diagnostic events are intentionally five fixed codes and no
+  free-form messages. Prior code read an unrestricted JSON file; atomic
+  [#69](https://github.com/GavinDu/security-agent-ios/issues/69)
+  adds a 32 KiB bounded FileHandle read, a 100-event retention cap,
+  sanitizing old content on decode, and actual Swift Linux smoke tests.
+  Signed extension/App Group behavior and optional export stay open #17.
 - No main-branch ruleset was visible via GitHub API; branch protection API
   access returned 403. An administrator must verify required checks (#48).
 - Reference Proton Lumo only for architecture; no GPL source is included.
