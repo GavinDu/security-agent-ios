@@ -73,6 +73,10 @@ jobs:
             ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
             Tests/build/native_preference_reload_smoke.swift
           "$RUNNER_TEMP/native-reload-tests"
+          # Real production Swift Keychain race-resolution policy (Linux).
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/immutable-identity-tests" \
+            Shared/ImmutableIdentityInstaller.swift Tests/build/immutable_identity_installer_smoke.swift
+          "$RUNNER_TEMP/immutable-identity-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |

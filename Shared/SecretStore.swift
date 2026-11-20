@@ -52,22 +52,6 @@ enum SharedKeychain {
         return item as? Data
     }
 
-    static func write(_ value: Data, account: String) throws {
-        var q = try query(account)
-        q[kSecValueData as String] = value
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(q as CFDictionary, nil)
-        if status == errSecDuplicateItem {
-            let result = SecItemUpdate(
-                try query(account) as CFDictionary,
-                [kSecValueData as String: value] as CFDictionary
-            )
-            guard result == errSecSuccess else { throw KeychainError.osStatus(result) }
-        } else if status != errSecSuccess {
-            throw KeychainError.osStatus(status)
-        }
-    }
-
     static func existingIdentity() throws -> Data {
         guard let secret = try read(identityAccount) else { throw KeychainError.missingSecret }
         guard secret.count == 32 else { throw KeychainError.invalidSecret }
@@ -79,9 +63,29 @@ enum SharedKeychain {
             guard existing.count == 32 else { throw KeychainError.invalidSecret }
             return existing
         }
-        let privateKey = Curve25519.KeyAgreement.PrivateKey().rawRepresentation
-        try write(privateKey, account: identityAccount)
-        return privateKey
+        // SecItemAdd is atomic across the app and PacketTunnel processes.
+        // Never upsert an identity: a loser of this race must adopt the
+        // already persisted key rather than replace its enrolled public key.
+        let candidate = Curve25519.KeyAgreement.PrivateKey().rawRepresentation
+        return try ImmutableIdentityInstaller.install(
+            candidate: candidate,
+            insertIfAbsent: { newKey in
+                var q = try query(identityAccount)
+                q[kSecValueData as String] = newKey
+                q[kSecAttrAccessible as String] =
+                    kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                let status = SecItemAdd(q as CFDictionary, nil)
+                switch status {
+                case errSecSuccess:
+                    return .inserted
+                case errSecDuplicateItem:
+                    return .alreadyExists
+                default:
+                    throw KeychainError.osStatus(status)
+                }
+            },
+            readExisting: { try read(identityAccount) }
+        )
     }
 
     static func publicKeyBase64() throws -> String {
