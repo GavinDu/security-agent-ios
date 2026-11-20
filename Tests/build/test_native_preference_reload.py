@@ -16,8 +16,15 @@ class NativePreferenceReloadBoundaryTests(unittest.TestCase):
         self.assertIn("let loadToken = preferenceReloadGate.begin()", section)
         self.assertIn("preferenceReloadGate.disposition(", section)
         self.assertIn("loadSucceeded: error == nil && managers != nil", section)
+        # After #81, the callback generation guard must precede a
+        # unique/duplicate inventory decision; arbitrary first-match
+        # publication is intentionally forbidden.
         self.assertLess(section.index("preferenceReloadGate.disposition("),
-                        section.index("self.manager = managers?"))
+                        section.index("NativeVPNManagerInventory.select("))
+        self.assertLess(section.index("NativeVPNManagerInventory.select("),
+                        section.index("self.manager = selected"))
+        self.assertIn("case .duplicate:", section)
+        self.assertNotIn("self.manager = managers?", section)
         self.assertIn("case .reportFailure:", section)
         self.assertIn("case .discard:", section)
         self.assertIn("return", section)
