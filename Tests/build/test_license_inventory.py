@@ -131,9 +131,17 @@ class CargoLicenseInventoryTests(unittest.TestCase):
         with self.assertRaises(audit.InventoryError):
             audit.inventory(meta, lock)
 
+    def test_exact_legacy_dual_permissive_license_is_normalized(self):
+        meta, lock = fixtures()
+        meta["packages"][1]["license"] = "MIT/Apache-2.0"
+        report = audit.inventory(meta, lock)
+        self.assertEqual(report["packages"][1]["license"], "(MIT OR Apache-2.0)")
+        self.assertEqual(audit.check_license("MIT/Apache-2.0"),
+                         "(MIT OR Apache-2.0)")
+
     def test_invalid_license_expression_rejected(self):
         for expression in ("MIT Apache-2.0", "(MIT OR Apache-2.0", "MIT OR OR BSD-3-Clause",
-                           "MIT/Apache-2.0", "MIT OR", "MIT AND GPL-2.0-only"):
+                           "GPL-3.0/MIT", "MIT OR", "MIT AND GPL-2.0-only"):
             with self.subTest(expression=expression):
                 with self.assertRaises(audit.InventoryError):
                     audit.check_license(expression)
