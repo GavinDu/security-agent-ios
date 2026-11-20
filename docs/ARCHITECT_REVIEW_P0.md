@@ -244,3 +244,34 @@ transitive notices, licenses and static linkage before beta distribution
 (#55/#31). Mark #64 complete only if its new Linux workflow step is green;
 native device compilation, signed iPhone routing and FFI stress stay separate
 open gates, even if the license inventory passes.
+
+## 2026-11-20 — Strict challenge: host macOS SDK still absent (#63)
+
+Native Actions [#44773740878](https://github.com/GavinDu/security-agent-ios/actions/runs/44773740878)
+progressed past Tuist into the real iPhoneOS PacketTunnel archive build, but
+Rust build scripts again failed with `ld: library 'System' not found`.
+Merely invoking Cargo with `env -u SDKROOT` removed the incorrect iPhoneOS
+SDK yet also left macOS host linking without an SDK. This explicitly
+**invalidates** the earlier assumption that unsetting SDKROOT was sufficient.
+
+The narrowly scoped correction uses
+`SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" cargo build --target ...`.
+macOS-host build scripts receive the real MacOSX.sdk. Rust's platform-aware
+iOS compiler/cc integration must still discover the selected iPhoneOS or
+simulator SDK from its explicit target triple; this claim requires actual
+CI link evidence. The wrapper mock checks both iPhoneOS inheritance and
+missing host SDK. Keep #63, #52, #13, #39 and #55 OPEN until native proof.
+No signed iPhone or independent external challenge review occurred.
+
+## 2026-11-20 — License graph review correction (#64)
+
+The initial inventory joined *all* workspace packages, accidentally
+including unrelated `boringtun-cli`. Reaching the BoringTun library's
+dependency closure removed that sibling, but Cargo's resolution still
+included dev/bench `page_size@0.6.0` declaring legacy
+`MIT/Apache-2.0` syntax. We now traverse only Cargo dependency edges of
+kind normal or build for the shipped `ffi-bindings` library, **excluding**
+dev-only edges; an offline negative regression fixture proves this.
+The parser continues to reject unreviewed/ambiguous license syntax for
+actual production/build deps. This is not license text distribution proof,
+nor a binary object/symbol inventory; #55/#31 remain open.
