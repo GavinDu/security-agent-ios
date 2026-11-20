@@ -33,6 +33,7 @@ jobs:
         shell: bash
         run: |
           bash scripts/verify-foundation-pins.sh
+          bash Tests/build/pin-validation-tests.sh
           bash Tests/build/bridge-wrapper-tests.sh
 
   native:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "${FOUNDATION_ROOT:-$(dirname "$0")/..}"
 revision="2fec12a6e1f6e3460b6ee483aa00ad29cddadab1"
 grep -Fq "$revision" Tuist/Package.swift
 grep -Fq "$revision" scripts/build-wireguard-go.sh
