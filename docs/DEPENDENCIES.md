@@ -61,8 +61,9 @@ fail the CI job rather than being silently omitted.
 
 The CI artifact is deterministic JSON containing names, versions, registry
 checksums and declared licenses only. It has **no signing keys, private
-WireGuard data or user profiles**. This is an *inventory of the Cargo
-resolution graph*, including build and possibly dev packages, not a
+WireGuard data or user profiles**. This is an *inventory of the BoringTun
+library's normal/build dependency closure* (excluding workspace CLI and
+dev-only benchmark edges), not a
 linker map or a complete audit of statically linked code. It does not include
 full third-party notice texts; before distributing the signed app, review all
 transitive notices, the built binary and license obligations under #55/#31.
