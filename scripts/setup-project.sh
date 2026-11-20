@@ -2,6 +2,5 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-bash scripts/bootstrap-wireguard.sh
-tuist install
+bash scripts/bootstrap-boringtun.sh
 tuist generate --no-open
