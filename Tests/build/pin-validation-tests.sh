@@ -27,4 +27,12 @@ if FOUNDATION_ROOT="$test_root" bash "$repo_root/scripts/verify-foundation-pins.
   echo "Dynamic WireGuardKit framework mapping passed static dependency check" >&2
   exit 1
 fi
+# Detect a future ubuntu-latest migration that breaks Swift 6.0 installer.
+cp "$repo_root/Tuist/Package.swift" "$test_root/Tuist/Package.swift"
+sed 's/ubuntu-24\.04/ubuntu-latest/' \
+  "$repo_root/.github/workflows/validate.yml" > "$test_root/.github/workflows/validate.yml"
+if FOUNDATION_ROOT="$test_root" bash "$repo_root/scripts/verify-foundation-pins.sh" >/dev/null 2>&1; then
+  echo "Unpinned Ubuntu runner label passed invariant checks" >&2
+  exit 1
+fi
 echo "Pin consistency and negative-case tests passed."

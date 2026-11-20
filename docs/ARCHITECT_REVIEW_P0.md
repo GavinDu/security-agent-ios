@@ -65,3 +65,15 @@ exists. The macOS runner remains the deciding compile/link gate.
   (or separately broken) macOS companion.
 - Any CI failure still fails its own required job. Do not set
   `continue-on-error`, skip a failing platform, or merge without evidence.
+
+## CI failure: setup-swift v2 and Ubuntu 26.04 (confirmed)
+
+Run [44660675965](https://github.com/GavinDu/security-agent-ios/actions/runs/44660675965)
+failed in `Foundation static checks (Linux)` before Swift/source execution.
+The runner used Ubuntu 26.04.1; `swift-actions/setup-swift@v2` reported:
+`Version "26.04" of Ubuntu is not supported`.
+
+**Correction:** Pin the static job to `ubuntu-24.04`, a supported platform
+for `setup-swift@v2` and the selected Swift parser. Add a static pin
+invariant and a negative runner-migration test. Do not mark #35/#39
+complete until the corrected workflow passes.

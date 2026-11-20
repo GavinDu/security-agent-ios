@@ -8,6 +8,7 @@ grep -Fq 'go = "1.19.13"' .mise.toml
 grep -Fq 'tuist = "4.218.1"' .mise.toml
 grep -Fxq '16.4' .xcode-version
 grep -Fq "xcode-version: '16.4'" .github/workflows/validate.yml
+grep -Fq 'runs-on: ubuntu-24.04' .github/workflows/validate.yml
 grep -Fq '["WireGuardKit": .staticFramework]' Tuist/Package.swift
 grep -Fq 'LIBRARY_SEARCH_PATHS' Project.swift
 grep -Fq 'Build pinned WireGuard Go bridge' Project.swift
