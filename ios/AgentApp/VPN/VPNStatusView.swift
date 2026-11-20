@@ -17,8 +17,8 @@ struct VPNStatusView: View {
                 }
                 HStack {
                     Button("Connect") { tunnel.connect() }
-                        .disabled(tunnel.profile == nil || tunnel.status == .connected ||
-                                  tunnel.status == .connecting)
+                        .disabled(tunnel.profile == nil || tunnel.profile?.routeMode == .full ||
+                                  tunnel.status == .connected || tunnel.status == .connecting)
                     Spacer()
                     Button("Disconnect") { tunnel.disconnect() }
                         .disabled(tunnel.status == .disconnected || tunnel.status == .invalid)
@@ -55,7 +55,7 @@ struct VPNStatusView: View {
                         .foregroundStyle(.secondary)
                     Text(profile.routeMode == .split
                          ? "Only 10.8.0.0/24 is sent through the VPN. Regular browsing uses your current network."
-                         : "All IPv4 and IPv6 routes use the VPN. Your Mac must provide internet forwarding and IPv6 connectivity.")
+                         : "This saved full-tunnel profile is blocked for safety. Disconnect and switch to split tunnel before connecting.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Text("After changing modes, wait for disconnect to finish, then tap Connect.")
@@ -66,6 +66,7 @@ struct VPNStatusView: View {
                         get: { tunnel.profile?.onDemand ?? false },
                         set: { tunnel.setOnDemand($0) }
                     ))
+                    .disabled(profile.routeMode == .full)
                     Text("Enable only after testing a manual connection on a physical iPhone.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

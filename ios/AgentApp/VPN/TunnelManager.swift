@@ -9,6 +9,9 @@ final class TunnelManager: NSObject, ObservableObject {
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
     private let profileSave = ProfileSaveSequencer()
+    private var legacyFullStopRequested = false
+    private var legacyOnDemandDisableAttempted = false
+    private var legacyOnDemandDisableInFlight = false
 
     override init() {
         super.init()
@@ -24,7 +27,10 @@ final class TunnelManager: NSObject, ObservableObject {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     @objc private func vpnStatusChanged(_ notification: Notification) {
-        DispatchQueue.main.async { self.status = self.manager?.connection.status ?? .invalid }
+        DispatchQueue.main.async {
+            self.status = self.manager?.connection.status ?? .invalid
+            self.remediateLegacyFullTunnel()
+        }
     }
 
     func reload() {
@@ -40,11 +46,61 @@ final class TunnelManager: NSObject, ObservableObject {
                 })
                 self.status = self.manager?.connection.status ?? .invalid
                 self.profile = SharedProfileStore.load()
+                self.remediateLegacyFullTunnel()
+            }
+        }
+    }
+
+    /// Stop any inherited full-tunnel session and disable old on-demand rules.
+    /// The extension is still the final boundary for new VPN starts.
+    private func remediateLegacyFullTunnel() {
+        guard let profile, let manager else { return }
+        let status = manager.connection.status
+        let active = status == .connected || status == .connecting || status == .reasserting
+        let action = LegacyFullTunnelRecovery.assess(
+            isFullMode: profile.routeMode == .full,
+            isActive: active,
+            isOnDemandEnabled: manager.isOnDemandEnabled
+        )
+        if !action.stopActiveSession {
+            legacyFullStopRequested = false
+        } else if !legacyFullStopRequested {
+            legacyFullStopRequested = true
+            manager.connection.stopVPNTunnel()
+        }
+        guard action.blockNewConnection else { return }
+        if errorMessage == nil {
+            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+        }
+        // Single attempt per app lifecycle. A denied preference write is
+        // surfaced to the user; never retry indefinitely in a VPN callback.
+        guard action.disableOnDemand, !legacyOnDemandDisableAttempted,
+              !legacyOnDemandDisableInFlight, !profileSave.isBusy else { return }
+        legacyOnDemandDisableAttempted = true
+        legacyOnDemandDisableInFlight = true
+        manager.isOnDemandEnabled = false
+        manager.onDemandRules = []
+        manager.saveToPreferences { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.legacyOnDemandDisableInFlight = false
+                if let error {
+                    self.errorMessage = "Could not disable legacy VPN auto-connect: " +
+                        error.localizedDescription
+                } else {
+                    // Re-read system state; do not replace the public
+                    // profile or claim that an active tunnel was stopped.
+                    self.reload()
+                }
             }
         }
     }
 
     func save(_ candidate: ServerProfile, connectAfterSave: Bool = false) {
+        guard !legacyOnDemandDisableInFlight else {
+            errorMessage = "Finish disabling legacy VPN auto-connect first."
+            return
+        }
         // The UI publishes only profiles accepted and reloaded by the system.
         guard !profileSave.isBusy else {
             errorMessage = ProfileSaveSequencer.TransactionError.busy.localizedDescription
@@ -53,6 +109,10 @@ final class TunnelManager: NSObject, ObservableObject {
         let validated: ServerProfile
         do { validated = try candidate.validated() }
         catch { errorMessage = error.localizedDescription; return }
+        guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
+            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+            return
+        }
 
         let selected = manager ?? NETunnelProviderManager()
         let configuration = (selected.protocolConfiguration as? NETunnelProviderProtocol)
@@ -92,12 +152,21 @@ final class TunnelManager: NSObject, ObservableObject {
     }
 
     func connect() {
+        guard !legacyOnDemandDisableInFlight else {
+            errorMessage = "Finish disabling legacy VPN auto-connect first."
+            return
+        }
         guard !profileSave.isBusy else {
             errorMessage = "Finish saving the VPN configuration before connecting."
             return
         }
-        guard profile != nil else {
+        guard let profile else {
             errorMessage = AgentConfigurationError.missingProfile.localizedDescription
+            return
+        }
+        guard TunnelRouteSafetyPolicy.permitsStart(profile.routeMode) else {
+            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+            remediateLegacyFullTunnel()
             return
         }
         guard let manager else {
@@ -125,6 +194,11 @@ final class TunnelManager: NSObject, ObservableObject {
 
     func setOnDemand(_ enabled: Bool) {
         guard var updated = profile else { return }
+        if enabled && !TunnelRouteSafetyPolicy.permitsStart(updated.routeMode) {
+            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+            remediateLegacyFullTunnel()
+            return
+        }
         updated.onDemand = enabled
         save(updated)
     }
