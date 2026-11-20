@@ -15,6 +15,26 @@ class ManifestTests(unittest.TestCase):
     def test_preserves_unchanged_bytes(self):
         suffix = b"\x00\xff\nlet platforms = [.macOS(.v12), .iOS(.v15)]\n"
         self.assertEqual(overlay.fixed_manifest(overlay.OLD+suffix), overlay.NEW+suffix)
+    def test_untracked_failure_reports_status_not_contents(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = Path(folder)
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            (checkout / "Package.swift").write_bytes(overlay.OLD + b"import PackageDescription\n")
+            subprocess.run(["git", "-C", str(checkout), "add", "Package.swift"], check=True)
+            subprocess.run(
+                ["git", "-C", str(checkout), "-c", "user.name=CI Fixture",
+                 "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"],
+                check=True
+            )
+            (checkout / "generated-indicator.txt").write_text("HIDDEN_FILE_CONTENT_ABC123")
+            with self.assertRaises(ValueError) as failure:
+                overlay.apply(checkout)
+            diagnostic = str(failure.exception)
+            self.assertIn("?? generated-indicator.txt", diagnostic)
+            self.assertNotIn("HIDDEN_FILE_CONTENT_ABC123", diagnostic)
+
     def test_bad_headers_are_rejected(self):
         for data in (b"// swift-tools-version:5.5\n", b"// swift-tools-version:5.3.0\n",
                      b"// swift-tools-version:5.3\r\n", b"import PackageDescription\n"):

@@ -34,7 +34,14 @@ def verify_worktree(checkout: Path) -> None:
     )
     changes = tuple(record for record in raw.split(b"\0") if record)
     if changes not in ((), (ALLOWED_DIRTY_ENTRY,)):
-        raise ValueError("unreviewed or untracked WireGuard source modifications")
+        # Diagnostic entries are relative paths / two-character Git statuses,
+        # never file contents, keys, manifests or environment variables.
+        # Bound and escape all output to avoid terminal/control injection.
+        preview = [repr(item[:160]) for item in changes[:8]]
+        raise ValueError(
+            f"unreviewed or untracked WireGuard source modifications "
+            f"(count={len(changes)}, entries={preview})"
+        )
 
 
 def apply(checkout: Path, *, check_only: bool = False) -> None:

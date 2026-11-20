@@ -162,3 +162,16 @@ root without copying the newly required manifest verifier, causing Python
 file-not-found. This does not indicate a bypass in production source integrity;
 the fixture now copies the verifier into its synthetic `SRCROOT`. Keep issue
 #44 open until the corrected static run proves the entire fixture passes.
+
+## 2026-11-20 — Tuist/source guard diagnostic (issue #47)
+
+[Run 44725384814](https://github.com/GavinDu/security-agent-ios/actions/runs/44725384814)
+finished with Linux static checks and native Mac build green but iOS app-extension
+pre-build failed with `unreviewed or untracked WireGuard source modifications`.
+The message lacked path evidence; the integrity guard is **not** disabled.
+The source verifier now emits up to eight bounded, escaped Git porcelain *status
+records only* (not file contents) on failure, allowing classification of
+Tuist/SwiftPM-generated metadata versus a potentially malicious source edit.
+An offline test confirms the diagnostic never includes file contents. Await
+CI evidence before implementing a narrow metadata allowlist. No native iOS
+acceptance is claimed.

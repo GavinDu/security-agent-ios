@@ -92,6 +92,9 @@ jobs:
           tuist install
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj
+          # No secrets: report only file-status codes and bounded relative paths
+          # when vendor source integrity differs from the pinned checkout.
+          python3 scripts/patch-wireguard-manifest.py Vendor/wireguard-apple --check
       - name: Compile and link iOS app + PacketTunnel (device SDK, no signing)
         shell: bash
         run: |
@@ -144,6 +147,9 @@ jobs:
           tuist install
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj
+          # No secrets: report only file-status codes and bounded relative paths
+          # when vendor source integrity differs from the pinned checkout.
+          python3 scripts/patch-wireguard-manifest.py Vendor/wireguard-apple --check
           xcodebuild -list -project SecurityAgent.xcodeproj
       - name: Compile macOS pairing companion without signing
         shell: bash
