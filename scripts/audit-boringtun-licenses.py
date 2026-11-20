@@ -37,23 +37,27 @@ def check_license(expression):
         raise InventoryError("unrecognized SPDX license syntax")
     if not tokens or tokens[0] in OPERATORS or tokens[-1] in OPERATORS:
         raise InventoryError("incomplete SPDX expression")
-    depth = 0
-    for token in tokens:
-        if token == "(":
-            depth += 1
-        elif token == ")":
-            depth -= 1
-            if depth < 0:
+    def parse_atom(i):
+        if i >= len(tokens):
+            raise InventoryError("incomplete SPDX expression")
+        if tokens[i] == "(":
+            i = parse_expr(i + 1)
+            if i >= len(tokens) or tokens[i] != ")":
                 raise InventoryError("unbalanced SPDX expression")
-        elif token not in OPERATORS and token not in PERMITTED:
-            raise InventoryError("unreviewed SPDX identifier: " + token)
-    if depth != 0:
-        raise InventoryError("unbalanced SPDX expression")
-    # Parenthesized compound license expressions are OK; bare adjacency isn't.
-    normalized = re.sub(r"\s+", " ", expression).strip()
-    if re.search(r"\b(?:AND|OR)\s+(?:AND|OR)\b", normalized):
+            return i + 1
+        if tokens[i] not in PERMITTED:
+            raise InventoryError("unreviewed SPDX identifier: " + tokens[i])
+        return i + 1
+
+    def parse_expr(i):
+        i = parse_atom(i)
+        while i < len(tokens) and tokens[i] in OPERATORS:
+            i = parse_atom(i + 1)
+        return i
+
+    if parse_expr(0) != len(tokens):
         raise InventoryError("malformed SPDX expression")
-    return normalized
+    return re.sub(r"\s+", " ", expression).strip()
 
 
 def inventory(metadata, cargo_lock):
