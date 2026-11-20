@@ -15,7 +15,7 @@ class NativePreferenceReloadBoundaryTests(unittest.TestCase):
         self.assertIn("DispatchQueue.main.async", section)
         self.assertIn("let loadToken = preferenceReloadGate.begin()", section)
         self.assertIn("preferenceReloadGate.disposition(", section)
-        self.assertIn("loadSucceeded: error == nil", section)
+        self.assertIn("loadSucceeded: error == nil && managers != nil", section)
         self.assertLess(section.index("preferenceReloadGate.disposition("),
                         section.index("self.manager = managers?"))
         self.assertIn("case .reportFailure:", section)
@@ -27,6 +27,9 @@ class NativePreferenceReloadBoundaryTests(unittest.TestCase):
         saving = SOURCE.split("    func save(_ candidate:", 1)[1].split(
             "    func connect()", 1
         )[0]
+        self.assertIn("if !Thread.isMainThread", saving)
+        self.assertLess(saving.index("if !Thread.isMainThread"),
+                        saving.index("preferenceReloadGate.invalidate()"))
         self.assertLess(saving.index("preferenceReloadGate.invalidate()"),
                         saving.index("selected.saveToPreferences"))
         legacy = SOURCE.split("    private func remediateLegacyFullTunnel()", 1)[1].split(

@@ -50,7 +50,7 @@ final class TunnelManager: NSObject, ObservableObject {
                 switch self.preferenceReloadGate.disposition(
                     for: loadToken,
                     writeInFlight: self.profileSave.isBusy || self.legacyOnDemandDisableInFlight,
-                    loadSucceeded: error == nil
+                    loadSucceeded: error == nil && managers != nil
                 ) {
                 case .discard:
                     return
@@ -122,6 +122,15 @@ final class TunnelManager: NSObject, ObservableObject {
     }
 
     func save(_ candidate: ServerProfile, connectAfterSave: Bool = false) {
+        // Native manager mutations and reload generations are main confined.
+        // ProfileSaveSequencer marshals its own work, but the manager setup
+        // performed before run() must also be serialized on the main queue.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.save(candidate, connectAfterSave: connectAfterSave)
+            }
+            return
+        }
         guard !legacyOnDemandDisableInFlight else {
             errorMessage = "Finish disabling legacy VPN auto-connect first."
             return
