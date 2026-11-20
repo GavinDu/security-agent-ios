@@ -7,8 +7,8 @@ privileged system setup and a running agent HTTP service.
 
 ```sh
 brew install wireguard-tools
-# wireguard-go may be needed depending on your Homebrew/macOS WireGuard setup.
-brew install wireguard-go
+# If your macOS setup requires a userspace backend, use a separately audited,
+# managed Rust BoringTun CLI. It is NOT bundled into the iPhone app.
 ```
 
 Use a protected configuration directory such as `/etc/wireguard` (owner root,
@@ -72,3 +72,12 @@ for reliable startup; test manually before configuring automatic restart.
 5. Full: Safari public IPv4 matches home; IPv6 works as configured.
 6. iPhone lock/background and Wi-Fi → cellular transitions recover.
 7. Revoke a lost device's peer on the Mac, then re-pair.
+
+## Rust backend distinction
+
+The iPhone PacketTunnel embeds BoringTun as a Rust static library. The
+Mac Mini server is deployed/administered separately; do not install Go
+as a prerequisite for the iPhone app. `wireguard-tools` supplies Mac peer
+management, and an independently configured BoringTun userspace server may
+be used if required by your macOS deployment. This document does not prove
+that any Mac WireGuard listener is installed or running.

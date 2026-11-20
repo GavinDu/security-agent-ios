@@ -192,3 +192,28 @@ identified exactly five Tuist-generated metadata files in the local
 WireGuard checkout and no source changes. A targeted five-file allowlist
 replaces the overstrict rejection; injected Go/Makefiles remain forbidden.
 Neither that diagnosis nor the ADR is physical-device verification.
+
+## Nov 20 Rust migration — scope and remaining high-priority findings
+
+Historical Go review entries above apply to earlier commits only. User
+explicitly selected BoringTun Rust: see ADR-0002 and #51–#58.
+
+- **P0 FFI:** Upstream `ffi/mod.rs` has unsafe pointer operations and a
+  panic hook that raises SIGSEGV. The Swift codec uses an opaque pointer,
+  bounded 65,600-byte output buffer and serial queue, but this needs
+  native Xcode layout/typechecking and signed-device race tests (#53/#58).
+- **P0 handshakes:** UDP socket readiness is not authentication. The new
+  Swift extension waits for BoringTun handshake stats and enforces a 15s
+  timeout before completing startup (#54).
+- **P0 liveness:** Upstream BoringTun 0.7.1 issue #495 reports one-way
+  traffic stalls; test rekey, sustained bidirectional traffic and roaming
+  against a real Mac peer before release (#57).
+- **P0 routing:** Split and full IPv4/IPv6 and DNS are configured in Swift,
+  but Mac NAT and physical route exclusion must be checked on an iPhone.
+- **P0 build:** Rust source is pinned to commit 253f7afb, with Cargo.lock;
+  device/simulator static archives and C imports must compile in Xcode.
+- **P0 supplies:** Complete BSD-3-Clause and transitive Cargo notices/SBOM
+  and required GitHub branch checks before merging (#55/#48).
+
+**Challenger verdict:** conditional / NOT approved for merge. This is a
+structured principal iOS/Swift self-audit, not an independent reviewer.

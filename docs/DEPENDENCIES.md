@@ -31,7 +31,7 @@ as a mandatory prerequisite for this independent application.
 | Pairing QR | CoreImage | Apple SDK |
 | Local status/keys | Security, OSLog | Apple SDK |
 | WireGuard server | `wireguard-tools` | Homebrew `brew install wireguard-tools` |
-| Userspace fallback | `wireguard-go` | When required by wireguard-tools/macOS |
+| Optional userspace fallback | BoringTun CLI (Rust) | Separate Mac server administration; not embedded in iPhone app or AgentMac |
 | Startup | `launchd` | macOS system daemon |
 | IP forwarding / NAT | `sysctl` + `pf` | Only for full tunnel, requires privileged setup |
 | Agent backend | User's HTTP service at `10.8.0.1:8080` | Launchd or containers |

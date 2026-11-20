@@ -1,13 +1,14 @@
 # Security Agent iOS — roadmap and GitHub issue breakdown
 
-**Status:** An initial source scaffold exists on PR #1. Neither the native
-WireGuardKitGo bridge nor an Apple-signed VPN handshake has been verified.
+**Status:** An initial source scaffold exists on PR #1. Neither the native Rust BoringTun PacketTunnel link nor a signed iPhone
+VPN handshake has been verified.
 The physical Mac Mini's WireGuard/agent service is separately configured.
 
 ## Build order and dependency graph
 
 1. [Phase 0 — Foundation](https://github.com/GavinDu/security-agent-ios/issues/6):
-   dependency pinning (#12), native link/build (#2), CI compile/test (#13).
+   Rust migration (#51–#56), native link/FFI (#52–#53), iOS routing (#54),
+   CI/security (#55/#58), liveness (#57), signing (#40) and required checks (#48).
 2. [Phase 1 — VPN Core](https://github.com/GavinDu/security-agent-ios/issues/7):
    provider lifecycle (#14), VPN manager permission/status (#15), roaming/on-demand
    (#16), private diagnostics (#17).
@@ -52,3 +53,12 @@ Issue #18 tracks full pairing acceptance and negative tests.
 ### iPhone WireGuard/Go architecture review
 
 - [#50 — Revisit embedded Go on iPhone](https://github.com/GavinDu/security-agent-ios/issues/50): ADR-0001 keeps the iPhone app in Swift and Go isolated to the optional-to-the-product WireGuard protocol backend in PacketTunnel. If in-app VPN control is dropped, a separate migration can eliminate the extension and Go entirely.
+
+## Rust BoringTun migration
+
+**Current decision:** [ADR-0002](ADR-0002-RUST-BORINGTUN.md).
+Legacy Go/WireGuardKitGo-only tickets #2/#12/#36/#37/#38/#47/#49 were
+closed as **not planned**, superseded by new independently testable Rust
+issues #51–#58. This does not mean the Rust VPN works; iPhoneOS archive
+link, simulator XCTest, real-device handshake, BoringTun 0.7.1 liveness
+regression and license/SBOM audit remain explicit exit criteria.
