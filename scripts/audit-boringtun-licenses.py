@@ -32,6 +32,11 @@ class InventoryError(ValueError):
 def check_license(expression):
     if not isinstance(expression, str) or not expression.strip():
         raise InventoryError("missing SPDX license declaration")
+    # This exact Cargo legacy dual-license string occurs in pinned
+    # version_check 0.9.5 and denotes the permissive choice. Do NOT
+    # normalize arbitrary "/" syntax or introduce a broad exception.
+    if expression == "MIT/Apache-2.0":
+        expression = "(MIT OR Apache-2.0)"
     tokens = TOKEN.findall(expression)
     if "".join(tokens) != re.sub(r"\s+", "", expression):
         raise InventoryError("unrecognized SPDX license syntax")
