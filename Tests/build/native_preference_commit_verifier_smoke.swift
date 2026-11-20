@@ -23,12 +23,14 @@ struct NativePreferenceCommitVerifierSmoke {
             settings: [String: Any]? = nil,
             enabled: Bool = true,
             demand: Bool = false,
-            rules: Int = 0
+            rules: Int = 0,
+            connectRule: Bool = false
         ) -> NativePreferenceCommitSnapshot {
             NativePreferenceCommitSnapshot(
                 providerBundleIdentifier: id, serverAddress: endpoint,
                 metadata: settings ?? metadata, isEnabled: enabled,
-                isOnDemandEnabled: demand, onDemandRuleCount: rules
+                isOnDemandEnabled: demand, onDemandRuleCount: rules,
+                onDemandUsesConnectRule: connectRule
             )
         }
         precondition(check(state()), "Valid reloaded profile must be committed")
@@ -41,7 +43,9 @@ struct NativePreferenceCommitVerifierSmoke {
         precondition(!check(state(enabled: false)), "Disabled profile accepted")
         precondition(!check(state(demand: true, rules: 1)), "Unexpected on-demand enabled")
         precondition(!check(state(rules: 1)), "Unexpected on-demand rule")
-        precondition(check(state(demand: true, rules: 1), onDemand: true))
+        precondition(!check(state(demand: true, rules: 1), onDemand: true),
+                     "Wrong on-demand rule type must not be treated as Connect")
+        precondition(check(state(demand: true, rules: 1, connectRule: true), onDemand: true))
         precondition(!check(state(demand: true, rules: 0), onDemand: true))
         precondition(!check(state(demand: true, rules: 2), onDemand: true))
         precondition(!check(state(demand: false), onDemand: true))

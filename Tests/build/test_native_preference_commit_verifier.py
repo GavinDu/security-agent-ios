@@ -18,6 +18,7 @@ class NativePreferenceCommitBoundaryTests(unittest.TestCase):
         self.assertIn("callback(AgentConfigurationError.nativeProfileMismatch)", save)
         self.assertIn("guard error == nil else", save)
         self.assertIn("DispatchQueue.main.async", save)
+        self.assertIn("selected.onDemandRules?.first is NEOnDemandRuleConnect", save)
         self.assertNotIn("selected.loadFromPreferences(completionHandler: callback)", save)
 
     def test_profile_security_fields_are_compared(self):
@@ -26,6 +27,7 @@ class NativePreferenceCommitBoundaryTests(unittest.TestCase):
                       "native.isEnabled",
                       "native.isOnDemandEnabled == expectedOnDemand",
                       "native.onDemandRuleCount == (expectedOnDemand ? 1 : 0)",
+                      "native.onDemandUsesConnectRule",
                       "NativeProfileBindingPolicy.allowsStart("):
             self.assertIn(value, POLICY)
 

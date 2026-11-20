@@ -13,7 +13,8 @@ final class NativePreferenceCommitVerifierTests: XCTestCase {
         digest: String? = nil,
         enabled: Bool = true,
         onDemand: Bool = false,
-        ruleCount: Int = 0
+        ruleCount: Int = 0,
+        usesConnectRule: Bool = false
     ) -> NativePreferenceCommitSnapshot {
         NativePreferenceCommitSnapshot(
             providerBundleIdentifier: providerID,
@@ -21,7 +22,8 @@ final class NativePreferenceCommitVerifierTests: XCTestCase {
             metadata: NativeProfileBindingPolicy.metadata(for: digest ?? self.digest),
             isEnabled: enabled,
             isOnDemandEnabled: onDemand,
-            onDemandRuleCount: ruleCount
+            onDemandRuleCount: ruleCount,
+            onDemandUsesConnectRule: usesConnectRule
         )
     }
 
@@ -38,7 +40,9 @@ final class NativePreferenceCommitVerifierTests: XCTestCase {
 
     func testFreshlyReloadedNativeProfileMatchesBeforePublicCommit() {
         XCTAssertTrue(permits(snapshot()))
-        XCTAssertTrue(permits(snapshot(onDemand: true, ruleCount: 1), expectedDemand: true))
+        XCTAssertTrue(permits(snapshot(
+            onDemand: true, ruleCount: 1, usesConnectRule: true
+        ), expectedDemand: true))
     }
 
     func testWrongProviderEndpointDigestOrDisabledNativeProfileCannotCommit() {
@@ -55,6 +59,7 @@ final class NativePreferenceCommitVerifierTests: XCTestCase {
     func testNativeOnDemandDivergenceCannotCommit() {
         XCTAssertFalse(permits(snapshot(onDemand: true, ruleCount: 1)))
         XCTAssertFalse(permits(snapshot(ruleCount: 1)))
+        XCTAssertFalse(permits(snapshot(onDemand: true, ruleCount: 1), expectedDemand: true))
         XCTAssertFalse(permits(snapshot(onDemand: true, ruleCount: 0), expectedDemand: true))
         XCTAssertFalse(permits(snapshot(onDemand: true, ruleCount: 2), expectedDemand: true))
         XCTAssertFalse(permits(snapshot(), expectedDemand: true))
@@ -67,7 +72,8 @@ final class NativePreferenceCommitVerifierTests: XCTestCase {
             metadata: ["profileVersion": 1],
             isEnabled: true,
             isOnDemandEnabled: false,
-            onDemandRuleCount: 0
+            onDemandRuleCount: 0,
+            onDemandUsesConnectRule: false
         )
         XCTAssertFalse(permits(legacy))
     }

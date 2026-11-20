@@ -9,6 +9,7 @@ struct NativePreferenceCommitSnapshot {
     let isEnabled: Bool
     let isOnDemandEnabled: Bool
     let onDemandRuleCount: Int
+    let onDemandUsesConnectRule: Bool
 }
 
 /// Keep public App Group metadata uncommitted until the system VPN profile
@@ -25,7 +26,8 @@ enum NativePreferenceCommitVerifier {
               native.serverAddress == expectedServerAddress,
               native.isEnabled,
               native.isOnDemandEnabled == expectedOnDemand,
-              native.onDemandRuleCount == (expectedOnDemand ? 1 : 0) else {
+              native.onDemandRuleCount == (expectedOnDemand ? 1 : 0),
+              (!expectedOnDemand || native.onDemandUsesConnectRule) else {
             return false
         }
         return NativeProfileBindingPolicy.allowsStart(

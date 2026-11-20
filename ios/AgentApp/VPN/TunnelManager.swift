@@ -223,7 +223,9 @@ final class TunnelManager: NSObject, ObservableObject {
                             metadata: native?.providerConfiguration,
                             isEnabled: selected.isEnabled,
                             isOnDemandEnabled: selected.isOnDemandEnabled,
-                            onDemandRuleCount: selected.onDemandRules?.count ?? 0
+                            onDemandRuleCount: selected.onDemandRules?.count ?? 0,
+                            onDemandUsesConnectRule:
+                                selected.onDemandRules?.first is NEOnDemandRuleConnect
                         )
                         guard NativePreferenceCommitVerifier.matches(
                             snapshot,
