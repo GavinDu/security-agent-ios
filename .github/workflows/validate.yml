@@ -53,6 +53,184 @@ jobs:
           bash Tests/build/rust-wrapper-tests.sh
           python3 -m unittest discover -s Tests/build -p 'test_*.py' -v
 
+      - name: Compile pinned Rust BoringTun FFI library on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.90.0 --profile minimal
+          bash scripts/bootstrap-boringtun.sh
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-host"
+          cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
+            --lib --release --no-default-features --features ffi-bindings --locked
+          test -s "$CARGO_TARGET_DIR/release/libboringtun.a"
+          nm -g "$CARGO_TARGET_DIR/release/libboringtun.a" | grep -Eq ' [Tt] new_tunnel
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Install pinned iOS Rust targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup target add --toolchain 1.90.0 aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          test "$(rustc --version | awk '{print $2}')" = "1.90.0"
+      - name: Bootstrap pinned BoringTun source and generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap-boringtun.sh
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Compile and link iPhone app and Rust PacketTunnel (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Run simulator XCTest with Rust PacketTunnel link
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+      - name: Record safe build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "# Native iOS Rust build"
+            xcodebuild -version
+            rustc --version
+            tuist version
+            echo "Check status lives in Actions; no keys or provisioning files."
+          } > "$RUNNER_TEMP/native-rust-summary.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-rust-build-summary
+          path: ${{ runner.temp }}/native-rust-summary.txt
+          retention-days: 7
+
+  native-mac:
+    name: Tuist + macOS companion build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Generate project from clean Swift source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Build macOS SwiftUI companion
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
+            -configuration Debug -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
+
+          nm -g "$CARGO_TARGET_DIR/release/libboringtun.a" | grep -Eq ' [Tt] wireguard_tick
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Install pinned iOS Rust targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup target add --toolchain 1.90.0 aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          test "$(rustc --version | awk '{print $2}')" = "1.90.0"
+      - name: Bootstrap pinned BoringTun source and generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap-boringtun.sh
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Compile and link iPhone app and Rust PacketTunnel (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Run simulator XCTest with Rust PacketTunnel link
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+      - name: Record safe build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "# Native iOS Rust build"
+            xcodebuild -version
+            rustc --version
+            tuist version
+            echo "Check status lives in Actions; no keys or provisioning files."
+          } > "$RUNNER_TEMP/native-rust-summary.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-rust-build-summary
+          path: ${{ runner.temp }}/native-rust-summary.txt
+          retention-days: 7
+
+  native-mac:
+    name: Tuist + macOS companion build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Generate project from clean Swift source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Build macOS SwiftUI companion
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
+            -configuration Debug -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
+
+          echo "Pinned Rust C ABI staticlib built on Linux (not an iPhone link proof)"
+
   native-ios:
     name: Tuist + iOS device and simulator XCTest
     runs-on: macos-15
