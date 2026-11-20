@@ -53,6 +53,18 @@ class CargoLicenseInventoryTests(unittest.TestCase):
         meta, lock = fixtures()
         self.assertEqual(audit.inventory(meta, lock), audit.inventory(meta, lock))
 
+    def test_workspace_sibling_not_packaged_as_ios_staticlib(self):
+        meta, lock = fixtures()
+        sibling = "path+file:///tmp/boringtun/boringtun-cli#0.7.1"
+        meta["packages"].append({
+            "id": sibling, "name": "boringtun-cli", "version": "0.7.1",
+            "source": None, "license": None,
+        })
+        meta["resolve"]["nodes"].append({"id": sibling, "deps": []})
+        lock["package"].append({"name": "boringtun-cli", "version": "0.7.1"})
+        result = audit.inventory(meta, lock)
+        self.assertEqual([p["name"] for p in result["packages"]], ["boringtun", "ring"])
+
     def test_copyleft_requires_manual_review(self):
         meta, lock = fixtures()
         meta["packages"][1]["license"] = "GPL-3.0-only"
