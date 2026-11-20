@@ -12,11 +12,8 @@ let packageSettings = PackageSettings(productTypes: ["WireGuardKit": .staticFram
 let package = Package(
     name: "SecurityAgentDependencies",
     dependencies: [
-        // Exact WireGuard source revision; no floating master/branch.
-        // Matches scripts/build-wireguard-go.sh and docs/WIREGUARD_BUILD.md.
-        .package(
-            url: "https://github.com/WireGuard/wireguard-apple",
-            revision: "2fec12a6e1f6e3460b6ee483aa00ad29cddadab1"
-        )
+        // Local pinned upstream checkout, prepared by scripts/bootstrap-wireguard.sh.
+        // The upstream Package.swift header is repaired, not implementation code.
+        .package(path: "../Vendor/wireguard-apple")
     ]
 )

@@ -24,24 +24,10 @@ case "$go_version" in
   *) echo "Expected go1.19.13, got $go_version" >&2; exit 2 ;;
 esac
 
-# Xcode/Tuist may store resolved SwiftPM checkouts in either location.
-# Keep these paths deterministic; do not download arbitrary source at build time.
-derived_packages="${BUILD_DIR%Build/*}SourcePackages/checkouts"
-candidates=(
-  "$SRCROOT/Tuist/.build/checkouts/wireguard-apple"
-  "$SRCROOT/.build/checkouts/wireguard-apple"
-  "$derived_packages/wireguard-apple"
-  "$SRCROOT/SourcePackages/checkouts/wireguard-apple"
-)
-checkout=""
-for candidate in "${candidates[@]}"; do
-  if [[ -f "$candidate/Sources/WireGuardKitGo/Makefile" ]]; then
-    checkout="$candidate"
-    break
-  fi
-done
-if [[ -z "$checkout" ]]; then
-  echo "Pinned wireguard-apple checkout not found. Run tuist install, then tuist generate." >&2
+# The local checkout is prepared before Tuist resolves the package.
+checkout="$SRCROOT/Vendor/wireguard-apple"
+if [[ ! -f "$checkout/Sources/WireGuardKitGo/Makefile" ]]; then
+  echo "Pinned WireGuard source missing; run scripts/bootstrap-wireguard.sh" >&2
   exit 2
 fi
 actual_sha="$(git -C "$checkout" rev-parse HEAD)"

@@ -54,6 +54,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/bootstrap-wireguard.sh
+          python3 -m unittest discover -s Tests/build -p 'test_*.py' -v
           bash -n scripts/build-wireguard-go.sh
           bash -n scripts/verify-foundation-pins.sh
           bash -n Tests/build/bridge-wrapper-tests.sh
@@ -86,6 +88,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/bootstrap-wireguard.sh
           tuist install
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj
@@ -137,6 +140,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/bootstrap-wireguard.sh
           tuist install
           tuist generate --no-open
           test -d SecurityAgent.xcodeproj

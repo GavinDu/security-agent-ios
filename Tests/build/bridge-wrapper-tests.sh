@@ -5,9 +5,9 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$tmp/root/Tuist/.build/checkouts/wireguard-apple/Sources/WireGuardKitGo"
+mkdir -p "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo"
 mkdir -p "$tmp/bin" "$tmp/products" "$tmp/temp" "$tmp/Build/Products"
-touch "$tmp/root/Tuist/.build/checkouts/wireguard-apple/Sources/WireGuardKitGo/Makefile"
+touch "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo/Makefile"
 
 cat > "$tmp/bin/go" <<'MOCK'
 #!/usr/bin/env bash

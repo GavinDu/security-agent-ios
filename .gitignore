@@ -29,3 +29,7 @@ fastlane/test_output
 .env
 .env.*
 secrets/
+
+# Locally prepared WireGuard sources; no unreviewed vendor source in Git
+Vendor/wireguard-apple/
+Vendor/wireguard-apple.stage.*/
