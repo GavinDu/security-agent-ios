@@ -119,7 +119,17 @@ def inventory(metadata, cargo_lock):
             not isinstance(checksum, str) or not SHA256.fullmatch(checksum)
         ):
             raise InventoryError("missing or invalid locked checksum: " + name)
-        license_id = check_license(pkg.get("license"))
+        try:
+            license_id = check_license(pkg.get("license"))
+        except InventoryError as exc:
+            # Cargo metadata is from the pinned PUBLIC BoringTun workspace.
+            # Bounded package identifiers only; never print filesystem paths,
+            # environment variables, keys, profiles or packet contents.
+            raise InventoryError(
+                "package " + name[:80] + "@" + version[:40]
+                + ": " + str(exc)
+                + " (license=" + repr(str(pkg.get("license"))[:120]) + ")"
+            ) from exc
         packages.append({
             "name": name,
             "version": version,
