@@ -26,5 +26,5 @@ fi
 }
 test -f "$checkout/Cargo.lock"
 test -f "$checkout/boringtun/src/wireguard_ffi.h"
-test -f "$checkout/LICENSE"
+test -f "$checkout/LICENSE.md"
 echo "BoringTun 0.7.1 source verified"
