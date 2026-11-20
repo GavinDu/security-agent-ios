@@ -1,6 +1,6 @@
 # ADR-0001: iPhone SwiftUI app and WireGuard backend boundary
 
-**Status: accepted for the current in-app VPN requirement (2026-11-20).**
+**Status: superseded by [ADR-0002](ADR-0002-RUST-BORINGTUN.md) at the user's direction (2026-11-20).** This page is historical and does not describe the current build.
 **Scope:** [Epic #6](https://github.com/GavinDu/security-agent-ios/issues/6),
 [architecture issue #50](https://github.com/GavinDu/security-agent-ios/issues/50).
 **Review:** principal-level critical Swift/iOS self-review; no external

@@ -30,9 +30,6 @@ fastlane/test_output
 .env.*
 secrets/
 
-# Locally prepared WireGuard sources; no unreviewed vendor source in Git
-Vendor/wireguard-apple/
-Vendor/wireguard-apple.stage.*/
 
 # Pinned Rust WireGuard source, verified and compiled locally
 Vendor/boringtun/

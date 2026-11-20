@@ -14,7 +14,7 @@ App Group (nonsecret)
   └── public Mac peer key, endpoint, split/full mode, on-demand flag
 
 PacketTunnel extension, independent of App UI lifecycle
-  └── NEPacketTunnelProvider (Swift) → WireGuardKit (Swift) → static libwg-go.a → utun
+  └── NEPacketTunnelProvider (Swift) → BoringTun Rust C FFI → UDP/packetFlow
 
 Mac Mini
   ├── AgentMac SwiftUI pairing utility (public values + QR)
@@ -57,3 +57,11 @@ protocol backend in the PacketTunnel extension, **not** an iOS app server.
 Removing Go without also changing the custom WireGuard requirement would
 require a separate audited protocol engine. If VPN control can be external,
 we can remove the extension and the Go dependency entirely in a scoped pivot.
+
+## Current protocol-engine decision
+
+[ADR-0002](ADR-0002-RUST-BORINGTUN.md) replaces the older Go-based ADR.
+The client remains an iPhone SwiftUI application. PacketTunnel alone links
+an audited Rust BoringTun source build; Swift owns the Apple VPN packet flow,
+UDP I/O and connection lifecycle. The old WireGuardKitGo adapter is removed.
+Signed iPhone handshake and routing proof remain open.

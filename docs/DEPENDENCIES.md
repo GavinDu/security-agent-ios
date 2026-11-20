@@ -6,8 +6,8 @@
 | --- | --- | --- |
 | UI | SwiftUI, Foundation | Apple SDK |
 | Packet tunnel / on-demand | NetworkExtension | Apple entitlement required |
-| Tunnel runtime | WireGuardKit | `WireGuard/wireguard-apple` SPM, extension target |
-| WireGuard backend | WireGuardKitGo, WireGuardKitC, wireguard-go bridge | Native build step; see WIREGUARD_BUILD.md |
+| Tunnel transport | Swift NetworkExtension + Network.framework | Native iOS PacketTunnel extension |
+| WireGuard crypto | Cloudflare BoringTun BSD-3-Clause | Pinned Rust staticlib, C FFI; see BORINGTUN_BUILD.md |
 | Chat | WebKit (WKWebView) | Apple SDK |
 | Private key generation | CryptoKit (Curve25519.KeyAgreement) | Apple SDK |
 | Secret persistence | Security (Keychain Services) | Shared Keychain access group |
@@ -44,6 +44,6 @@ to actually run the server.
 
 ## Upstream sources and licensing
 
-- [WireGuard Apple](https://github.com/WireGuard/wireguard-apple) — pinned commit `2fec12a6e1f6e3460b6ee483aa00ad29cddadab1`, MIT-license source; WireGuardKit and Go bridge. See `WIREGUARD_BUILD.md` and its transitive Go module licenses.
+- [Cloudflare BoringTun](https://github.com/cloudflare/boringtun) — BSD-3-Clause, pinned tag 0.7.1, commit `253f7afb2b3df9e952065d10bf2af19913cb176b`. Audit all statically linked Cargo crates and the reported liveness regression before release.
 - [Proton Lumo iOS](https://github.com/ProtonLumo/ios-lumo) — Tuist / SwiftUI architectural reference; GPL-3.0. No source copied.
 - [Apple NetworkExtension](https://developer.apple.com/documentation/networkextension) — system VPN API.

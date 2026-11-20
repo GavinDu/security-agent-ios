@@ -6,15 +6,15 @@ The Mac Mini companion provides pairing QR generation and peer enrollment guidan
 
 **Status (initial scaffold):** SwiftUI apps, Keychain-backed identity, pairing QR,
 NetworkExtension manager and packet-tunnel adapter source are provided. This does
-**not** certify that WireGuardKitGo is built, developer entitlements have been granted,
+**not** certify that BoringTun Rust is natively built and linked, developer entitlements have been granted,
 VPN connectivity has been tested on an iPhone, or that the Mac is an operational VPN server.
-See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
+See [docs/BORINGTUN_BUILD.md](docs/BORINGTUN_BUILD.md) for native prerequisites.
 
 ## Applications
 
 - **AgentApp (iPhone/iPad):** SwiftUI chat gate, VPN status/settings, QR pairing, WebKit UI at
   `http://10.8.0.1:8080/chat`.
-- **PacketTunnel (iOS extension):** `NEPacketTunnelProvider` + `WireGuardAdapter`;
+- **PacketTunnel (iOS extension):** Swift `NEPacketTunnelProvider` + Rust BoringTun via C FFI;
   reconstructs the tunnel in memory from a shared Keychain secret and a public
   App Group profile. No full wg-quick config or private key is saved in VPN preferences.
 - **AgentMac (macOS):** SwiftUI pairing console showing the Mac's public WireGuard
@@ -29,12 +29,11 @@ See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
    iPhone bundle IDs. Use the same Team ID for both. Register the App Group.
 2. Set `AGENT_APP_TEAM_ID=<YOUR_TEAM_ID>` in your shell.
 3. Run `mise install` followed by `bash scripts/setup-project.sh`.
-   The setup script fetches the exact pinned WireGuard source, applies the
-   narrowly-scoped SwiftPM manifest compatibility header patch and generates
-   the Xcode project. The PacketTunnel build phase then builds its Go archive
-   automatically. See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md)
+   The setup script fetches exact pinned BoringTun Rust source and generates
+   the Xcode project. PacketTunnel's pre-build phase compiles a Rust static
+   archive for the selected iOS SDK and architecture. See [docs/BORINGTUN_BUILD.md](docs/BORINGTUN_BUILD.md)
    for supported toolchain versions and native CI requirements.
-4. Run `tuist install && tuist generate`, open the generated project and
+4. Open the generated project and
    build `AgentApp` to a **physical iPhone** for VPN testing.
 5. Build `AgentMac` on macOS. Configure your Mac WireGuard server separately,
    then enter its public key and DNS endpoint to display a pairing QR.
