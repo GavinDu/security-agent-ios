@@ -65,9 +65,13 @@ Only the subprocess inherits this override, not the Xcode project.
 
 [CI #44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
 and [CI #44773740878](https://github.com/GavinDu/security-agent-ios/actions/runs/44773740878)
-both reported macOS-host `ld: library 'System' not found`; removing
-`SDKROOT` alone was insufficient. This replacement needs proof from
-actual iPhoneOS native CI (#63/#52), not just wrapper mock tests.
+reported macOS-host `ld: library 'System' not found`; removing
+`SDKROOT` alone was insufficient.
+[CI #44781160163](https://github.com/GavinDu/security-agent-ios/actions/runs/44781160163)
+subsequently built the pinned iPhoneOS arm64 Rust archive successfully,
+so the atomic SDK isolation issue #63 is completed. The separate Swift
+`NWEndpoint` ambiguity and final app link/simulator XCTest remain
+#66/#52/#13.
 
 ## Dependency inventory
 

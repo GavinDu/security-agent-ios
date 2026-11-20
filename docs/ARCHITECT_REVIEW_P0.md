@@ -14,9 +14,12 @@ The full superseded implementation review is retained in Git history.
   SDKs, missing architecture slices and mismatched Rust versions.
 - Linux CI typechecks the Swift codec against the real BoringTun C header
   and exercises host C ABI handshake/malformed UDP inputs.
-- [Actions #44775007953](https://github.com/GavinDu/security-agent-ios/actions/runs/44775007953)
-  passed the Linux static/Cargo inventory job and genuine Mac SwiftUI compile.
-  The same run **failed iPhoneOS build**; simulator XCTest did not run.
+- [Actions #44781160163](https://github.com/GavinDu/security-agent-ios/actions/runs/44781160163)
+  passed Linux static/Cargo inventory and genuine Mac SwiftUI compile.
+  The native iPhoneOS job **successfully built** pinned BoringTun
+  `libboringtun.a` for arm64, then failed Swift type lookup on
+  `NWEndpoint` before final app link or simulator XCTest. Fix #66 is
+  committed in 7b91685, with native proof still pending.
 - [#64](https://github.com/GavinDu/security-agent-ios/issues/64) closed only
   for the normal/build Cargo dependency declaration inventory; distribution
   notices, actual binary link map and final legal review remain #55/#31.
@@ -25,7 +28,7 @@ The full superseded implementation review is retained in Git history.
 
 | Finding | Severity | Acceptance gate |
 | --- | --- | --- |
-| Host macOS SDK versus iPhoneOS cross-build | P0 | #63 and #52: native Xcode Rust host build scripts and iOS archive must link; current patch needs green CI |
+| iPhoneOS final link and simulator XCTest | P0 | #52/#13/#39: Rust iPhoneOS staticlib compiled; Swift app/extension must compile and link, then simulator XCTest |
 | Swift/Rust opaque lifetime and unsafe upstream FFI | P0 | #53/#58: crash/malformed input, race and stop/restart testing on native target |
 | Successful UDP open is not a WireGuard handshake | P0 | #54: signed iPhone real-peer authenticated connection |
 | Full-route UDP recursion or leaked underlay | P0 | #65/#29: prove server socket routing and fail-safe IPv4/IPv6/DNS |
@@ -34,16 +37,21 @@ The full superseded implementation review is retained in Git history.
 | Required native CI checks on protected main | P0 | #13/#39/#48: no bypass or parser-only release |
 | Source/license supply chain | P0 | #55/#31: NOTICE, package inventory and actual artifact review |
 
-## CI failure review
+## CI resolution and remaining native failures
 
-[Run #44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
-revealed macOS-host Cargo build scripts inheriting Xcode's iPhoneOS SDK,
-failing `ld: library 'System' not found`. Clearing SDKROOT alone did not
-resolve the host SDK requirement. [Run #44773740878](https://github.com/GavinDu/security-agent-ios/actions/runs/44773740878)
-reproduced the failure. The wrapper now explicitly chooses the macOS
-host SDK with `xcrun --sdk macosx --show-sdk-path` when invoking Cargo
-with a separate iOS `--target` triple. This still requires genuine native
-Xcode evidence, not just a mocked SDK regression test. #63 remains open.
+[Actions #44781160163](https://github.com/GavinDu/security-agent-ios/actions/runs/44781160163)
+confirmed the macOS host SDK isolation fix: Xcode's BoringTun Cargo phase
+linked macOS host build scripts and produced `iphoneos: arm64`
+`libboringtun.a` without the previous `ld: library 'System' not found`.
+Atomic issue #63 was closed on this narrowly scoped evidence.
+
+Swift compilation then failed because `Network` and `NetworkExtension`
+both declare `NWEndpoint`. Commit
+[7b91685](https://github.com/GavinDu/security-agent-ios/commit/7b91685d948e6e43d6be7f263d0be6adcf29479a)
+qualifies `Network.NWEndpoint`; new issue #66 is pending a successful
+native Xcode compile. Neither successful Cargo compilation nor this
+source-level Swift fix proves a fully linked app, simulator XCTest or
+signed physical-device VPN.
 
 ## Additional review findings
 
