@@ -13,15 +13,22 @@ class FullTunnelSafetyTests(unittest.TestCase):
             source.index("let settings = self.networkSettings(profile: validated")
         )
 
-    def test_app_rejects_before_disconnect(self):
+    def test_app_fails_closed_before_mode_edit_and_never_forces_disconnect(self):
         source = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
         start = source.index("func changeRoute(to mode: RouteMode)")
         end = source.index("func setOnDemand(", start)
         change = source[start:end]
         self.assertLess(
             change.index("TunnelRouteSafetyPolicy.permitsStart(mode)"),
-            change.index("disconnect()")
+            change.index("RouteEditSafetyPolicy.permitsEdit(")
         )
+        self.assertLess(
+            change.index("RouteEditSafetyPolicy.permitsEdit("),
+            change.index("updated.routeMode = mode")
+        )
+        # A stop request is asynchronous. A failed edit must never itself
+        # disconnect an active safe split-tunnel connection.
+        self.assertNotIn("disconnect()", change)
 
     def test_shared_policy_requires_explicit_security_review_to_enable(self):
         source = (ROOT / "Shared/TunnelRouteSafetyPolicy.swift").read_text()
