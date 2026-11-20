@@ -1,36 +1,35 @@
-"""Make the SwiftUI iPhone/Mac apps independent of the Go tunnel backend.
-
-The iOS packet-tunnel target alone owns WireGuardKit and its native Go archive.
-Source/config checks do not substitute for xcodebuild target-link evidence.
-"""
+"""Ensure BoringTun Rust is extension-only; static tests are not device proof."""
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 project = (ROOT / "Project.swift").read_text()
 
-
 class BackendBoundaryTests(unittest.TestCase):
-    def test_extension_owns_go_bridge(self):
+    def test_rust_linker_is_extension_only(self):
         app = project.split('name: "AgentApp",', 1)[1].split('name: "PacketTunnel",', 1)[0]
-        tunnel = project.split('name: "PacketTunnel",', 1)[1].split('name: "AgentMac",', 1)[0]
+        ext = project.split('name: "PacketTunnel",', 1)[1].split('name: "AgentMac",', 1)[0]
         mac = project.split('name: "AgentMac",', 1)[1].split('name: "AgentAppTests",', 1)[0]
         self.assertIn('dependencies: [.target(name: "PacketTunnel")]', app)
-        self.assertNotIn('external(name: "WireGuardKit")', app)
-        self.assertNotIn('build-wireguard-go.sh', app)
-        self.assertIn('product: .appExtension', tunnel)
-        self.assertIn('external(name: "WireGuardKit")', tunnel)
-        self.assertIn('scripts/build-wireguard-go.sh', tunnel)
-        self.assertNotIn('external(name: "WireGuardKit")', mac)
-        self.assertNotIn('build-wireguard-go.sh', mac)
+        self.assertIn('build-boringtun.sh', ext)
+        self.assertIn('product: .appExtension', ext)
+        for text in (app, mac):
+            self.assertNotIn('build-boringtun.sh', text)
+            self.assertNotIn('WireGuardKit', text)
+        self.assertNotIn('libwg-go', project)
 
-    def test_swiftui_and_shared_code_do_not_import_wireguard(self):
+    def test_main_app_imports_no_rust_or_wireguard_kit(self):
         for root in ("ios/AgentApp", "macos/AgentMac", "Shared"):
             for path in (ROOT / root).rglob("*.swift"):
                 with self.subTest(path=str(path.relative_to(ROOT))):
-                    code = path.read_text()
-                    self.assertNotRegex(code, r"(?m)^\s*import\s+WireGuardKit(?:Go|C)?\b")
-                    self.assertNotIn("wgTurnOn(", code)
+                    source = path.read_text()
+                    self.assertNotRegex(source, r"(?m)^\s*import\s+(WireGuardKit|BoringTun)\b")
+                    self.assertNotIn("new_tunnel(", source)
+
+    def test_single_source_of_truth_ffi_header(self):
+        bridge = (ROOT / "ios/PacketTunnel/BoringTunBridge.h").read_text()
+        self.assertIn('#include "wireguard_ffi.h"', bridge)
+        self.assertNotIn("struct wireguard_result", bridge)
 
 if __name__ == "__main__":
     unittest.main()
