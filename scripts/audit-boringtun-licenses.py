@@ -21,8 +21,8 @@ PERMITTED = {
     "OpenSSL",
 }
 OPERATORS = {"AND", "OR"}
-TOKEN = re.compile(r"\\(|\\)|[A-Za-z0-9][A-Za-z0-9.+-]*")
-SHA256 = re.compile(r"[0-9a-f]{64}\\Z")
+TOKEN = re.compile(r"\(|\)|[A-Za-z0-9][A-Za-z0-9.+-]*")
+SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class InventoryError(ValueError):
@@ -33,7 +33,7 @@ def check_license(expression):
     if not isinstance(expression, str) or not expression.strip():
         raise InventoryError("missing SPDX license declaration")
     tokens = TOKEN.findall(expression)
-    if "".join(tokens) != re.sub(r"\\s+", "", expression):
+    if "".join(tokens) != re.sub(r"\s+", "", expression):
         raise InventoryError("unrecognized SPDX license syntax")
     if not tokens or tokens[0] in OPERATORS or tokens[-1] in OPERATORS:
         raise InventoryError("incomplete SPDX expression")
@@ -50,8 +50,8 @@ def check_license(expression):
     if depth != 0:
         raise InventoryError("unbalanced SPDX expression")
     # Parenthesized compound license expressions are OK; bare adjacency isn't.
-    normalized = re.sub(r"\\s+", " ", expression).strip()
-    if re.search(r"\\b(?:AND|OR)\\s+(?:AND|OR)\\b", normalized):
+    normalized = re.sub(r"\s+", " ", expression).strip()
+    if re.search(r"\b(?:AND|OR)\s+(?:AND|OR)\b", normalized):
         raise InventoryError("malformed SPDX expression")
     return normalized
 
