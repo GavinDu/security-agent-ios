@@ -1,47 +1,77 @@
-# WireGuardKit integration and Apple signing
+# Deterministic WireGuardKitGo build (Phase 0)
 
-**Not yet device-build-verified.** This project references the upstream
-`WireGuardKit` Swift package in `Tuist/Package.swift` and links it to
-`PacketTunnel`. The upstream authors state that SPM cannot automatically
-build the `wireguard-go-bridge` library which WireGuardKit links against.
+**Status: implementation committed, native CI result pending.** This is not
+a signed-iPhone or VPN connectivity certification.
 
-Follow the [official WireGuard Apple README](https://github.com/WireGuard/wireguard-apple/blob/master/README.md#wireguardkit-integration)
-for your Xcode/Tuist version. In particular:
+## Toolchain source of truth
 
-1. Install Go and Xcode command line tools on the Mac.
-2. Run `tuist install` and `tuist generate`, open the project in Xcode.
-3. Add an **External Build System** target named `WireGuardGoBridgeiOS`
-   using build tool `/usr/bin/make` and directory:
-   ```text
-   ${BUILD_DIR%Build/*}SourcePackages/checkouts/wireguard-apple/Sources/WireGuardKitGo
-   ```
-   Set SDKROOT to `iphoneos` and make PacketTunnel depend on this target.
-   Ensure WireGuardKit is linked to PacketTunnel. Tuist regeneration may
-   remove changes made only in the generated project; a production step
-   must encode this bridge target in maintained build configuration.
-4. Sign both iOS targets using the same development team and provisioning
-   profiles with Packet Tunnel Network Extension and
-   App Group entitlements. Bundle IDs in Project.swift are examples;
-   confirm these IDs are available in your Apple Developer account.
-5. Test on an actual iPhone. A simulator-only build is insufficient for
-   validating a VPN or background system extension.
+- Xcode 16.4 (pinned in `.xcode-version`; selected by GitHub Actions).
+- Tuist CLI 4.218.1 and Go 1.19.13 (both pinned in `.mise.toml`).
+- WireGuard Apple **exact revision**
+  `2fec12a6e1f6e3460b6ee483aa00ad29cddadab1`, specified in
+  `Tuist/Package.swift` and checked by the native pre-build script.
+- `wireguard-go` uses the upstream `go.mod` + `go.sum` of the
+  pinned checkout. Do not replace those with floating module versions.
 
-On iOS, the App Group identifier is also used as a Keychain access group,
-per Apple's Keychain sharing documentation. Both signed iOS targets require
-the identical `group.com.gavindu.securityagent` App Group entitlement.
+WireGuardKit's SwiftPM target links `libwg-go.a` but SwiftPM cannot build
+that Go archive automatically. The Tuist PacketTunnel target now declares
+a **pre-build phase** that runs `scripts/build-wireguard-go.sh` and
+searches a deterministic set of package checkout paths. The script rejects
+a mismatched upstream commit and incompatible Go version. The PacketTunnel
+target sets `LIBRARY_SEARCH_PATHS` and `-lwg-go` to link the resulting
+archive. No manual edits to the generated Xcode project are required.
 
-## Initial build commands
+The archive is built **per SDK** in Xcode's build product path; the script
+allows `iphoneos` and `iphonesimulator` and rejects unknown architectures.
+The upstream Makefile handles iOS `GOOS`; simulator builds pass their
+own SDKROOT/target flags. CI must validate this on an actual macOS runner.
 
-```sh
-export AGENT_APP_TEAM_ID=YOUR_TEAM_ID
+## Clean setup on macOS
+
+```bash
+# Install mise using your trusted local package manager first.
+mise install
 tuist install
-tuist generate
-xcodebuild -list -project SecurityAgent.xcodeproj
-# Device build after completing Go bridge target + signing configuration:
+tuist generate --no-open
+# No code signing for CI compilation:
 xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
-  -configuration Debug -destination 'generic/platform=iOS' build
+  -configuration Debug -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+  CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
+  -configuration Debug -destination 'generic/platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
-Do **not** interpret the source-syntax GitHub Action as proof of a complete
-native build. A signed device build, WireGuard handshake, route and browser
-tests are acceptance gates before calling the VPN functional.
+## What still requires the owner
+
+Apple Developer Team ID (`AGENT_APP_TEAM_ID`), real provisioning profiles,
+the Packet Tunnel capability and shared App Group provisioned for the signed
+bundle IDs. Once CI builds both platforms, sign and install on a **physical
+iPhone**, accept iOS VPN permission, and verify a real Mac Mini handshake.
+A simulator cannot verify a functioning iOS packet tunnel.
+
+## Failure triage
+
+1. **Checkout not found:** inspect Tuist package resolution paths; never
+   substitute a dynamic branch or prebuilt untrusted Go archive.
+2. **Go version mismatch:** run `mise install`.
+3. **Missing `-lwg-go`:** verify `PacketTunnel` build phase produced
+   `$BUILT_PRODUCTS_DIR/WireGuardGoBridge/libwg-go.a` for the current SDK.
+4. **Simulator compiler flags:** inspect CI output for specific `GOOS`,
+   architecture and SDKROOT failures; update the wrapper for the affected
+   architecture, never reuse device archives in simulator binaries.
+5. **Entitlements/signing:** CI uses signing disabled; verify an Apple
+   Developer provisioning profile separately on a device.
+
+Do not mark #2/#13 complete until CI native build and XCTest are green.
+
+## Licensing
+
+WireGuard Apple's integration is MIT-licensed; Go dependencies retain their
+own module licenses. Review the effective dependency inventory before shipping.
+Proton Lumo iOS is GPLv3 and used only as a UI/architecture reference — no
+Proton source is copied. Do not include any signing material or WireGuard
+secrets in the repository or CI artifacts.

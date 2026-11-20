@@ -44,6 +44,6 @@ to actually run the server.
 
 ## Upstream sources and licensing
 
-- [WireGuard Apple](https://github.com/WireGuard/wireguard-apple) — WireGuardKit and Go bridge; follow its build instructions and license.
+- [WireGuard Apple](https://github.com/WireGuard/wireguard-apple) — pinned commit `2fec12a6e1f6e3460b6ee483aa00ad29cddadab1`, MIT-license source; WireGuardKit and Go bridge. See `WIREGUARD_BUILD.md` and its transitive Go module licenses.
 - [Proton Lumo iOS](https://github.com/ProtonLumo/ios-lumo) — Tuist / SwiftUI architectural reference; GPL-3.0. No source copied.
 - [Apple NetworkExtension](https://developer.apple.com/documentation/networkextension) — system VPN API.

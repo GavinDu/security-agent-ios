@@ -9,8 +9,11 @@ let packageSettings = PackageSettings(productTypes: ["WireGuardKit": .framework]
 let package = Package(
     name: "SecurityAgentDependencies",
     dependencies: [
-        // WireGuardKit requires a separately built WireGuardKitGo bridge.
-        // See docs/WIREGUARD_BUILD.md before building PacketTunnel on device.
-        .package(url: "https://github.com/WireGuard/wireguard-apple", branch: "master")
+        // Exact WireGuard source revision; no floating master/branch.
+        // Matches scripts/build-wireguard-go.sh and docs/WIREGUARD_BUILD.md.
+        .package(
+            url: "https://github.com/WireGuard/wireguard-apple",
+            revision: "2fec12a6e1f6e3460b6ee483aa00ad29cddadab1"
+        )
     ]
 )

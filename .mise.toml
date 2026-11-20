@@ -1,0 +1,4 @@
+# Consistent local/CI toolchain versions (run: mise install).
+[tools]
+tuist = "4.218.1"
+go = "1.19.13"

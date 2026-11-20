@@ -28,8 +28,10 @@ See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
    Network Extensions / Packet Tunnel, App Groups and App Group access on both
    iPhone bundle IDs. Use the same Team ID for both. Register the App Group.
 2. Set `AGENT_APP_TEAM_ID=<YOUR_TEAM_ID>` in your shell.
-3. Build the **WireGuardKitGo** device/simulator library as described in
-   [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) first.
+3. Run `mise install`, `tuist install` and `tuist generate --no-open`.
+   The PacketTunnel build phase builds the pinned **WireGuardKitGo** archive
+   automatically. See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md)
+   for supported toolchain versions and native CI requirements.
 4. Run `tuist install && tuist generate`, open the generated project and
    build `AgentApp` to a **physical iPhone** for VPN testing.
 5. Build `AgentMac` on macOS. Configure your Mac WireGuard server separately,
