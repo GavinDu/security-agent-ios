@@ -9,6 +9,7 @@ final class TunnelManager: NSObject, ObservableObject {
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
     private let profileSave = ProfileSaveSequencer()
+    private var preferenceReloadGate = NativePreferenceReloadGate()
     private var legacyFullStopRequested = false
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
@@ -34,12 +35,33 @@ final class TunnelManager: NSObject, ObservableObject {
     }
 
     func reload() {
-        NETunnelProviderManager.loadAllFromPreferences { managers, error in
-            DispatchQueue.main.async {
-                // Never overwrite an in-flight native preference transaction
-                // with an older asynchronous loadAllFromPreferences result.
-                guard !self.profileSave.isBusy else { return }
-                if let error { self.errorMessage = error.localizedDescription }
+        // Keep the request identity and all native manager/UI mutations on main.
+        // An older loadAll callback must not replace a manager committed by a
+        // newer reload or a successful save transaction.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.reload() }
+            return
+        }
+        guard !profileSave.isBusy && !legacyOnDemandDisableInFlight else { return }
+        let loadToken = preferenceReloadGate.begin()
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                switch self.preferenceReloadGate.disposition(
+                    for: loadToken,
+                    writeInFlight: self.profileSave.isBusy || self.legacyOnDemandDisableInFlight,
+                    loadSucceeded: error == nil
+                ) {
+                case .discard:
+                    return
+                case .reportFailure:
+                    // A failed system read cannot replace a confirmed profile.
+                    self.errorMessage = error?.localizedDescription ??
+                        "Could not reload VPN preferences."
+                    return
+                case .publish:
+                    break
+                }
                 self.manager = managers?.first(where: {
                     ($0.protocolConfiguration as? NETunnelProviderProtocol)?
                         .providerBundleIdentifier == AgentConstants.tunnelBundleID
@@ -76,6 +98,9 @@ final class TunnelManager: NSObject, ObservableObject {
         // surfaced to the user; never retry indefinitely in a VPN callback.
         guard action.disableOnDemand, !legacyOnDemandDisableAttempted,
               !legacyOnDemandDisableInFlight, !profileSave.isBusy else { return }
+        // A previous loadAll callback cannot overwrite the native manager
+        // while we mutate on-demand preferences.
+        preferenceReloadGate.invalidate()
         legacyOnDemandDisableAttempted = true
         legacyOnDemandDisableInFlight = true
         manager.isOnDemandEnabled = false
@@ -114,6 +139,8 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
 
+        // Invalidate pending loadAll results before changing native settings.
+        preferenceReloadGate.invalidate()
         let selected = manager ?? NETunnelProviderManager()
         let configuration = (selected.protocolConfiguration as? NETunnelProviderProtocol)
             ?? NETunnelProviderProtocol()

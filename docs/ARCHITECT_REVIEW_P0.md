@@ -117,3 +117,7 @@ cover both stale save-after-denial and stale reload-after-success, without
 modifying the Rust BoringTun engine or exposing secrets. This is #76 under
 successor Epic #11, separate from signed iPhone system-preference behavior
 #15/#40 and any independent external reviewer sign-off.
+
+## Native preferences load generation challenge (#78) — 2026-11-20
+
+Principal-level **structured Swift/iOS self-review**, not an independent external reviewer approval: a pending `loadAllFromPreferences` callback previously checked only the active save phase, so an older callback could replace a newer native manager after a newer save had completed. The fix uses main-queue-confined load generations, invalidates pending reads before both normal system saves and legacy on-demand writes, rejects old/in-flight callbacks, and reports failed current loads without publishing partial manager results. Native iOS XCTest and Linux-compiled production-policy smoke are required on the exact PR head; physical permission-denial and extension launch remain #15/#40. Rust BoringTun remains unchanged and full tunnel remains fail closed.
