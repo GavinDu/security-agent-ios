@@ -48,3 +48,7 @@ Issue #18 tracks full pairing acceptance and negative tests.
 ### Foundation SwiftPM compatibility issue
 
 - [#42: Repair pinned WireGuard Apple manifest](https://github.com/GavinDu/security-agent-ios/issues/42): immutable vendor source + fail-closed tools-version overlay, tracked separately from #2/#12/#38. Requires native CI evidence to close.
+
+### iPhone WireGuard/Go architecture review
+
+- [#50 — Revisit embedded Go on iPhone](https://github.com/GavinDu/security-agent-ios/issues/50): ADR-0001 keeps the iPhone app in Swift and Go isolated to the optional-to-the-product WireGuard protocol backend in PacketTunnel. If in-app VPN control is dropped, a separate migration can eliminate the extension and Go entirely.

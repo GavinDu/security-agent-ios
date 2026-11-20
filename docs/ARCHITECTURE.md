@@ -14,7 +14,7 @@ App Group (nonsecret)
   └── public Mac peer key, endpoint, split/full mode, on-demand flag
 
 PacketTunnel extension, independent of App UI lifecycle
-  └── NEPacketTunnelProvider → WireGuardKit Adapter → utun
+  └── NEPacketTunnelProvider (Swift) → WireGuardKit (Swift) → static libwg-go.a → utun
 
 Mac Mini
   ├── AgentMac SwiftUI pairing utility (public values + QR)
@@ -48,3 +48,12 @@ key in the Mac Mini WireGuard peer configuration first.
   changes; on-demand is optional and must be tested on real hardware.
 - Full tunnel: server requires NAT and correctly routed IPv6. Avoid describing
   this as a fail-closed kill switch until OS behavior is verified.
+
+## iPhone backend decision
+
+See [ADR-0001](ADR-0001-IOS-VPN-BACKEND.md). The iPhone app remains
+SwiftUI/Swift; Go is an implementation detail of the embedded WireGuard
+protocol backend in the PacketTunnel extension, **not** an iOS app server.
+Removing Go without also changing the custom WireGuard requirement would
+require a separate audited protocol engine. If VPN control can be external,
+we can remove the extension and the Go dependency entirely in a scoped pivot.

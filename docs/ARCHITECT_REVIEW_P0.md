@@ -175,3 +175,20 @@ Tuist/SwiftPM-generated metadata versus a potentially malicious source edit.
 An offline test confirms the diagnostic never includes file contents. Await
 CI evidence before implementing a narrow metadata allowlist. No native iOS
 acceptance is claimed.
+
+## 2026-11-20 — Why is Go included in an iPhone app?
+
+See [ADR-0001](ADR-0001-IOS-VPN-BACKEND.md). Strict architect review
+confirmed that Apple NetworkExtension handles VPN integration but does not
+supply the WireGuard protocol engine. For an integrated, first-party
+WireGuard switch, keep the official Go backend **only as the static native
+PacketTunnel extension dependency**; SwiftUI/Keychain/WebKit and the Mac
+companion remain Swift. Removing the backend requires switching to an
+external VPN product, Apple's IKEv2 protocol/server, or a different audited
+userspace engine such as Rust BoringTun. No custom Swift cryptography.
+
+CI on [run 44734716986](https://github.com/GavinDu/security-agent-ios/actions/runs/44734716986)
+identified exactly five Tuist-generated metadata files in the local
+WireGuard checkout and no source changes. A targeted five-file allowlist
+replaces the overstrict rejection; injected Go/Makefiles remain forbidden.
+Neither that diagnosis nor the ADR is physical-device verification.

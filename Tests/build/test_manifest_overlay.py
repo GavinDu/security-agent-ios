@@ -81,6 +81,45 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 overlay.apply(checkout, check_only=True)
 
+    def test_only_observed_tuist_generated_metadata_is_allowed(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = Path(folder)
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            manifest = checkout / "Package.swift"
+            manifest.write_bytes(overlay.OLD + b"import PackageDescription\n")
+            subprocess.run(["git", "-C", str(checkout), "add", "Package.swift"], check=True)
+            subprocess.run(
+                ["git", "-C", str(checkout), "-c", "user.name=CI Fixture",
+                 "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"],
+                check=True
+            )
+            overlay.apply(checkout)
+            for relative in overlay.TUIST_GENERATED_PATHS:
+                output = checkout / relative.decode("ascii")
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text("test metadata")
+            overlay.apply(checkout, check_only=True)
+
+            # A new file within a known generated directory is NOT allowed.
+            unsafe = checkout / "WireGuardKit.xcodeproj" / "injected.sh"
+            unsafe.write_text("echo should-not-run\n")
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+            unsafe.unlink()
+            overlay.apply(checkout, check_only=True)
+
+            # Symlinked generated files must not refer outside of checkout.
+            generated = checkout / "WireGuardKit.xcodeproj" / "project.pbxproj"
+            generated.unlink()
+            generated.symlink_to(manifest)
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+            generated.unlink()
+            generated.write_text("test metadata")
+            overlay.apply(checkout, check_only=True)
+
     def test_idempotent_checkout_patch_and_tamper_rejection(self):
         import subprocess
         import tempfile

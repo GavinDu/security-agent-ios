@@ -14,6 +14,35 @@ OLD = b"// swift-tools-version:5.3\n"
 NEW = b"// swift-tools-version:5.5\n"
 ALLOWED_DIRTY_ENTRY = b" M Package.swift"
 
+# Observed from a clean Tuist 4.218.1 generation in native Actions 44734716986.
+# These files are generated project metadata, never source code or scripts.
+# Allow precisely these paths, not entire directories or arbitrary new files.
+TUIST_GENERATED_PATHS = frozenset({
+    b"Derived/InfoPlists/WireGuardKit-Info.plist",
+    b"Derived/InfoPlists/WireGuardKitC-Info.plist",
+    b"Derived/InfoPlists/WireGuardKitGo-Info.plist",
+    b"WireGuardKit.xcodeproj/project.pbxproj",
+    b"WireGuardKit.xcodeproj/project.xcworkspace/contents.xcworkspacedata",
+})
+
+
+def approved_generated_file(checkout: Path, entry: bytes) -> bool:
+    if not entry.startswith(b"?? "):
+        return False
+    relative = entry[3:]
+    if relative not in TUIST_GENERATED_PATHS:
+        return False
+    path = checkout / relative.decode("ascii")
+    # Do not follow symlinked generated filenames or their parent directories.
+    if not path.is_file() or path.is_symlink():
+        return False
+    parent = path.parent
+    while parent != checkout:
+        if parent.is_symlink():
+            return False
+        parent = parent.parent
+    return True
+
 
 def fixed_manifest(original: bytes) -> bytes:
     if not original.startswith(OLD):
@@ -25,22 +54,28 @@ def verify_worktree(checkout: Path) -> None:
     """Permit only our exact unstaged manifest-header overlay.
 
     Staged changes, modified tracked Go/Swift/Makefile files, deleted source,
-    or untracked nonignored files are all forbidden. The byte-for-byte
-    Package.swift check below prevents changing anything beyond its header.
+    and unexpected untracked files are forbidden. Only five exact, observed
+    Tuist-generated project/Info.plist paths are allowed untracked. The
+    byte-for-byte Package.swift check prevents other manifest changes.
     """
     raw = subprocess.check_output(
         ["git", "-C", str(checkout), "status",
          "--porcelain=v1", "-z", "--untracked-files=all"]
     )
     changes = tuple(record for record in raw.split(b"\0") if record)
-    if changes not in ((), (ALLOWED_DIRTY_ENTRY,)):
+    rejected = [
+        entry for entry in changes
+        if entry != ALLOWED_DIRTY_ENTRY
+        and not approved_generated_file(checkout, entry)
+    ]
+    if rejected:
         # Diagnostic entries are relative paths / two-character Git statuses,
         # never file contents, keys, manifests or environment variables.
         # Bound and escape all output to avoid terminal/control injection.
-        preview = [repr(item[:160]) for item in changes[:8]]
+        preview = [repr(item[:160]) for item in rejected[:8]]
         raise ValueError(
             f"unreviewed or untracked WireGuard source modifications "
-            f"(count={len(changes)}, entries={preview})"
+            f"(rejected={len(rejected)}, entries={preview})"
         )
 
 

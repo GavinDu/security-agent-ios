@@ -146,3 +146,16 @@ build before any native Makefile executes. See issue #44 and
 This check cannot substitute for dependency auditing and does not detect
 files explicitly ignored by upstream `.gitignore`; those remain a separate
 supply-chain review consideration. Never rely solely on `git rev-parse HEAD`.
+
+### Tuist-generated metadata exception (issue #47)
+
+Native CI run [44734716986](https://github.com/GavinDu/security-agent-ios/actions/runs/44734716986)
+identified the exact five untracked generated files: three
+`Derived/InfoPlists/WireGuardKit{,C,Go}-Info.plist` files,
+`WireGuardKit.xcodeproj/project.pbxproj`, and
+`WireGuardKit.xcodeproj/project.xcworkspace/contents.xcworkspacedata`.
+The source verifier now permits **only those exact regular file paths**
+from Tuist generation (not symlinks or other new files under those folders),
+while keeping dirty tracked source, staged modifications and arbitrary new
+Go/Makefiles prohibited. This is not a blanket untracked-file exception;
+native CI must establish the clean build succeeds.
