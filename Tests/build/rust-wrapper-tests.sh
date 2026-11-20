@@ -21,6 +21,12 @@ MOCK
 cat > "$t/bin/cargo" <<'MOCK'
 #!/usr/bin/env bash
 [[ "$1" == "build" ]] || exit 2
+# Simulate Xcode passing SDKROOT=iPhoneOS: Rust's macOS host build scripts
+# must never inherit the iOS sysroot or host linking fails (-lSystem).
+[[ -z "${SDKROOT+x}" ]] || {
+  echo "Cargo received Xcode iOS SDKROOT; macOS host linker will fail" >&2
+  exit 2
+}
 case " $* " in
   *" --locked --target "*) ;;
   *) echo "Missing Cargo lock/target" >&2; exit 2 ;;
@@ -51,7 +57,8 @@ export SRCROOT="$t/root"
 export BUILT_PRODUCTS_DIR="$t/products"
 export TARGET_TEMP_DIR="$t/temp"
 for platform in iphoneos iphonesimulator; do
-  PLATFORM_NAME="$platform" ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null
+  SDKROOT="/Xcode/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk" \
+    PLATFORM_NAME="$platform" ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null
   test -s "$BUILT_PRODUCTS_DIR/BoringTunBridge/libboringtun.a"
 done
 if PLATFORM_NAME=macosx ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null 2>&1; then echo 'Accepted macOS' >&2; exit 1; fi

@@ -49,3 +49,18 @@ time-based regression tests; don't claim safe rekey behavior from
 a five-second smoke test. The BSD-3-Clause copyright notice and
 Cargo transitive-license inventory are required before distribution.
 Never publish credentials, PSKs, signing keys or raw WireGuard logs.
+
+## Xcode SDKROOT versus Cargo host build scripts (issue #63)
+
+[Actions run 44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
+passed the genuine native macOS companion build and Linux Rust FFI tests,
+but failed in iPhoneOS's `Build pinned Rust BoringTun` pre-build phase.
+Cargo builds Rust build scripts and proc-macros for **macOS host** even when
+compiling the final static library for `aarch64-apple-ios`. Xcode exported
+an **iPhoneOS** `SDKROOT`, so the host `cc` could not link `-lSystem`.
+The wrapper now invokes `env -u SDKROOT cargo build ... --target <iOS triple>`,
+removing the inherited SDK from Cargo's host toolchain while retaining the
+explicit platform/architecture target. A mock regression test injects a
+simulated iPhoneOS SDKROOT and rejects any Cargo invocation that still sees
+it. The native Apple job must prove this resolves the original linker error;
+it does not certify the resulting iOS archive or physical-device VPN.

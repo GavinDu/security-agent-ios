@@ -217,3 +217,16 @@ explicitly selected BoringTun Rust: see ADR-0002 and #51–#58.
 
 **Challenger verdict:** conditional / NOT approved for merge. This is a
 structured principal iOS/Swift self-audit, not an independent reviewer.
+
+## 2026-11-20 — P0 Rust host/target cross-compilation review (#63)
+
+Full native [CI run 44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
+completed Linux Rust host FFI checks and an unsigned Mac app build, but
+iPhoneOS failed during Cargo host `build.rs` linking with
+`ld: library 'System' not found` for `aarch64-apple-darwin`.
+The cause is inherited Xcode iPhoneOS `SDKROOT` during cross-compilation.
+Use `env -u SDKROOT` **only around Cargo** while retaining the iOS Rust
+`--target` triple and all source/archive checks. Do not turn off native CI
+or substitute Go. A mocked Xcode SDKROOT test guards against recurrence.
+Cross-compile and simulator/link acceptance stay #52/#55 until a real Xcode
+run proves them; #63 is assigned to latest Epic #11, not current #6.

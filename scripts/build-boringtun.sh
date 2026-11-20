@@ -38,7 +38,12 @@ for arch in $archs; do
     *) echo "Unsupported iOS SDK/ABI: ${PLATFORM_NAME}/$arch" >&2; exit 2 ;;
   esac
   export CARGO_TARGET_DIR="$temp/$triple"
-  cargo build --manifest-path "$checkout/boringtun/Cargo.toml" \
+  # Xcode exports SDKROOT=iPhoneOS/iPhoneSimulator, but Cargo also compiles
+  # build.rs/proc-macros for the *macOS host*. Inheriting iPhoneOS SDKROOT
+  # makes macOS host cc fail to find libSystem. Remove only SDKROOT for Cargo;
+  # the explicit --target triple still selects the appropriate iOS SDK.
+  # Keep PLATFORM_NAME/ARCHS checks, pinned sources, and archive validation.
+  env -u SDKROOT cargo build --manifest-path "$checkout/boringtun/Cargo.toml" \
     --lib --release --no-default-features --features ffi-bindings \
     --locked --target "$triple"
   archive="$CARGO_TARGET_DIR/$triple/release/libboringtun.a"
