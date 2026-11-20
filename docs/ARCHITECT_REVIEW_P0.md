@@ -230,3 +230,17 @@ Use `env -u SDKROOT` **only around Cargo** while retaining the iOS Rust
 or substitute Go. A mocked Xcode SDKROOT test guards against recurrence.
 Cross-compile and simulator/link acceptance stay #52/#55 until a real Xcode
 run proves them; #63 is assigned to latest Epic #11, not current #6.
+
+## 2026-11-20 — Latest epic #11 independent supply-chain challenge (#64)
+
+**Principal Swift/iOS + Rust supply-chain self-review; no external independent
+reviewer.** Cargo.lock pins registry artifacts by checksums, but an immutable
+Git checkout alone does **not** enumerate transitive license obligations.
+Issue #64 adds a fail-closed inventory driven by Cargo's resolved target graph
+and Cargo.lock, with offline adversarial tests and a secret-free CI artifact.
+The SPDX allowlist is an audit trigger, **not** a legal opinion or proof of
+which code the iOS linker retains. Review the actual BoringTun archive,
+transitive notices, licenses and static linkage before beta distribution
+(#55/#31). Mark #64 complete only if its new Linux workflow step is green;
+native device compilation, signed iPhone routing and FFI stress stay separate
+open gates, even if the license inventory passes.
