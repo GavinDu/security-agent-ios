@@ -152,3 +152,13 @@ injected untracked Go source and missing overlay.
 This is a strict self-review and testable design change, **not** an independent
 external challenger or proof of complete upstream/transitive supply-chain
 security. Full native build and physical device gates remain open.
+
+## Mock-fixture review correction
+
+Actions [#44725096544](https://github.com/GavinDu/security-agent-ios/actions/runs/44725096544)
+passed all five Python integrity tests and static pins but failed the shell
+bridge wrapper fixture. The wrapper constructs a temporary fake Xcode source
+root without copying the newly required manifest verifier, causing Python
+file-not-found. This does not indicate a bypass in production source integrity;
+the fixture now copies the verifier into its synthetic `SRCROOT`. Keep issue
+#44 open until the corrected static run proves the entire fixture passes.

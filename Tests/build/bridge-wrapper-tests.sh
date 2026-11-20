@@ -6,7 +6,10 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 mkdir -p "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo"
-mkdir -p "$tmp/bin" "$tmp/products" "$tmp/temp" "$tmp/Build/Products"
+mkdir -p "$tmp/root/scripts" "$tmp/bin" "$tmp/products" "$tmp/temp" "$tmp/Build/Products"
+# The build script resolves the verifier via SRCROOT; a mocked Xcode root
+# must contain the same verifier as the real generated project.
+cp "$repo_root/scripts/patch-wireguard-manifest.py" "$tmp/root/scripts/patch-wireguard-manifest.py"
 touch "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo/Makefile"
 printf '// swift-tools-version:5.5\nimport PackageDescription\n' > "$tmp/root/Vendor/wireguard-apple/Package.swift"
 
