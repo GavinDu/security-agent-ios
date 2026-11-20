@@ -21,10 +21,10 @@ MOCK
 cat > "$t/bin/cargo" <<'MOCK'
 #!/usr/bin/env bash
 [[ "$1" == "build" ]] || exit 2
-# Simulate Xcode passing SDKROOT=iPhoneOS: Rust's macOS host build scripts
-# must never inherit the iOS sysroot or host linking fails (-lSystem).
-[[ -z "${SDKROOT+x}" ]] || {
-  echo "Cargo received Xcode iOS SDKROOT; macOS host linker will fail" >&2
+# Xcode iPhoneOS SDKROOT must be replaced with a valid host MacOSX SDK.
+# On modern Xcode, unsetting SDKROOT alone also fails to link -lSystem.
+[[ "${SDKROOT:-}" == "${FAKE_MACOS_SDK:-unset}" ]] || {
+  echo "Cargo must receive macOS host SDKROOT, not the iPhone SDK" >&2
   exit 2
 }
 case " $* " in
@@ -41,7 +41,9 @@ echo 'mock archive' > "$CARGO_TARGET_DIR/$triple/release/libboringtun.a"
 MOCK
 cat > "$t/bin/xcrun" <<'MOCK'
 #!/usr/bin/env bash
-if [[ "$1" == "lipo" && "$2" == "-create" ]]; then
+if [[ "$1" == "--sdk" && "$2" == "macosx" && "$3" == "--show-sdk-path" ]]; then
+  printf '%s\n' "$FAKE_MACOS_SDK"
+elif [[ "$1" == "lipo" && "$2" == "-create" ]]; then
   # In a multi-arch case copy the first input, as the mock only checks syntax.
   [[ "$3" == "-output" ]]
   cp "$5" "$4"
@@ -56,6 +58,8 @@ export PATH="$t/bin:$PATH"
 export SRCROOT="$t/root"
 export BUILT_PRODUCTS_DIR="$t/products"
 export TARGET_TEMP_DIR="$t/temp"
+export FAKE_MACOS_SDK="$t/sdk/MacOSX.sdk"
+mkdir -p "$FAKE_MACOS_SDK"
 for platform in iphoneos iphonesimulator; do
   SDKROOT="/Xcode/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk" \
     PLATFORM_NAME="$platform" ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null
@@ -66,4 +70,7 @@ if PLATFORM_NAME=iphoneos ARCHS=x86_64 bash "$root/scripts/build-boringtun.sh" >
 if FAKE_RUST_VERSION=1.80.0 PLATFORM_NAME=iphoneos ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null 2>&1; then echo 'Accepted wrong rustc' >&2; exit 1; fi
 if FAKE_GIT_STATUS='?? injected.rs' PLATFORM_NAME=iphoneos ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null 2>&1; then echo 'Accepted dirty source' >&2; exit 1; fi
 if FAKE_MISSING_ARCH=arm64 PLATFORM_NAME=iphoneos ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null 2>&1; then echo 'Accepted missing ABI' >&2; exit 1; fi
+if FAKE_MACOS_SDK="$t/sdk/BadOS.sdk" PLATFORM_NAME=iphoneos ARCHS=arm64 bash "$root/scripts/build-boringtun.sh" >/dev/null 2>&1; then
+  echo 'Accepted missing MacOSX host SDK' >&2; exit 1
+fi
 echo 'Rust wrapper positive/negative mock tests passed'
