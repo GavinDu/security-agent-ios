@@ -8,6 +8,7 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo"
 mkdir -p "$tmp/bin" "$tmp/products" "$tmp/temp" "$tmp/Build/Products"
 touch "$tmp/root/Vendor/wireguard-apple/Sources/WireGuardKitGo/Makefile"
+printf '// swift-tools-version:5.5\nimport PackageDescription\n' > "$tmp/root/Vendor/wireguard-apple/Package.swift"
 
 cat > "$tmp/bin/go" <<'MOCK'
 #!/usr/bin/env bash
@@ -15,7 +16,13 @@ echo "go version ${FAKE_GO_VERSION:-go1.19.13} darwin/arm64"
 MOCK
 cat > "$tmp/bin/git" <<'MOCK'
 #!/usr/bin/env bash
-echo "${FAKE_WG_SHA:-2fec12a6e1f6e3460b6ee483aa00ad29cddadab1}"
+case "$*" in
+  *"rev-parse HEAD"*) echo "${FAKE_WG_SHA:-2fec12a6e1f6e3460b6ee483aa00ad29cddadab1}" ;;
+  *"show HEAD:Package.swift"*) printf '// swift-tools-version:5.3\nimport PackageDescription\n' ;;
+  *"status --porcelain=v1 -z --untracked-files=all"*)
+    printf '%s\0' "${FAKE_VENDOR_STATUS:- M Package.swift}" ;;
+  *) echo "unexpected Git operation" >&2; exit 3 ;;
+esac
 MOCK
 cat > "$tmp/bin/xcrun" <<'MOCK'
 #!/usr/bin/env bash
@@ -67,5 +74,11 @@ if ARCHS=armv7 PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-g
 fi
 if FAKE_MISSING_ARCH=arm64 PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/null 2>&1; then
   echo "Archive missing requested CPU slice was accepted" >&2; exit 1
+fi
+if FAKE_VENDOR_STATUS=" M Sources/WireGuardKitGo/Makefile" PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/null 2>&1; then
+  echo "Tampered vendor Makefile was accepted" >&2; exit 1
+fi
+if FAKE_VENDOR_STATUS="?? Sources/WireGuardKitGo/injected.go" PLATFORM_NAME=iphoneos bash "$repo_root/scripts/build-wireguard-go.sh" >/dev/null 2>&1; then
+  echo "Untracked injected Go source was accepted" >&2; exit 1
 fi
 echo "Bridge wrapper validation passed (mocked SDK/build tools only)."

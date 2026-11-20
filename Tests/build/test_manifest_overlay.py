@@ -21,6 +21,46 @@ class ManifestTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 overlay.fixed_manifest(data)
 
+    def test_rejects_dirty_tracked_staged_and_untracked_sources(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = Path(folder)
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            source = checkout / "Sources" / "WireGuardKitGo"
+            source.mkdir(parents=True)
+            manifest = checkout / "Package.swift"
+            manifest.write_bytes(overlay.OLD + b"import PackageDescription\n")
+            makefile = source / "Makefile"
+            makefile.write_text("build:\n\t@echo safe\n")
+            subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", str(checkout), "-c", "user.name=CI Fixture",
+                 "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"],
+                check=True
+            )
+            overlay.apply(checkout)
+            overlay.apply(checkout, check_only=True)
+            # Dirty tracked Makefile must fail even though HEAD is unchanged.
+            makefile.write_text("build:\n\t@echo injected\n")
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+            subprocess.run(["git", "-C", str(checkout), "checkout", "--", "Sources/WireGuardKitGo/Makefile"], check=True)
+            # Staged content is never a permitted manifest overlay.
+            subprocess.run(["git", "-C", str(checkout), "add", "Package.swift"], check=True)
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+            subprocess.run(["git", "-C", str(checkout), "reset", "-q", "HEAD", "--", "Package.swift"], check=True)
+            injected = source / "injected.go"
+            injected.write_text("package main\n")
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+            injected.unlink()
+            overlay.apply(checkout, check_only=True)
+            manifest.write_bytes(overlay.OLD + b"import PackageDescription\n")
+            with self.assertRaises(ValueError):
+                overlay.apply(checkout, check_only=True)
+
     def test_idempotent_checkout_patch_and_tamper_rejection(self):
         import subprocess
         import tempfile

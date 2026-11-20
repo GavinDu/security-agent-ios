@@ -131,3 +131,18 @@ the wrong order. Apple `lipo` requires the input archive before
 `-verify_arch`. The script and mock were corrected together; the
 new test is intentionally sensitive to command order. This change does
 **not** certify final device/simulator linking.
+
+
+## Fail-closed vendor worktree integrity
+
+The bootstrap and every native Go pre-build validate not only the upstream
+commit SHA but also `git status --porcelain=v1 -z --untracked-files=all`.
+Only the expected unstaged `Package.swift` header change is allowed; its
+entire body is checked byte-for-byte against the original Git blob. Other
+tracked modifications, staged changes and nonignored new files fail the
+build before any native Makefile executes. See issue #44 and
+`Tests/build/test_manifest_overlay.py` for negative cases.
+
+This check cannot substitute for dependency auditing and does not detect
+files explicitly ignored by upstream `.gitignore`; those remain a separate
+supply-chain review consideration. Never rely solely on `git rev-parse HEAD`.

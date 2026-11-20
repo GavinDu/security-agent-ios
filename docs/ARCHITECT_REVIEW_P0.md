@@ -130,3 +130,25 @@ so the mock test was too permissive. Corrected the invocation to
 `xcrun lipo "$archive" -verify_arch "$arch"`, and changed the fixture to
 reject wrong argument ordering and missing archive files. Native compile
 and link remain unverified until the corrected Actions run passes.
+
+
+## 2026-11-20 — Reviewer challenge: pinned Git HEAD is not source integrity
+
+**Finding (P0):** An exact checkout SHA alone did not prevent locally modified
+`Sources/WireGuardKitGo/Makefile` or injected Go files from executing in the
+Xcode pre-build phase. The initial manifest overlay validated only
+`Package.swift`; this was a supply-chain verification gap.
+
+**Correction (#44):** `scripts/patch-wireguard-manifest.py` now checks Git
+porcelain worktree status before and after applying the overlay, rejecting
+staged source edits, dirty tracked implementation files, deleted files and
+untracked nonignored files. Exactly one unstaged `Package.swift` change is
+allowed, and its bytes must match the immutable upstream Git blob except
+for the vetted tools-version header. The native Go build re-checks this
+immediately before invoking the upstream Makefile. Python Git-fixture and
+mock build-wrapper negative tests cover altered Makefile, staged manifest,
+injected untracked Go source and missing overlay.
+
+This is a strict self-review and testable design change, **not** an independent
+external challenger or proof of complete upstream/transitive supply-chain
+security. Full native build and physical device gates remain open.

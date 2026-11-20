@@ -35,6 +35,9 @@ if [[ "$actual_sha" != "$expected_sha" ]]; then
   echo "WireGuardKit checkout revision does not match pin (expected $expected_sha)." >&2
   exit 2
 fi
+# HEAD alone does not detect a modified Makefile or an injected Go file.
+# Confirm only the audited one-line SwiftPM header overlay is present.
+python3 "$SRCROOT/scripts/patch-wireguard-manifest.py" "$checkout" --check
 
 sdkroot="$(xcrun --sdk "$platform" --show-sdk-path)"
 archs="${ARCHS:-}"
