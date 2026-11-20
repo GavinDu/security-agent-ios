@@ -224,6 +224,8 @@ final class TunnelManager: NSObject, ObservableObject {
         // App-side early rejection; the extension independently validates
         // fresh system metadata before any Rust engine or routes are created.
         guard let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
+              native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+              native.serverAddress == profile.endpoint,
               NativeProfileBindingPolicy.allowsStart(
                 metadata: native.providerConfiguration,
                 profileDigest: try? profile.publicProfileDigest()

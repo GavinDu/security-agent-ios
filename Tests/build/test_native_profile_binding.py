@@ -16,6 +16,8 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
         )[0]
         self.assertIn("let canonical = try validated()", portion)
         self.assertIn("encoder.outputFormatting = [.sortedKeys]", portion)
+        self.assertIn("BoundPublicProfileV2(", portion)
+        self.assertIn("routeMode: canonical.routeMode.rawValue", portion)
         self.assertIn("SHA256.hash(data: bytes)", portion)
         self.assertNotIn("SharedKeychain", portion)
         self.assertNotIn("presharedKey", portion)
@@ -38,6 +40,10 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
         )[0]
         self.assertLess(connection.index("NativeProfileBindingPolicy.allowsStart("),
                         connection.index("manager.connection.startVPNTunnel()"))
+        self.assertLess(connection.index("native.providerBundleIdentifier == AgentConstants.tunnelBundleID"),
+                        connection.index("manager.connection.startVPNTunnel()"))
+        self.assertLess(connection.index("native.serverAddress == profile.endpoint"),
+                        connection.index("manager.connection.startVPNTunnel()"))
         self.assertIn("nativeProfileMismatch", connection)
 
     def test_extension_refuses_drift_before_engine_construction(self):
@@ -45,6 +51,10 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
             "override func stopTunnel(", 1
         )[0]
         self.assertLess(starting.index("NativeProfileBindingPolicy.allowsStart("),
+                        starting.index("BoringTunTransport(provider: self)"))
+        self.assertLess(starting.index("native.providerBundleIdentifier == AgentConstants.tunnelBundleID"),
+                        starting.index("BoringTunTransport(provider: self)"))
+        self.assertLess(starting.index("native.serverAddress == profile.endpoint"),
                         starting.index("BoringTunTransport(provider: self)"))
         self.assertIn("completionHandler(AgentConfigurationError.nativeProfileMismatch)", starting)
         self.assertIn("self.lifecycle.finishStart(success: false)", starting)

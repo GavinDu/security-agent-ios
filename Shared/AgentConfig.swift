@@ -66,14 +66,29 @@ struct ServerProfile: Codable, Equatable {
         return self
     }
 
+    /// Pin the V2 digest schema to these four public fields; future fields
+    /// added to ServerProfile must not silently change the native binding.
+    private struct BoundPublicProfileV2: Encodable {
+        let publicKey: String
+        let endpoint: String
+        let routeMode: String
+        let onDemand: Bool
+    }
+
     /// Binds the public profile stored by the app to the system VPN profile.
     /// Every target hashes the same validated JSON with sorted keys. The
     /// private WireGuard identity and optional PSK are never in this model.
     func publicProfileDigest() throws -> String {
         let canonical = try validated()
+        let bound = BoundPublicProfileV2(
+            publicKey: canonical.publicKey,
+            endpoint: canonical.endpoint,
+            routeMode: canonical.routeMode.rawValue,
+            onDemand: canonical.onDemand
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let bytes = try encoder.encode(canonical)
+        let bytes = try encoder.encode(bound)
         return Data(SHA256.hash(data: bytes)).base64EncodedString()
     }
 

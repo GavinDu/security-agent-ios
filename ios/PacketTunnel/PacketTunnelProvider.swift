@@ -31,6 +31,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             // preferences save. Reject v1/missing/mismatched metadata before
             // constructing the Rust engine or installing VPN routes.
             guard let native = self.protocolConfiguration as? NETunnelProviderProtocol,
+                  native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+                  native.serverAddress == profile.endpoint,
                   NativeProfileBindingPolicy.allowsStart(
                     metadata: native.providerConfiguration,
                     profileDigest: try? profile.publicProfileDigest()
