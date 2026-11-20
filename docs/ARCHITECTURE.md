@@ -36,8 +36,10 @@ does not run a separate VPN service or expose private keys to the WebView.
   bridge isolation are independently tracked in #23 and #24.
 - PacketTunnel: serial Rust C-ABI calls, bounded buffers, authenticated
   handshake before start completion. iPhone runtime testing remains #53/#58.
-- Split tunnel: no DNS override or public internet redirect. Full tunnel:
-  verify external UDP underlay and IPv4/IPv6 safety before enabling (#29/#65).
+- Split tunnel: no DNS override or public internet redirect. **Full tunnel
+  is currently fail-closed** in both the app and PacketTunnel: a persisted
+  full-mode profile cannot install default routes until a signed iPhone
+  proves safe encrypted UDP underlay and IPv4/IPv6/DNS behavior (#71/#65/#29).
 - Roaming and BoringTun 0.7.1 rekey/liveness require signed device evidence (#57).
 - Apple signing, entitlement validity and protected CI cannot be inferred
   from Linux checks or an unsigned Xcode build (#40/#48).

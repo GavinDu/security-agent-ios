@@ -27,6 +27,7 @@ enum AgentConfigurationError: LocalizedError {
     case unsupportedQRVersion
     case missingProfile
     case missingAppGroup
+    case unverifiedFullTunnel
 
     var errorDescription: String? {
         switch self {
@@ -36,6 +37,7 @@ enum AgentConfigurationError: LocalizedError {
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."
         case .missingAppGroup: return "App Group is unavailable; check signing capabilities."
+        case .unverifiedFullTunnel: return "Full tunnel is disabled until encrypted UDP underlay routing and leak safety pass physical iPhone tests. Use split tunnel."
         }
     }
 }

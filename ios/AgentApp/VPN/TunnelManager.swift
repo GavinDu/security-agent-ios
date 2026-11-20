@@ -112,6 +112,10 @@ final class TunnelManager: NSObject, ObservableObject {
 
     func changeRoute(to mode: RouteMode) {
         guard var updated = profile, updated.routeMode != mode else { return }
+        guard TunnelRouteSafetyPolicy.permitsStart(mode) else {
+            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+            return
+        }
         // Mode transitions require a full tunnel restart. Do not reconnect
         // until the previous tunnel has actually stopped.
         disconnect()

@@ -33,6 +33,11 @@ final class BoringTunTransport {
             self.startCompletion = completion
             do {
                 let validated = try profile.validated()
+                // Enforce inside the extension, including already-persisted
+                // full profiles; never install unproven 0/0 and ::/0 routes.
+                guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
+                    throw AgentConfigurationError.unverifiedFullTunnel
+                }
                 let secret = try SharedKeychain.existingIdentity()
                 let psk = try SharedKeychain.optionalPreSharedKey()
                 self.codec = try BoringTunCodec(

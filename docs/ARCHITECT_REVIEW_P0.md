@@ -55,11 +55,15 @@ signed physical-device VPN.
 
 ## Additional review findings
 
-- The existing network-settings code sets both IPv4/IPv6 default routes
-  for full tunnel; verify the encrypted UDP underlay cannot recursively
-  enter those routes before claiming a functional full tunnel (#65).
-- VPN profile metadata currently may persist before system VPN permission
-  and load-from-preferences succeed. Atomic save and denial recovery are #15.
+- `TunnelRouteSafetyPolicy` (#71) explicitly rejects unverified full
+  tunnel in the app before disconnecting and again inside the extension
+  before calling `setTunnelNetworkSettings`. Although the network-settings
+  implementation retains full default routes for later use, they are not
+  reachable while fail-closed. Signed-device underlay and leak proof #65/#29
+  remains necessary before lifting the guard.
+- VPN profile writes now stage App Group publication until native save/reload
+  completes (#67). Permission denial, cross-store failure recovery and
+  signed-device proof remain #15; do not infer durable atomicity.
 - BoringTun's upstream panic hook can terminate the extension; malformed
   packet host tests do not substitute for signed-device stress (#58).
 - App Group diagnostic events are intentionally five fixed codes and no

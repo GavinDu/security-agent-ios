@@ -50,6 +50,9 @@ struct VPNStatusView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    Text("Full tunnel is disabled pending physical-device verification of encrypted UDP routing and IPv4/IPv6 leak safety.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     Text(profile.routeMode == .split
                          ? "Only 10.8.0.0/24 is sent through the VPN. Regular browsing uses your current network."
                          : "All IPv4 and IPv6 routes use the VPN. Your Mac must provide internet forwarding and IPv6 connectivity.")

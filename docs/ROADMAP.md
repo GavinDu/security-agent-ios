@@ -19,7 +19,7 @@ must each be proven before claiming a working VPN.
    full IPv4/IPv6 #29 and safe transitions #30.
 6. [Hardening and TestFlight #11](https://github.com/GavinDu/security-agent-ios/issues/11): review #5/#31, signing #32,
    accessibility #33, soak #34, Rust host SDK #63, completed Cargo inventory #64,
-   UDP underlay route isolation #65.
+   UDP underlay route isolation #65 and fail-closed full-tunnel guard #71.
 
 ## Acceptance and security policy
 
@@ -29,6 +29,9 @@ must each be proven before claiming a working VPN.
 - Never place private keys, PSKs, session tokens or signing material in Git.
 - Mac listener deployment, Apple entitlements, full/split routes, roaming
   and real-device stability are separate physical-environment gates.
+- Until #65/#29 have verified underlay exclusion and leak safety on a
+  signed iPhone, the app *and extension* reject full-tunnel activation (#71).
+  Split mode remains enabled; do not present full tunnel as a working VPN.
 - Consult [ADR-0002](ADR-0002-RUST-BORINGTUN.md),
   [ARCHITECTURE](ARCHITECTURE.md) and [BORINGTUN_BUILD](BORINGTUN_BUILD.md).
 

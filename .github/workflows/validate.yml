@@ -48,6 +48,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
           "$RUNNER_TEMP/ip-envelope-tests"
+          # Real Swift check of the app+extension full-route fail-closed gate.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/route-safety-tests" \
+            Shared/TunnelRouteSafetyPolicy.swift Tests/build/tunnel_route_safety_smoke.swift
+          "$RUNNER_TEMP/route-safety-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
