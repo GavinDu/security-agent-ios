@@ -15,6 +15,9 @@ final class BoringTunTransport {
     private var startCompletion: ((Error?) -> Void)?
     private var active = false
     private var readingPackets = false
+    private var receivingDatagram = false
+    private var pendingSends = 0
+    private let maxPendingSends = 256
 
     init(provider: NEPacketTunnelProvider) {
         self.provider = provider
@@ -140,10 +143,12 @@ final class BoringTunTransport {
     }
 
     private func receiveDatagram() {
-        guard active, let udp else { return }
+        guard active, let udp, !receivingDatagram else { return }
+        receivingDatagram = true
         udp.receiveMessage { [weak self] packet, _, _, error in
             self?.queue.async { [weak self] in
                 guard let self, self.active else { return }
+                self.receivingDatagram = false
                 if let error {
                     self.fail(error)
                     return
@@ -173,9 +178,16 @@ final class BoringTunTransport {
             break
         case .sendToNetwork(let datagram):
             guard let udp else { throw BoringTunError.stopped }
+            // Bounded async send backlog; never allow a packet storm to
+            // grow unbounded memory in the constrained iOS extension.
+            guard pendingSends < maxPendingSends else { throw BoringTunError.engineError }
+            pendingSends += 1
             udp.send(content: datagram, completion: .contentProcessed { [weak self] error in
-                guard let error else { return }
-                self?.queue.async { [weak self] in self?.fail(error) }
+                self?.queue.async { [weak self] in
+                    guard let self, self.active else { return }
+                    self.pendingSends -= 1
+                    if let error { self.fail(error) }
+                }
             })
         case .writeIPv4(let packet):
             provider?.packetFlow.writePackets([packet], withProtocols: [NSNumber(value: AF_INET)])
@@ -242,6 +254,8 @@ final class BoringTunTransport {
         udp?.cancel()
         udp = nil
         readingPackets = false
+        receivingDatagram = false
+        pendingSends = 0
         codec = nil
     }
 
