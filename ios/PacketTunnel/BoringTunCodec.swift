@@ -66,19 +66,30 @@ final class BoringTunCodec {
         let response = output.withUnsafeMutableBufferPointer { buffer in
             invoke(buffer.baseAddress!)
         }
-        let count = Int(response.size)
-        switch Int(response.op.rawValue) {
-        case 0: return .done
+        // size_t carries an error code for WIREGUARD_ERROR, not packet bytes.
+        // Dispatch first: converting a negative Rust error as unsigned size_t
+        // to Swift Int may trap before we even reach the error case.
+        let operation = Int(response.op.rawValue)
+        switch operation {
+        case 0:
+            return .done
+        case 2:
+            throw BoringTunError.engineError
         case 1, 4, 6:
-            guard count > 0, count <= output.count else { throw BoringTunError.invalidResponse }
+            // Only output operations may interpret size as a byte count.
+            // Check in native size_t before converting to Int.
+            guard response.size > 0, response.size <= numericCast(output.count) else {
+                throw BoringTunError.invalidResponse
+            }
+            let count = Int(response.size)
             let data = Data(output.prefix(count))
-            switch Int(response.op.rawValue) {
+            switch operation {
             case 1: return .sendToNetwork(data)
             case 4: return .writeIPv4(data)
             default: return .writeIPv6(data)
             }
-        case 2: throw BoringTunError.engineError
-        default: throw BoringTunError.invalidResponse
+        default:
+            throw BoringTunError.invalidResponse
         }
     }
 
