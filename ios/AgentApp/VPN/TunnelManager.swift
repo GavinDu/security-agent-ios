@@ -10,9 +10,9 @@ final class TunnelManager: NSObject, ObservableObject {
     private var manager: NETunnelProviderManager?
     private let profileSave = ProfileSaveSequencer()
     private var preferenceReloadGate = NativePreferenceReloadGate()
-    // Initial native inventory must finish before a profile may be created.
-    private var nativeInventoryLoading = true
-    private var duplicateNativeManagers = false
+    // A failed native preference read must never reopen writes/connections.
+    // Keep this state on main with NativePreferenceReloadGate generations.
+    private var nativeInventoryTrust = NativeVPNInventoryTrust()
     private var legacyFullStopRequested = false
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
@@ -47,7 +47,7 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard !profileSave.isBusy && !legacyOnDemandDisableInFlight else { return }
         let loadToken = preferenceReloadGate.begin()
-        nativeInventoryLoading = true
+        nativeInventoryTrust.beginLoad()
         NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -60,13 +60,16 @@ final class TunnelManager: NSObject, ObservableObject {
                     // An old generation must not clear a newer in-flight load.
                     return
                 case .reportFailure:
-                    self.nativeInventoryLoading = false
-                    // Preserve the previously confirmed manager on OS errors.
+                    self.nativeInventoryTrust.didFailLoad()
+                    // Preserve the previously confirmed manager on OS errors,
+                    // but forbid writing through it until a successful reload.
                     self.errorMessage = error?.localizedDescription ??
                         "Could not reload VPN preferences."
                     return
                 case .publish:
-                    self.nativeInventoryLoading = false
+                    // Only a subsequent unique/empty inventory decision may
+                    // authorize a new save or connect.
+                    break
                 }
 
                 let inventory = NativeVPNManagerInventory.select(
@@ -79,7 +82,7 @@ final class TunnelManager: NSObject, ObservableObject {
                 switch inventory {
                 case .duplicate:
                     // Never guess which system VPN profile is authoritative.
-                    self.duplicateNativeManagers = true
+                    self.nativeInventoryTrust.didLoadDuplicateInventory()
                     self.manager = nil
                     self.status = .invalid
                     self.errorMessage = "Multiple Security Agent VPN profiles found. " +
@@ -90,9 +93,9 @@ final class TunnelManager: NSObject, ObservableObject {
                 case .one(let selected):
                     self.manager = selected
                 }
-                let hadDuplicates = self.duplicateNativeManagers
-                self.duplicateNativeManagers = false
-                if hadDuplicates { self.errorMessage = nil }
+                // A previous failed/ambiguous load is recovered only by this
+                // current-generation, successful native inventory read.
+                self.nativeInventoryTrust.didLoadUniqueInventory()
                 self.status = self.manager?.connection.status ?? .invalid
                 self.profile = SharedProfileStore.load()
                 self.remediateLegacyFullTunnel()
@@ -128,7 +131,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // A previous loadAll callback cannot overwrite the native manager
         // while we mutate on-demand preferences.
         preferenceReloadGate.invalidate()
-        nativeInventoryLoading = false
+        nativeInventoryTrust.beginWrite()
         legacyOnDemandDisableAttempted = true
         legacyOnDemandDisableInFlight = true
         manager.isOnDemandEnabled = false
@@ -163,9 +166,9 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = "Finish disabling legacy VPN auto-connect first."
             return
         }
-        guard !nativeInventoryLoading && !duplicateNativeManagers else {
-            errorMessage = "Wait for VPN preferences to load, or remove duplicate " +
-                "Security Agent VPN entries in iOS Settings before saving."
+        guard nativeInventoryTrust.permitsMutation else {
+            errorMessage = "VPN preferences are not verified. Retry loading VPN " +
+                "preferences, or remove duplicate Security Agent entries in iOS Settings."
             return
         }
         // The UI publishes only profiles accepted and reloaded by the system.
@@ -187,8 +190,10 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
 
-        // Invalidate pending loadAll results before changing native settings.
+        // Invalidate prior inventory trust and pending loadAll callbacks
+        // before changing any native settings.
         preferenceReloadGate.invalidate()
+        nativeInventoryTrust.beginWrite()
         let selected = manager ?? NETunnelProviderManager()
         let configuration = (selected.protocolConfiguration as? NETunnelProviderProtocol)
             ?? NETunnelProviderProtocol()
@@ -246,6 +251,7 @@ final class TunnelManager: NSObject, ObservableObject {
                 guard let self else { return }
                 switch result {
                 case .success:
+                    self.nativeInventoryTrust.didCommitVerifiedWrite()
                     self.manager = selected
                     self.profile = validated
                     self.status = selected.connection.status
@@ -267,9 +273,9 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.connect() }
             return
         }
-        guard !nativeInventoryLoading && !duplicateNativeManagers else {
-            errorMessage = "Wait for VPN preferences to load, or remove duplicate " +
-                "Security Agent VPN entries in iOS Settings before connecting."
+        guard nativeInventoryTrust.permitsMutation else {
+            errorMessage = "VPN preferences are not verified. Retry loading VPN " +
+                "preferences, or remove duplicate Security Agent entries in iOS Settings."
             return
         }
         guard !legacyOnDemandDisableInFlight else {

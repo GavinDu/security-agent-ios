@@ -86,6 +86,13 @@ jobs:
             ios/AgentApp/VPN/NativeVPNManagerInventory.swift \
             Tests/build/native_vpn_manager_inventory_smoke.swift
           "$RUNNER_TEMP/native-manager-inventory-tests"
+          # Fail closed after failed native preferences inventory reload; test
+          # actual production state transitions and #78 generation interplay.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-inventory-trust-tests" \
+            ios/AgentApp/VPN/NativeVPNInventoryTrust.swift \
+            ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
+            Tests/build/native_vpn_inventory_trust_smoke.swift
+          "$RUNNER_TEMP/native-inventory-trust-tests"
           # A successful native reload callback alone must not publish stale
           # or mismatched system preferences into App Group metadata.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/native-commit-verifier-tests" \

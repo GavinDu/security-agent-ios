@@ -15,6 +15,9 @@ struct VPNStatusView: View {
                     Text("Scan a pairing QR from the Mac Mini to configure WireGuard.")
                         .foregroundStyle(.secondary)
                 }
+                Button("Retry loading VPN preferences") { tunnel.reload() }
+                    .font(.footnote)
+                    .accessibilityHint("Checks saved system VPN entries after a permission or load failure.")
                 HStack {
                     Button("Connect") { tunnel.connect() }
                         .disabled(tunnel.profile == nil || tunnel.profile?.routeMode == .full ||
