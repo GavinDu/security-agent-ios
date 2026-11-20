@@ -60,6 +60,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/tunnel-lifecycle-tests" \
             Shared/TunnelLifecycleGeneration.swift Tests/build/tunnel_lifecycle_smoke.swift
           "$RUNNER_TEMP/tunnel-lifecycle-tests"
+          # Exercise the actual provider state machine without Apple SDK.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
+            Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
+          "$RUNNER_TEMP/provider-state-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
