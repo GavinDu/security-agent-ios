@@ -56,6 +56,14 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.90.0 --profile minimal
           bash scripts/bootstrap-boringtun.sh
+          # This imports the actual pinned BoringTun C header and checks every
+          # Swift FFI call/type. It is stronger than parser-only validation,
+          # but does not check native iOS NetworkExtension or linking.
+          swiftc -swift-version 5 -typecheck \
+            -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
+            -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
+            ios/PacketTunnel/BoringTunCodec.swift
+          echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
           cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
             --lib --release --no-default-features --features ffi-bindings --locked
