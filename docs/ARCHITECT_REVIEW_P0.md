@@ -53,3 +53,15 @@ Review date: 2026-11-19. **Not an independent external reviewer.**
 **Acceptance:** Static manifest/test review may pass independently.
 Keep #2/#12/#13/#36–#40 open until actual matching native CI/device evidence
 exists. The macOS runner remains the deciding compile/link gate.
+
+## CI independence and traffic review
+
+- Previous workflow started both `push` and `pull_request` jobs for the
+  same feature-branch commit, wasting runner capacity and cancelling queued
+  superseded work. Feature branches with PRs now use `pull_request`; only
+  `main` uses `push`. `workflow_dispatch` remains available.
+- iOS device/simulator builds and macOS companion compilation are now
+  independent native CI jobs. An iOS bridge failure must not hide a working
+  (or separately broken) macOS companion.
+- Any CI failure still fails its own required job. Do not set
+  `continue-on-error`, skip a failing platform, or merge without evidence.

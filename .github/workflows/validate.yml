@@ -1,7 +1,9 @@
 name: Native Xcode build and tests
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,8 +62,8 @@ jobs:
           bash Tests/build/pin-validation-tests.sh
           bash Tests/build/bridge-wrapper-tests.sh
 
-  native:
-    name: Tuist + iOS device/simulator + macOS + XCTest
+  native-ios:
+    name: Tuist + iOS device and simulator XCTest
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -101,13 +103,6 @@ jobs:
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
             -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
-      - name: Compile macOS companion without signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
-            -configuration Debug -destination 'generic/platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO build
       - name: Record toolchain and phase outcomes
         if: always()
         shell: bash
@@ -125,3 +120,31 @@ jobs:
           name: native-build-summary
           path: ${{ runner.temp }}/native-summary.md
           retention-days: 7
+
+  native-mac:
+    name: Tuist + macOS companion build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Generate project from clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tuist install
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+          xcodebuild -list -project SecurityAgent.xcodeproj
+      - name: Compile macOS pairing companion without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
+            -configuration Debug -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
