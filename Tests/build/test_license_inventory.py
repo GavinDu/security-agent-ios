@@ -27,7 +27,7 @@ def fixtures():
         ],
         "resolve": {
             "root": ROOT,
-            "nodes": [{"id": ROOT, "deps": [{"pkg": DEP}]},
+            "nodes": [{"id": ROOT, "deps": [{"pkg": DEP, "dep_kinds": [{"kind": None, "target": None}]}]},
                       {"id": DEP, "deps": []}],
         },
     }
@@ -64,6 +64,30 @@ class CargoLicenseInventoryTests(unittest.TestCase):
         lock["package"].append({"name": "boringtun-cli", "version": "0.7.1"})
         result = audit.inventory(meta, lock)
         self.assertEqual([p["name"] for p in result["packages"]], ["boringtun", "ring"])
+
+    def test_dev_only_legacy_license_is_excluded(self):
+        meta, lock = fixtures()
+        dev_id = "registry+https://github.com/rust-lang/crates.io-index#page_size@0.6.0"
+        meta["packages"].append({
+            "id": dev_id, "name": "page_size", "version": "0.6.0",
+            "source": audit.REGISTRY, "license": "MIT/Apache-2.0",
+        })
+        meta["resolve"]["nodes"].append({"id": dev_id, "deps": []})
+        meta["resolve"]["nodes"][0]["deps"].append({
+            "pkg": dev_id, "dep_kinds": [{"kind": "dev", "target": None}],
+        })
+        lock["package"].append({
+            "name": "page_size", "version": "0.6.0",
+            "source": audit.REGISTRY, "checksum": "f" * 64,
+        })
+        result = audit.inventory(meta, lock)
+        self.assertEqual([p["name"] for p in result["packages"]], ["boringtun", "ring"])
+
+    def test_missing_kind_metadata_rejected(self):
+        meta, lock = fixtures()
+        del meta["resolve"]["nodes"][0]["deps"][0]["dep_kinds"]
+        with self.assertRaises(audit.InventoryError):
+            audit.inventory(meta, lock)
 
     def test_copyleft_requires_manual_review(self):
         meta, lock = fixtures()
