@@ -25,6 +25,20 @@ struct VPNStatusView: View {
                 }
             }
 
+            Section("Recent VPN events") {
+                let events = SharedDiagnostics.events()
+                if events.isEmpty {
+                    Text("No packet tunnel events yet").foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(events.suffix(5).reversed())) { entry in
+                        LabeledContent(entry.event.replacingOccurrences(of: "_", with: " "),
+                                       value: entry.at.formatted(date: .abbreviated, time: .standard))
+                    }
+                }
+                Text("The log stores only state transitions and timestamps. No keys or network payloads.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
             if let profile = tunnel.profile {
                 Section("Routing") {
                     Picker("Mode", selection: Binding(

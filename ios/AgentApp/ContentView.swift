@@ -2,14 +2,27 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var tunnel: TunnelManager
+    @State private var serverUnavailable = false
 
     var body: some View {
         TabView {
             NavigationStack {
                 Group {
                     if tunnel.status == .connected {
-                        ChatWebView(url: AgentConstants.agentURL)
+                        ZStack {
+                            ChatWebView(url: AgentConstants.agentURL) { failed in
+                                serverUnavailable = failed
+                            }
                             .ignoresSafeArea(edges: .bottom)
+
+                            if serverUnavailable {
+                                ContentUnavailableView(
+                                    "Mac Mini unavailable",
+                                    systemImage: "wifi.exclamationmark",
+                                    description: Text("VPN is connected, but the agent server at 10.8.0.1:8080 cannot be reached.")
+                                )
+                            }
+                        }
                     } else {
                         ContentUnavailableView(
                             "Connect VPN",

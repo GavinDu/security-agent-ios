@@ -25,12 +25,11 @@ enum SharedKeychain {
         }
     }
 
-    private static func accessGroup() throws -> String {
-        guard let group = Bundle.main.object(forInfoDictionaryKey: "AgentKeychainAccessGroup") as? String,
-              !group.isEmpty, !group.contains("$(") else {
-            throw KeychainError.missingAccessGroup
-        }
-        return group
+    private static func accessGroup() -> String {
+        // Apple permits iOS App Group identifiers to be used directly as
+        // Keychain access groups. Both signed targets hold this entitlement.
+        // Avoid relying on unresolved $(AppIdentifierPrefix) runtime strings.
+        AgentConstants.appGroup
     }
 
     private static func query(_ account: String) throws -> [String: Any] {
@@ -38,7 +37,7 @@ enum SharedKeychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: try accessGroup()
+            kSecAttrAccessGroup as String: accessGroup()
         ]
     }
 

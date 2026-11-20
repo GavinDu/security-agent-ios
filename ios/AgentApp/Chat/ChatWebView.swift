@@ -1,12 +1,12 @@
 import SwiftUI
 import WebKit
 
-// WKWebView is constructed only when the system VPN reports .connected.
-// It is torn down on disconnect, rather than loading an untrusted offline URL.
+// Created only when the system VPN reports .connected; torn down on disconnect.
 struct ChatWebView: UIViewRepresentable {
     let url: URL
+    let onLoadState: (Bool) -> Void // false = chat loaded, true = unreachable
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(onLoadState: onLoadState) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -29,6 +29,24 @@ struct ChatWebView: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        let onLoadState: (Bool) -> Void
+
+        init(onLoadState: @escaping (Bool) -> Void) { self.onLoadState = onLoadState }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            onLoadState(false)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                     withError error: Error) {
+            onLoadState(true)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
+                     withError error: Error) {
+            onLoadState(true)
+        }
+
         func webView(_ webView: WKWebView,
                      decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -46,8 +64,7 @@ struct ChatWebView: UIViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
-            // No native actions or secrets exposed by default. Reserved name
-            // is explicitly no-op until a documented, origin-checked API exists.
+            // No native actions or secrets exposed by default.
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == AgentConstants.serverIPv4 else { return }
         }

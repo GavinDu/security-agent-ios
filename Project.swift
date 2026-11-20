@@ -25,7 +25,6 @@ let project = Project(
             deploymentTargets: .iOS("17.6"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Security Agent",
-                "AgentKeychainAccessGroup": "$(AppIdentifierPrefix)com.gavindu.securityagent.shared",
                 "NSCameraUsageDescription": "Scan a pairing QR code from your Mac Mini.",
                 "NSMicrophoneUsageDescription": "Record a voice prompt when you choose voice input.",
                 "NSSpeechRecognitionUsageDescription": "Transcribe speech into a chat prompt.",
@@ -46,7 +45,6 @@ let project = Project(
             deploymentTargets: .iOS("17.6"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Agent Packet Tunnel",
-                "AgentKeychainAccessGroup": "$(AppIdentifierPrefix)com.gavindu.securityagent.shared",
                 "NSExtension": [
                     "NSExtensionPointIdentifier": "com.apple.networkextension.packet-tunnel",
                     "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).PacketTunnelProvider"

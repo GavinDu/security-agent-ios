@@ -25,7 +25,7 @@ See [docs/WIREGUARD_BUILD.md](docs/WIREGUARD_BUILD.md) for native prerequisites.
 ## Build
 
 1. On a Mac with current Xcode, Tuist and the required Apple Developer account, enable
-   Network Extensions / Packet Tunnel, App Groups and shared Keychain access on both
+   Network Extensions / Packet Tunnel, App Groups and App Group access on both
    iPhone bundle IDs. Use the same Team ID for both. Register the App Group.
 2. Set `AGENT_APP_TEAM_ID=<YOUR_TEAM_ID>` in your shell.
 3. Build the **WireGuardKitGo** device/simulator library as described in

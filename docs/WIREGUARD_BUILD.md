@@ -20,15 +20,15 @@ for your Xcode/Tuist version. In particular:
    remove changes made only in the generated project; a production step
    must encode this bridge target in maintained build configuration.
 4. Sign both iOS targets using the same development team and provisioning
-   profiles with Packet Tunnel Network Extension, shared Keychain group and
+   profiles with Packet Tunnel Network Extension and
    App Group entitlements. Bundle IDs in Project.swift are examples;
    confirm these IDs are available in your Apple Developer account.
 5. Test on an actual iPhone. A simulator-only build is insufficient for
    validating a VPN or background system extension.
 
-`AgentKeychainAccessGroup` must expand to the fully-qualified shared
-Keychain group such as `<TEAM_PREFIX>.com.gavindu.securityagent.shared`.
-The iPhone app and extension must have the identical value.
+On iOS, the App Group identifier is also used as a Keychain access group,
+per Apple's Keychain sharing documentation. Both signed iOS targets require
+the identical `group.com.gavindu.securityagent` App Group entitlement.
 
 ## Initial build commands
 

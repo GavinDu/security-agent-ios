@@ -14,6 +14,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
+        SharedDiagnostics.record("starting")
         do {
             guard let profile = SharedProfileStore.load() else {
                 throw AgentConfigurationError.missingProfile
@@ -21,14 +22,17 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             let config = try buildConfiguration(profile: profile)
             adapter.start(tunnelConfiguration: config) { [weak self] error in
                 if let error {
+                    SharedDiagnostics.record("start_failed")
                     self?.logger.error("WireGuard adapter failed to start")
                     completionHandler(error)
                 } else {
+                    SharedDiagnostics.record("connected")
                     self?.logger.info("WireGuard tunnel active")
                     completionHandler(nil)
                 }
             }
         } catch {
+            SharedDiagnostics.record("start_failed")
             logger.error("Unable to start tunnel: configuration or Keychain unavailable")
             completionHandler(error)
         }
@@ -37,7 +41,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
         adapter.stop { [weak self] error in
-            if error != nil { self?.logger.error("WireGuard adapter failed to stop") }
+            if error != nil {
+                SharedDiagnostics.record("stop_failed")
+                self?.logger.error("WireGuard adapter failed to stop")
+            } else {
+                SharedDiagnostics.record("stopped")
+            }
             completionHandler()
         }
     }
