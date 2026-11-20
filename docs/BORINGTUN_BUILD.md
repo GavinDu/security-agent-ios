@@ -30,8 +30,9 @@ PacketTunnel target links the staticlib.
 `ios/PacketTunnel/BoringTunBridge.h` uses upstream
 `boringtun/src/wireguard_ffi.h` as the *only* ABI declaration.
 `Project.swift` installs its header search path and Swift bridging
-header **only on PacketTunnel**. No Go toolchain, WireGuardKitGo,
-SwiftPM manifest patch or prebuilt binary is used by iPhone.
+header **only on PacketTunnel**. The iPhone build uses only the pinned
+Rust protocol engine and native Swift system APIs; no prebuilt binary is
+checked into this repository.
 
 ## Safety and release gates
 
@@ -50,17 +51,28 @@ a five-second smoke test. The BSD-3-Clause copyright notice and
 Cargo transitive-license inventory are required before distribution.
 Never publish credentials, PSKs, signing keys or raw WireGuard logs.
 
-## Xcode SDKROOT versus Cargo host build scripts (issue #63)
+## Xcode host SDK and iPhoneOS target SDK (#63)
 
-[Actions run 44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
-passed the genuine native macOS companion build and Linux Rust FFI tests,
-but failed in iPhoneOS's `Build pinned Rust BoringTun` pre-build phase.
-Cargo builds Rust build scripts and proc-macros for **macOS host** even when
-compiling the final static library for `aarch64-apple-ios`. Xcode exported
-an **iPhoneOS** `SDKROOT`, so the host `cc` could not link `-lSystem`.
-The wrapper now invokes `env -u SDKROOT cargo build ... --target <iOS triple>`,
-removing the inherited SDK from Cargo's host toolchain while retaining the
-explicit platform/architecture target. A mock regression test injects a
-simulated iPhoneOS SDKROOT and rejects any Cargo invocation that still sees
-it. The native Apple job must prove this resolves the original linker error;
-it does not certify the resulting iOS archive or physical-device VPN.
+Xcode invokes Cargo from an iPhoneOS build environment. Cargo also
+links macOS host build scripts and compiles the Rust library for an
+explicit `aarch64-apple-ios`, `aarch64-apple-ios-sim` or
+`x86_64-apple-ios` target. Host build scripts require the **macOS** SDK.
+
+`scripts/build-boringtun.sh` resolves the macOS SDK with
+`xcrun --sdk macosx --show-sdk-path` and sets Cargo's `SDKROOT` to
+that path while keeping the target-specific Rust `--target` triple.
+Only the subprocess inherits this override, not the Xcode project.
+
+[CI #44755911625](https://github.com/GavinDu/security-agent-ios/actions/runs/44755911625)
+and [CI #44773740878](https://github.com/GavinDu/security-agent-ios/actions/runs/44773740878)
+both reported macOS-host `ld: library 'System' not found`; removing
+`SDKROOT` alone was insufficient. This replacement needs proof from
+actual iPhoneOS native CI (#63/#52), not just wrapper mock tests.
+
+## Dependency inventory
+
+[Issue #64](https://github.com/GavinDu/security-agent-ios/issues/64)
+independently passed an inventory of resolved normal/build Cargo
+dependencies and declared license expressions against Cargo.lock.
+This does not replace the binary link-map or distribution NOTICE audit
+tracked in #55/#31.

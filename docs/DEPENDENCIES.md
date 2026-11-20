@@ -30,17 +30,18 @@ as a mandatory prerequisite for this independent application.
 | Companion UI | SwiftUI, AppKit, Foundation | Apple SDK |
 | Pairing QR | CoreImage | Apple SDK |
 | Local status/keys | Security, OSLog | Apple SDK |
-| WireGuard server | `wireguard-tools` | Homebrew `brew install wireguard-tools` |
-| Optional userspace fallback | BoringTun CLI (Rust) | Separate Mac server administration; not embedded in iPhone app or AgentMac |
+| Peer tooling | `wireguard-tools` (`wg`) | Optional key creation and peer inspection, not the server protocol engine |
+| Mac WireGuard userspace protocol | Rust BoringTun CLI | Separately pinned/administered macOS daemon; not linked into AgentMac |
 | Startup | `launchd` | macOS system daemon |
 | IP forwarding / NAT | `sysctl` + `pf` | Only for full tunnel, requires privileged setup |
 | Agent backend | User's HTTP service at `10.8.0.1:8080` | Launchd or containers |
 | Remote endpoint | Public DNS/DDNS record and UDP 51820 forward | Router setup |
 
-The Mac Mini is the **WireGuard server**, not a second iOS packet tunnel;
-the desktop app need not embed WireGuardKit just to present pairing QR codes.
-Use the official WireGuard app or securely managed WireGuard command-line tools
-to actually run the server.
+The Mac Mini hosts a **separately managed Rust BoringTun server**; the SwiftUI
+Mac companion only displays pairing information. Installing `wg` tools does
+not select the userspace protocol backend. Configure launchd or any
+`wg-quick` wrapper to invoke the reviewed Rust executable explicitly,
+and verify the live process before considering server deployment complete.
 
 ## Upstream sources and licensing
 

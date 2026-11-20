@@ -1,28 +1,31 @@
-# Mac Mini WireGuard server deployment
+# Mac Mini — Rust WireGuard server boundary
 
-This companion is a pairing UI; the macOS WireGuard server needs separate,
-privileged system setup and a running agent HTTP service.
+AgentMac is a SwiftUI pairing companion, **not** the VPN daemon. The user
+must deploy and administer a separate macOS WireGuard peer. This project
+selects the Rust BoringTun implementation for the userspace protocol engine;
+do not silently select an alternate system userspace backend.
 
-## Install
+## Provisioning outline (not a proven deployment script)
 
-```sh
-brew install wireguard-tools
-# If your macOS setup requires a userspace backend, use a separately audited,
-# managed Rust BoringTun CLI. It is NOT bundled into the iPhone app.
-```
+1. Build or install a reviewed and pinned `boringtun-cli` Rust binary for
+   macOS. Confirm the executable path and version before using it as a
+   privileged launchd service. The iOS BoringTun staticlib is a different
+   artifact; do not attempt to run it as a Mac server.
+2. Install `wireguard-tools` only for the `wg` key/configuration utility,
+   if required. Starting a tunnel through an unqualified `wg-quick up`
+   may select an unintended userspace backend. If using `wg-quick`, set
+   `WG_QUICK_USERSPACE_IMPLEMENTATION` explicitly to the audited Rust CLI
+   path and verify the running process. Check upstream CLI compatibility
+   with the installed macOS and launchd environment before enabling it.
+3. Generate a server private/public key pair **on the Mac**, protect
+   `/etc/wireguard` (root ownership, mode 0700), and keep secrets out of Git.
+4. Provision a listening UDP port and peer mapping, verify privileged
+   interface setup, DNS, routing and restart behavior. Issue #27 tracks
+   the real Mac gateway acceptance, not just configuration syntax.
 
-Use a protected configuration directory such as `/etc/wireguard` (owner root,
-mode 0700). Generate keys **on the Mac**, not in a repository:
-
-```sh
-umask 077
-wg genkey | tee mac-private.key | wg pubkey > mac-public.key
-```
-
-These example keys are placeholders, never real secret values:
+Example public peer addressing (replace placeholder keys locally):
 
 ```ini
-# /etc/wireguard/wg0.conf — restrict permissions to root
 [Interface]
 PrivateKey = <MAC_PRIVATE_KEY>
 Address = 10.8.0.1/24, fd86:ea04:1111::1/64
@@ -33,51 +36,24 @@ PublicKey = <IPHONE_PUBLIC_KEY_FROM_QR>
 AllowedIPs = 10.8.0.2/32, fd86:ea04:1111::2/128
 ```
 
-The actual interface name can be a dynamic `utunN` device on macOS.
-Check official wireguard-tools docs for your installed variant before using
-`wg-quick up wg0` and `wg show`. Use a launchd-managed, root-owned service
-for reliable startup; test manually before configuring automatic restart.
+Use `wg show` against the **verified Rust** tunnel to check peer
+handshake and transfer counters; do not upload private keys or raw packet
+logs. Mac peer public key and endpoint are displayed in AgentMac for
+out-of-band fingerprint confirmation on iPhone.
 
-## Network exposure
+## Network and safety validation
 
-1. Forward **UDP 51820** from your router to the Mac Mini.
-2. Publish a DDNS host pointing at your public IP.
-3. Keep the agent web app reachable at **10.8.0.1:8080** *only* through the
-   tunnel or another intentionally trusted local interface.
-4. Configure the agent app's own authorization and CSRF protections.
-5. Open the **AgentMac** companion and enter the Mac's **public** WireGuard key
-   plus `your-home.ddns.net:51820`. Scan its QR with the iPhone.
-6. Verify handshake from `wg show`, then load `http://10.8.0.1:8080/chat`
-   after the iPhone reports VPN connected.
+- Forward UDP 51820 to the Mac only when endpoint exposure is intended.
+- Bind the agent HTTP service at `10.8.0.1:8080` to a trusted route; enable
+  backend authorization/CSRF checks independent of VPN status.
+- Split tunnel should route only `10.8.0.0/24` and preserve ordinary
+  public DNS/internet routing on the phone.
+- Full tunnel requires scoped IPv4 forwarding/NAT and either a working
+  IPv6 path or an explicitly tested fail-safe policy. Never overwrite
+  the Mac's global pf configuration to make a demo work.
+- Verify traffic both ways, iPhone lock/background, Wi-Fi/cellular roam,
+  reconnect, DDNS updates, key revocation and service restart.
+- No Mac listener, launchd service or signed iPhone tunnel is verified by
+  this document. Track server and routing tests in #27–#30 and #54/#65.
 
-## Split vs full
-
-- **Split:** iPhone routes only `10.8.0.0/24` through the tunnel. No Mac NAT
-  or DNS proxy is required for Safari.
-- **Full:** iPhone installs `0.0.0.0/0` and `::/0` through the tunnel,
-  so the Mac must forward packets and perform suitable IPv4 NAT using `pf`
-  or a correctly configured gateway. IPv6 must be **routed end-to-end** or
-  separately translated; otherwise IPv6 connectivity may fail. Do not enable
-  full mode until both families are tested.
-- Never globally replace `pf.conf` with an untested anchor or disable macOS
-  firewall. Determine the real outbound interface, scope an anchor narrowly,
-  and verify recovery/reboot behavior before enabling NAT.
-
-## End-to-end checklist
-
-1. iOS system VPN permission granted; WireGuard tunnel shows connected.
-2. `wg show` reports a recent handshake; `10.8.0.1` is reachable.
-3. Agent chat streams in WKWebView; VPN-off app displays Connect VPN.
-4. Split: Safari public IP remains cellular/Wi-Fi IP.
-5. Full: Safari public IPv4 matches home; IPv6 works as configured.
-6. iPhone lock/background and Wi-Fi → cellular transitions recover.
-7. Revoke a lost device's peer on the Mac, then re-pair.
-
-## Rust backend distinction
-
-The iPhone PacketTunnel embeds BoringTun as a Rust static library. The
-Mac Mini server is deployed/administered separately; do not install Go
-as a prerequisite for the iPhone app. `wireguard-tools` supplies Mac peer
-management, and an independently configured BoringTun userspace server may
-be used if required by your macOS deployment. This document does not prove
-that any Mac WireGuard listener is installed or running.
+Upstream Rust CLI reference: https://github.com/cloudflare/boringtun

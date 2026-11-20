@@ -1,6 +1,6 @@
 # ADR-0002 — Rust BoringTun for the iPhone PacketTunnel
 
-**Status:** Product owner directed, 2026-11-20. Supersedes ADR-0001.
+**Status:** Accepted source-level design; native and device acceptance pending. Product owner directed, 2026-11-20.
 **Epic:** #6; child issues #51–#56. Native/device acceptance is pending.
 
 ## Design
@@ -16,10 +16,9 @@ AgentApp.app (SwiftUI)
 Mac Mini (separate machine): WireGuard peer/server and private agent backend
 ```
 
-No Go compiler, Go archive, WireGuardKitGo, Go runtime, or Go process
-is part of the iPhone project. BoringTun is not a NetworkExtension adapter;
-it implements the WireGuard protocol without the packet-flow/UDP stack.
-The old WireGuardKit adapter cannot be used as a Rust ABI compatibility layer.
+Only the pinned Rust BoringTun engine implements the WireGuard protocol in
+the iOS target. BoringTun is not a NetworkExtension adapter; it provides no
+packet-flow or UDP stack. The Swift PacketTunnel owns those system APIs.
 
 ## Source & build
 
@@ -52,7 +51,7 @@ BoringTun is BSD-3-Clause; Cargo dependency licenses still need audit.
 
 ## Decisions and alternatives
 
-Go WireGuardKitGo is rejected by explicit user requirement.
+The product requires a Rust-backed, first-party iOS PacketTunnel.
 External WireGuard/Tailscale shifts VPN ownership outside this app and
 does not meet in-app control. Native IKEv2 changes server protocol.
 A bespoke Swift WireGuard cryptographic engine would add unjustified

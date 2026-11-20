@@ -1,67 +1,50 @@
-# Architecture
+# Security Agent iOS — active architecture
+
+## Deployment boundaries
 
 ```text
-iPhone SwiftUI AgentApp
-  ├── VPN status + modes → NETunnelProviderManager (public profile only)
-  ├── Pairing QR → CryptoKit X25519 + shared Keychain
-  └── VPN-gated WKWebView → http://10.8.0.1:8080/chat
-
-Shared Keychain (same Apple Team, iPhone App + PacketTunnel only)
-  ├── iPhone WireGuard X25519 private key (AfterFirstUnlockThisDeviceOnly)
-  └── optional pre-shared key (not generated until matching Mac provision)
-
-App Group (nonsecret)
-  └── public Mac peer key, endpoint, split/full mode, on-demand flag
-
-PacketTunnel extension, independent of App UI lifecycle
-  └── NEPacketTunnelProvider (Swift) → BoringTun Rust C FFI → UDP/packetFlow
-
-Mac Mini
-  ├── AgentMac SwiftUI pairing utility (public values + QR)
-  ├── wireguard-tools/wireguard-go via system daemon, not embedded in UI
-  ├── WireGuard peer for iPhone 10.8.0.2/32
-  └── agent HTTP application bound to 10.8.0.1:8080
+AgentApp.app (SwiftUI)
+  ├── NETunnelProviderManager (system VPN configuration, status, user consent)
+  ├── pairing QR / CryptoKit X25519 / shared Keychain
+  └── VPN-gated WKWebView -> private agent at 10.8.0.1:8080
+PacketTunnel.appex (Swift, NetworkExtension)
+  ├── NEPacketTunnelFlow and tunnel network settings
+  ├── Network.framework encrypted UDP underlay (routing pending #65)
+  ├── serial lifecycle, handshake and timer orchestration
+  └── Cloudflare BoringTun 0.7.1 Rust staticlib via upstream C ABI
+Shared App Group: public peer endpoint, public key, route mode and bounded events
+Shared Keychain: iPhone X25519 private key and optional PSK (never App Group)
+Mac Mini: separately managed Rust BoringTun WireGuard server + AgentMac pairing UI
 ```
 
-## Pairing contract, version 1
+The iOS app and Mac SwiftUI companion do not link the BoringTun static library.
+Only PacketTunnel owns the C bridging header and Rust archive. The iOS app
+does not run a separate VPN service or expose private keys to the WebView.
 
-QR codes contain JSON:
+## Versioned QR pairing
+
 - iPhone: `{"version":1,"kind":"iphone","publicKey":"<base64>"}`
 - Mac: `{"version":1,"kind":"mac","publicKey":"<base64>","endpoint":"host.example:51820"}`
+- Only public material is encoded. A QR is not authentication: compare the
+  displayed Mac public-key fingerprint through a trusted second channel.
+- Key rotation and per-client address allocation remain #20–#22.
 
-No QR contains the private key or PSK. Exchange keys over a channel where
-the endpoint/public-key authenticity can be verified out of band. A QR code
-is a transport, not authentication by itself. Register the iPhone public
-key in the Mac Mini WireGuard peer configuration first.
+## Threat model and constraints
 
-## Threat model
+- Private key: device-local, not synced or logged. Revoke a lost device on Mac.
+- WebView: only private agent origin after VPN connectivity; origin and JS
+  bridge isolation are independently tracked in #23 and #24.
+- PacketTunnel: serial Rust C-ABI calls, bounded buffers, authenticated
+  handshake before start completion. iPhone runtime testing remains #53/#58.
+- Split tunnel: no DNS override or public internet redirect. Full tunnel:
+  verify external UDP underlay and IPv4/IPv6 safety before enabling (#29/#65).
+- Roaming and BoringTun 0.7.1 rekey/liveness require signed device evidence (#57).
+- Apple signing, entitlement validity and protected CI cannot be inferred
+  from Linux checks or an unsigned Xcode build (#40/#48).
 
-- Lost phone: private key is not cloud-synced; use device protection,
-  revoke the peer on Mac, and rotate keys when needed.
-- Malicious QR: validate JSON version, kind, 32-byte public key and endpoint.
-  Confirm the displayed public-key fingerprint with the Mac before connecting.
-- Malicious web content: restrict WebView navigation to
-  `http://10.8.0.1:8080`; whitelist bridge messages; do not expose credentials.
-- VPN off: the UI must not instantiate/load the agent WebView.
-- DNS: no VPN DNS override for split; use public DNS only in full.
-- Reconnection: NetworkExtension and WireGuardAdapter handle network path
-  changes; on-demand is optional and must be tested on real hardware.
-- Full tunnel: server requires NAT and correctly routed IPv6. Avoid describing
-  this as a fail-closed kill switch until OS behavior is verified.
+## Current design decision
 
-## iPhone backend decision
-
-See [ADR-0001](ADR-0001-IOS-VPN-BACKEND.md). The iPhone app remains
-SwiftUI/Swift; Go is an implementation detail of the embedded WireGuard
-protocol backend in the PacketTunnel extension, **not** an iOS app server.
-Removing Go without also changing the custom WireGuard requirement would
-require a separate audited protocol engine. If VPN control can be external,
-we can remove the extension and the Go dependency entirely in a scoped pivot.
-
-## Current protocol-engine decision
-
-[ADR-0002](ADR-0002-RUST-BORINGTUN.md) replaces the older Go-based ADR.
-The client remains an iPhone SwiftUI application. PacketTunnel alone links
-an audited Rust BoringTun source build; Swift owns the Apple VPN packet flow,
-UDP I/O and connection lifecycle. The old WireGuardKitGo adapter is removed.
-Signed iPhone handshake and routing proof remain open.
+[ADR-0002](ADR-0002-RUST-BORINGTUN.md) is the authoritative backend decision.
+See [BORINGTUN_BUILD](BORINGTUN_BUILD.md) for reproducible native builds,
+[MAC_SERVER](MAC_SERVER.md) for peer provisioning, and
+[ARCHITECT_REVIEW_P0](ARCHITECT_REVIEW_P0.md) for open security gates.

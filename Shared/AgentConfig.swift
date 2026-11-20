@@ -50,7 +50,7 @@ struct ServerProfile: Codable, Equatable {
         guard let bytes = Data(base64Encoded: publicKey), bytes.count == 32 else {
             throw AgentConfigurationError.invalidPublicKey
         }
-        // NetworkExtension/WireGuardKit validates host resolution at connect time.
+        // NWConnection resolves the validated endpoint when the tunnel starts.
         guard !endpoint.isEmpty, !endpoint.contains(where: { $0.isWhitespace || $0.isNewline }),
               let components = URLComponents(string: "udp://\(endpoint)"),
               let host = components.host, !host.isEmpty,

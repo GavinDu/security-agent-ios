@@ -1,64 +1,36 @@
-# Security Agent iOS — roadmap and GitHub issue breakdown
+# Security Agent iOS — active Rust roadmap
 
-**Status:** An initial source scaffold exists on PR #1. Neither the native Rust BoringTun PacketTunnel link nor a signed iPhone
-VPN handshake has been verified.
-The physical Mac Mini's WireGuard/agent service is separately configured.
+The current protocol engine is pinned Rust BoringTun 0.7.1 linked solely
+into the Swift PacketTunnel extension. CI-native iPhoneOS compile/link,
+simulator XCTest, signed iPhone handshake, and stable Mac peer routing
+must each be proven before claiming a working VPN.
 
-## Build order and dependency graph
+## Independently closeable phases
 
-1. [Phase 0 — Foundation](https://github.com/GavinDu/security-agent-ios/issues/6):
-   Rust migration (#51–#56), native link/FFI (#52–#53), iOS routing (#54),
-   CI/security (#55/#58), liveness (#57), signing (#40) and required checks (#48).
-2. [Phase 1 — VPN Core](https://github.com/GavinDu/security-agent-ios/issues/7):
-   provider lifecycle (#14), VPN manager permission/status (#15), roaming/on-demand
-   (#16), private diagnostics (#17).
-3. [Phase 2 — Pairing & Keys](https://github.com/GavinDu/security-agent-ios/issues/8):
-   baseline authenticated pairing (#4), verified Mac fingerprint (#18),
-   Mac QR import (#19), peer address allocation (#20), optional PSK (#21),
-   key rotation and revocation (#22).
-4. [Phase 3 — Agent UI](https://github.com/GavinDu/security-agent-ios/issues/9):
-   WebView isolation (#23), versioned JS bridge (#24), offline/streaming state
-   (#25), voice transcription (#26).
-5. [Phase 4 — Routing](https://github.com/GavinDu/security-agent-ios/issues/10):
-   physical device E2E (#3), Mac endpoint/launchd (#27), split/DNS (#28),
-   full NAT/IPv6 (#29), route transitions (#30).
-6. [Phase 5 — Hardening & TestFlight](https://github.com/GavinDu/security-agent-ios/issues/11):
-   device release gate (#5), security/licensing review (#31), signed TestFlight
-   (#32), accessibility (#33), 72-hour soak (#34).
+1. [Foundation #6](https://github.com/GavinDu/security-agent-ios/issues/6): Rust archive/ABI #52/#53, iPhone transport #54, native CI/license #13/#39/#55,
+   panic and memory safety #58, liveness #57, signing #40, branch protection #48.
+2. [VPN lifecycle #7](https://github.com/GavinDu/security-agent-ios/issues/7): startup/teardown #14, permission-safe persistence #15,
+   roaming/on-demand #16, bounded diagnostics #17.
+3. [Pairing #8](https://github.com/GavinDu/security-agent-ios/issues/8): public identity verification #4/#18, QR import #19,
+   address allocation #20, authenticated PSK #21, rotation/revocation #22.
+4. [Agent chat #9](https://github.com/GavinDu/security-agent-ios/issues/9): WebView isolation #23, JS bridge #24,
+   offline state #25 and voice #26.
+5. [Routing and Mac gateway #10](https://github.com/GavinDu/security-agent-ios/issues/10): E2E #3, Mac server #27, split/DNS #28,
+   full IPv4/IPv6 #29 and safe transitions #30.
+6. [Hardening and TestFlight #11](https://github.com/GavinDu/security-agent-ios/issues/11): review #5/#31, signing #32,
+   accessibility #33, soak #34, Rust host SDK #63, completed Cargo inventory #64,
+   UDP underlay route isolation #65.
 
-## General definition of done
+## Acceptance and security policy
 
-- A child issue closes when its own acceptance criteria pass; do not wait
-  for all other epics to close.
-- Add deterministic tests, supported logs or redacted screenshots for proof.
-- Parser-only workflows are not native build evidence.
-- Merge PRs only after all required GitHub Actions checks pass.
-- VPN networking, iPhone background execution, Mac NAT and TestFlight need
-  physical devices, networking access and owner-controlled signing.
-- **Never** upload WireGuard private keys, PSKs, provisioning or session tokens.
+- Close atomic issues on matching-source test evidence, not waiting for all phases.
+- Preserve failures in native GitHub Actions; do not bypass required checks.
+- Use the pinned BoringTun C ABI, Rust and Cargo.lock; no unreviewed binaries.
+- Never place private keys, PSKs, session tokens or signing material in Git.
+- Mac listener deployment, Apple entitlements, full/split routes, roaming
+  and real-device stability are separate physical-environment gates.
+- Consult [ADR-0002](ADR-0002-RUST-BORINGTUN.md),
+  [ARCHITECTURE](ARCHITECTURE.md) and [BORINGTUN_BUILD](BORINGTUN_BUILD.md).
 
-## QR pairing threat model
-
-The public QR contains an unauthenticated key and endpoint. A nearby attacker
-can replace it with their own public key. The iPhone therefore displays a
-SHA-256 fingerprint of the key and requires user confirmation against the same
-fingerprint on a trusted Mac display before saving. This is still manual
-out-of-band authentication; it does not authenticate a QR automatically.
-Issue #18 tracks full pairing acceptance and negative tests.
-
-### Foundation SwiftPM compatibility issue
-
-- [#42: Repair pinned WireGuard Apple manifest](https://github.com/GavinDu/security-agent-ios/issues/42): immutable vendor source + fail-closed tools-version overlay, tracked separately from #2/#12/#38. Requires native CI evidence to close.
-
-### iPhone WireGuard/Go architecture review
-
-- [#50 — Revisit embedded Go on iPhone](https://github.com/GavinDu/security-agent-ios/issues/50): ADR-0001 keeps the iPhone app in Swift and Go isolated to the optional-to-the-product WireGuard protocol backend in PacketTunnel. If in-app VPN control is dropped, a separate migration can eliminate the extension and Go entirely.
-
-## Rust BoringTun migration
-
-**Current decision:** [ADR-0002](ADR-0002-RUST-BORINGTUN.md).
-Legacy Go/WireGuardKitGo-only tickets #2/#12/#36/#37/#38/#47/#49 were
-closed as **not planned**, superseded by new independently testable Rust
-issues #51–#58. This does not mean the Rust VPN works; iPhoneOS archive
-link, simulator XCTest, real-device handshake, BoringTun 0.7.1 liveness
-regression and license/SBOM audit remain explicit exit criteria.
+Historical migration decisions and retired work remain in Git history and
+closed issue records, not in active implementation instructions.

@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-// BoringTun is built as a Rust staticlib by PacketTunnel. No SwiftPM Go package.
+// PacketTunnel builds BoringTun from pinned Rust source; there are no external Swift packages.
 let package = Package(name: "SecurityAgentDependencies", dependencies: [])
