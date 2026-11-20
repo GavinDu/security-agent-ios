@@ -4,7 +4,6 @@ The iOS packet-tunnel target alone owns WireGuardKit and its native Go archive.
 Source/config checks do not substitute for xcodebuild target-link evidence.
 """
 from pathlib import Path
-import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +29,7 @@ class BackendBoundaryTests(unittest.TestCase):
             for path in (ROOT / root).rglob("*.swift"):
                 with self.subTest(path=str(path.relative_to(ROOT))):
                     code = path.read_text()
-                    self.assertNotRegex(code, r"(?m)^\\s*import\\s+WireGuardKit(?:Go|C)?\\b")
+                    self.assertNotRegex(code, r"(?m)^\s*import\s+WireGuardKit(?:Go|C)?\b")
                     self.assertNotIn("wgTurnOn(", code)
 
 if __name__ == "__main__":
