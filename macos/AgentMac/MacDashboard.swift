@@ -7,6 +7,7 @@ struct MacDashboard: View {
     @AppStorage("macWireGuardPublicKey") private var publicKey = ""
     @AppStorage("macWireGuardEndpoint") private var endpoint = ""
     @State private var iphonePublicKey = ""
+    @State private var iphonePairingText = ""
     @State private var validationMessage: String?
 
     private var profile: ServerProfile? {
@@ -37,6 +38,23 @@ struct MacDashboard: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("iPhone peer registration") {
+                    TextField("Paste iPhone pairing QR JSON", text: $iphonePairingText)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Import iPhone pairing payload") {
+                        do {
+                            let payload = try JSONDecoder().decode(
+                                PairingQRCode.self, from: Data(iphonePairingText.utf8)
+                            )
+                            guard payload.version == 1, payload.kind == .iphone,
+                                  let raw = Data(base64Encoded: payload.publicKey), raw.count == 32 else {
+                                throw AgentConfigurationError.invalidPublicKey
+                            }
+                            iphonePublicKey = payload.publicKey
+                            validationMessage = nil
+                        } catch {
+                            validationMessage = "Invalid iPhone pairing payload: \(error.localizedDescription)"
+                        }
+                    }
                     TextField("iPhone public key", text: $iphonePublicKey)
                         .textFieldStyle(.roundedBorder)
                     TextEditor(text: .constant(peerStanza))
