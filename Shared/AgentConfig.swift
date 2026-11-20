@@ -27,6 +27,7 @@ enum AgentConfigurationError: LocalizedError {
     case unsupportedQRVersion
     case missingProfile
     case missingAppGroup
+    case nativeProfileMismatch
     case unverifiedFullTunnel
 
     var errorDescription: String? {
@@ -37,6 +38,7 @@ enum AgentConfigurationError: LocalizedError {
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."
         case .missingAppGroup: return "App Group is unavailable; check signing capabilities."
+        case .nativeProfileMismatch: return "VPN preferences and paired profile do not match. Disconnect and re-save your Mac pairing in Security Agent before connecting."
         case .unverifiedFullTunnel: return "Full tunnel is disabled until encrypted UDP underlay routing and leak safety pass physical iPhone tests. Use split tunnel."
         }
     }
@@ -62,6 +64,17 @@ struct ServerProfile: Codable, Equatable {
             throw AgentConfigurationError.invalidEndpoint
         }
         return self
+    }
+
+    /// Binds the public profile stored by the app to the system VPN profile.
+    /// Every target hashes the same validated JSON with sorted keys. The
+    /// private WireGuard identity and optional PSK are never in this model.
+    func publicProfileDigest() throws -> String {
+        let canonical = try validated()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let bytes = try encoder.encode(canonical)
+        return Data(SHA256.hash(data: bytes)).base64EncodedString()
     }
 
     // Full SHA-256 digest of the canonical WireGuard public key bytes.

@@ -141,8 +141,14 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         let validated: ServerProfile
-        do { validated = try candidate.validated() }
-        catch { errorMessage = error.localizedDescription; return }
+        let bindingDigest: String
+        do {
+            validated = try candidate.validated()
+            bindingDigest = try validated.publicProfileDigest()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
         guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
             return
@@ -155,8 +161,10 @@ final class TunnelManager: NSObject, ObservableObject {
             ?? NETunnelProviderProtocol()
         configuration.providerBundleIdentifier = AgentConstants.tunnelBundleID
         configuration.serverAddress = validated.endpoint
-        // No private key, PSK or decrypted traffic in the system profile.
-        configuration.providerConfiguration = ["profileVersion": 1]
+        // Only the versioned SHA-256 of validated public metadata; never
+        // include the private WireGuard key or preshared key here.
+        configuration.providerConfiguration =
+            NativeProfileBindingPolicy.metadata(for: bindingDigest)
         selected.protocolConfiguration = configuration
         selected.localizedDescription = "Security Agent VPN"
         selected.isEnabled = true
@@ -188,6 +196,10 @@ final class TunnelManager: NSObject, ObservableObject {
     }
 
     func connect() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.connect() }
+            return
+        }
         guard !legacyOnDemandDisableInFlight else {
             errorMessage = "Finish disabling legacy VPN auto-connect first."
             return
@@ -207,6 +219,16 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard let manager else {
             errorMessage = "Install the VPN configuration before connecting."
+            return
+        }
+        // App-side early rejection; the extension independently validates
+        // fresh system metadata before any Rust engine or routes are created.
+        guard let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
+              NativeProfileBindingPolicy.allowsStart(
+                metadata: native.providerConfiguration,
+                profileDigest: try? profile.publicProfileDigest()
+              ) else {
+            errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
             return
         }
         do { try manager.connection.startVPNTunnel() }

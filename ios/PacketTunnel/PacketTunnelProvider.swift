@@ -27,6 +27,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(AgentConfigurationError.missingProfile)
                 return
             }
+            // Do not trust a stale App Group profile after a partial native
+            // preferences save. Reject v1/missing/mismatched metadata before
+            // constructing the Rust engine or installing VPN routes.
+            guard let native = self.protocolConfiguration as? NETunnelProviderProtocol,
+                  NativeProfileBindingPolicy.allowsStart(
+                    metadata: native.providerConfiguration,
+                    profileDigest: try? profile.publicProfileDigest()
+                  ) else {
+                _ = self.lifecycle.finishStart(success: false)
+                SharedDiagnostics.record("start_failed")
+                completionHandler(AgentConfigurationError.nativeProfileMismatch)
+                return
+            }
             let transport = BoringTunTransport(provider: self)
             self.engine = transport
             transport.start(profile: profile) { [weak self] error in
