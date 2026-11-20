@@ -72,7 +72,7 @@ xcrun lipo -info "$out/libwg-go.a"
 # lipo -info alone succeeds even if a required slice is absent.
 # Refuse to link a simulator/device archive with the wrong requested ABI.
 for arch in $archs; do
-  if ! xcrun lipo -verify_arch "$arch" "$out/libwg-go.a"; then
+  if ! xcrun lipo "$out/libwg-go.a" -verify_arch "$arch"; then
     echo "WireGuard Go archive is missing Xcode architecture: $arch" >&2
     exit 2
   fi

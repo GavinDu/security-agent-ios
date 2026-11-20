@@ -112,3 +112,21 @@ and both CI platforms run bootstrap before Tuist resolution.
 
 **Disposition:** source fix proposed and pushed, not independently approved
 by a human reviewer and not accepted until native CI verifies it.
+
+## 2026-11-20 — New native iOS failure: lipo argument order
+
+Actions [#44722408227](https://github.com/GavinDu/security-agent-ios/actions/runs/44722408227)
+passed foundation static checks and progressed through `tuist install` and
+the Go bridge build, exposing an error in our archive architecture guard:
+
+```
+lipo: unknown architecture specification flag: .../libwg-go.a
+in specifying -verify_arch operation
+```
+
+**Principal review:** `lipo` requires its input archive *before*
+`-verify_arch`. The previously mocked CLI accepted the inverse,
+so the mock test was too permissive. Corrected the invocation to
+`xcrun lipo "$archive" -verify_arch "$arch"`, and changed the fixture to
+reject wrong argument ordering and missing archive files. Native compile
+and link remain unverified until the corrected Actions run passes.

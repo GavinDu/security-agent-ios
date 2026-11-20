@@ -122,3 +122,12 @@ the extension's pre-build phase has produced `libwg-go.a`. A dynamic
 The wrapper runs `xcrun lipo -verify_arch` for every Xcode-requested
 `ARCHS` slice. `lipo -info` alone cannot enforce compatible archives.
 These checks do not replace the macOS native CI job.
+
+### lipo input-order correction
+
+The native iPhoneOS build in Actions #44722408227 reached the Go static
+archive guard but failed because our `lipo -verify_arch` arguments were in
+the wrong order. Apple `lipo` requires the input archive before
+`-verify_arch`. The script and mock were corrected together; the
+new test is intentionally sensitive to command order. This change does
+**not** certify final device/simulator linking.

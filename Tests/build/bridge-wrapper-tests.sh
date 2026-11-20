@@ -23,8 +23,8 @@ if [[ "$1" == "--sdk" ]]; then
   echo "/mock/sdk/$2"
 elif [[ "$1" == "lipo" && "$2" == "-info" ]]; then
   echo "Architectures in fat file: arm64"
-elif [[ "$1" == "lipo" && "$2" == "-verify_arch" ]]; then
-  [[ "${FAKE_MISSING_ARCH:-}" != "$3" ]]
+elif [[ "$1" == "lipo" && "$3" == "-verify_arch" ]]; then
+  [[ -s "$2" ]] && [[ "${FAKE_MISSING_ARCH:-}" != "$4" ]]
 else
   exit 2
 fi
