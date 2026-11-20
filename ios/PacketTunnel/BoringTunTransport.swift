@@ -190,8 +190,11 @@ final class BoringTunTransport {
                 }
             })
         case .writeIPv4(let packet):
+            // The decrypted peer is not allowed to inject malformed frames.
+            guard IPPacketEnvelope.isValid(packet, family: .ipv4) else { return }
             provider?.packetFlow.writePackets([packet], withProtocols: [NSNumber(value: AF_INET)])
         case .writeIPv6(let packet):
+            guard IPPacketEnvelope.isValid(packet, family: .ipv6) else { return }
             provider?.packetFlow.writePackets([packet], withProtocols: [NSNumber(value: AF_INET6)])
         }
     }
@@ -206,11 +209,14 @@ final class BoringTunTransport {
                 if let codec = self.codec {
                     for (packet, proto) in zip(packets, protocols) {
                         let af = proto.int32Value
-                        guard (af == AF_INET || af == AF_INET6), !packet.isEmpty else { continue }
-                        // Reject traffic with spoofed protocol/packet versions.
-                        guard let firstByte = packet.first,
-                              (af == AF_INET && firstByte >> 4 == 4) ||
-                              (af == AF_INET6 && firstByte >> 4 == 6) else { continue }
+                        let family: IPPacketFamily
+                        switch af {
+                        case AF_INET: family = .ipv4
+                        case AF_INET6: family = .ipv6
+                        default: continue
+                        }
+                        // Drop malformed/torn IP envelopes before the Rust C ABI.
+                        guard IPPacketEnvelope.isValid(packet, family: family) else { continue }
                         do { try self.process(codec.encapsulate(packet)) }
                         catch { self.fail(error); return }
                     }

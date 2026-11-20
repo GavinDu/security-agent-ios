@@ -44,6 +44,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Verify packet-envelope checks on the exact shared Swift source.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
+            Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
+          "$RUNNER_TEMP/ip-envelope-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
