@@ -28,6 +28,27 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
         }
     }
 
+    func testIPv4MappedIPv6UsesInstalledSplitRoutes() {
+        for host in ["::ffff:10.8.0.1", "[::ffff:10.8.0.1]",
+                     "::ffff:a08:1", "::FFFF:0A08:0001"] {
+            XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ), host)
+        }
+        for host in ["::ffff:203.0.113.42", "[::ffff:10.8.1.1]",
+                     "2001:db8::1", "[2001:db8::1]"] {
+            XCTAssertTrue(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ), host)
+        }
+        for host in ["::ffff:10.8.0.256", "::ffff:bad::1",
+                     "[::ffff:10.8.0.1", "::ffff:10.8.0.1]"] {
+            XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ), host)
+        }
+    }
+
     func testRejectsAmbiguousNumericIPv4FormsAndInvalidRoutes() {
         for host in ["10.8.0.001", "10.8.0.256", "10.8.0.1.", "167837697",
                      "0x0a080001", "0X0A080001", "0x0a.0x08.0x00.0x01",
