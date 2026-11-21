@@ -54,7 +54,12 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
-          # Strict public/private key representation before Rust FFI allocation.
+          # Bound scanned Mac QR JSON before any decode; canonical server key only.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
+            Shared/MacPairingQRInputPolicy.swift \
+            Tests/build/mac_pairing_qr_input_smoke.swift
+          "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
+          # Validate nonzero canonical WireGuard key representations before Rust FFI.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-key-input-tests" \
             Shared/BoringTunKeyInputPolicy.swift \
             Tests/build/boringtun_key_input_smoke.swift
