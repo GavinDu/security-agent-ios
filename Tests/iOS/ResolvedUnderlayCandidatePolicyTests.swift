@@ -45,4 +45,25 @@ final class ResolvedUnderlayCandidatePolicyTests: XCTestCase {
             ["::ffff:10.8.1.1"], includedIPv4CIDRs: routes
         ), "::ffff:10.8.1.1")
     }
+    func testRejectsOversizedAndNULNumericAnswers() {
+        let publicIP = "203.0.113.42"
+        XCTAssertEqual(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            Array(repeating: publicIP, count: 32), includedIPv4CIDRs: routes
+        ), publicIP)
+        XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            Array(repeating: publicIP, count: 33), includedIPv4CIDRs: routes
+        ))
+        for malformed in [
+            "203.0.113.42\0unsafe", "\0203.0.113.42",
+            String(repeating: "1", count: 46)
+        ] {
+            XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                [malformed], includedIPv4CIDRs: routes
+            ))
+            XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                [publicIP, malformed], includedIPv4CIDRs: routes
+            ))
+        }
+    }
+
 }
