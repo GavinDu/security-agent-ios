@@ -21,11 +21,11 @@ enum AgentChatResourcePolicy {
                 "action": ["type": "block"]
             ],
             [
-                "trigger": ["url-filter": "^http://\\(host):8080(/|$)"],
+                "trigger": ["url-filter": "^http://\(host):8080(/|$)"],
                 "action": ["type": "ignore-previous-rules"]
             ],
             [
-                "trigger": ["url-filter": "^ws://\\(host):8080(/|$)"],
+                "trigger": ["url-filter": "^ws://\(host):8080(/|$)"],
                 "action": ["type": "ignore-previous-rules"]
             ]
         ]
