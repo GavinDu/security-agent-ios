@@ -29,11 +29,16 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
     }
 
     func testRejectsAmbiguousNumericIPv4FormsAndInvalidRoutes() {
-        for host in ["10.8.0.001", "10.8.0.256", "10.8.0.1.", "167837697"] {
+        for host in ["10.8.0.001", "10.8.0.256", "10.8.0.1.", "167837697",
+                     "0x0a080001", "0X0A080001", "0x0a.0x08.0x00.0x01",
+                     "10.0x08.0.1", "0xC0000214", "0x00000000"] {
             XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
             ))
         }
+        XCTAssertTrue(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+            host: "0xface.home.example", includedIPv4CIDRs: RouteMode.split.allowedIPs
+        ))
         XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
             host: "203.0.113.42", includedIPv4CIDRs: ["0.0.0.0/0"]
         ))
