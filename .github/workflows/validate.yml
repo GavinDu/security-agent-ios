@@ -54,6 +54,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Bound scanned Mac QR JSON before any decode; canonical server key only.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
+            Shared/MacPairingQRInputPolicy.swift \
+            Tests/build/mac_pairing_qr_input_smoke.swift
+          "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
