@@ -56,6 +56,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-policy-tests" \
             Shared/TunnelUnderlayPolicy.swift Tests/build/tunnel_underlay_policy_smoke.swift
           "$RUNNER_TEMP/underlay-policy-tests"
+          # Validate pre-resolved A/AAAA numeric endpoint candidates against split routes.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/resolved-underlay-candidates-tests" \
+            Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
+            Tests/build/resolved_underlay_candidate_smoke.swift
+          "$RUNNER_TEMP/resolved-underlay-candidates-tests"
           # Exercise the production legacy migration decision matrix.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift

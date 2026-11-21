@@ -1,0 +1,38 @@
+import Foundation
+import XCTest
+@testable import AgentApp
+
+final class ResolvedUnderlayCandidatePolicyTests: XCTestCase {
+    private let routes = RouteMode.split.allowedIPs
+
+    func testSelectsAlreadyResolvedSafeNumericCandidateWithoutDNS() {
+        XCTAssertEqual(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            ["203.0.113.42", "2001:db8::1"], includedIPv4CIDRs: routes
+        ), "203.0.113.42")
+        XCTAssertEqual(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            ["2001:db8::1", "203.0.113.42"], includedIPv4CIDRs: routes
+        ), "2001:db8::1")
+    }
+
+    func testFailClosedForUnsafeMixedResolvedAnswers() {
+        for hostile in ["10.8.0.1", "::ffff:10.8.0.1", "home.example.net",
+                        "0x0a080001", "203.0.113.42:51820",
+                        "203.0.113.42 ", "fe80::1%en0", "10.8.0.256"] {
+            XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                ["203.0.113.42", hostile], includedIPv4CIDRs: routes
+            ), hostile)
+        }
+    }
+
+    func testRejectsNoAnswersOrInvalidRoute() {
+        XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            [], includedIPv4CIDRs: routes
+        ))
+        XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            ["203.0.113.42"], includedIPv4CIDRs: ["broken"]
+        ))
+        XCTAssertEqual(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+            ["::ffff:10.8.1.1"], includedIPv4CIDRs: routes
+        ), "::ffff:10.8.1.1")
+    }
+}
