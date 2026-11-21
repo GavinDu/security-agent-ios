@@ -15,11 +15,25 @@ class FullTunnelSafetyTests(unittest.TestCase):
             source.index("TunnelRouteSafetyPolicy.permitsStart(validated.routeMode)"),
             source.index("TunnelUnderlayPolicy.permitsLiteralEndpoint(")
         )
+        # DNS resolution + complete mixed-answer validation now precede
+        # Keychain, Rust FFI and NetworkExtension settings, not a direct
+        # networkSettings call from the original synchronous start method.
         self.assertLess(
             source.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-            source.index("let settings = try self.networkSettings(profile: validated")
+            source.index("self.dnsResolver.resolve(host: lookupHost")
         )
-        self.assertIn("try self.networkSettings(profile: validated", source)
+        self.assertLess(
+            source.index("self.dnsResolver.resolve(host: lookupHost"),
+            source.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress(")
+        )
+        self.assertLess(
+            source.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("),
+            source.index("let settings = try networkSettings(profile: profile, remoteHost: pinnedHost)")
+        )
+        self.assertLess(
+            source.index("let settings = try networkSettings(profile: profile, remoteHost: pinnedHost)"),
+            source.index("provider.setTunnelNetworkSettings(settings)")
+        )
 
     def test_app_fails_closed_before_mode_edit_and_never_forces_disconnect(self):
         source = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
