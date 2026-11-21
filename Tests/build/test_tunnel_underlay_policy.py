@@ -32,6 +32,12 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
         self.assertIn("canonicalIPv4(host)", POLICY)
         self.assertIn('text.lowercased().hasPrefix("0x")', POLICY)
         self.assertIn("nonEmptyLabels.allSatisfy", POLICY)
+        # Mapped IPv4-in-IPv6 must be compared against the same installed
+        # IPv4 CIDR route, not treated as an ordinary DNS hostname.
+        self.assertIn("inet_pton(AF_INET6", POLICY)
+        self.assertIn("mappedIPv4 & $0.mask == $0.network & $0.mask", POLICY)
+        self.assertIn("::ffff:10.8.0.1", SMOKE)
+        self.assertIn("::ffff:a08:1", SMOKE)
         self.assertIn("0x0a080001", SMOKE)
         self.assertIn("0x0a.0x08.0x00.0x01", SMOKE)
         self.assertIn("prefix == 0", POLICY)
