@@ -222,12 +222,19 @@ jobs:
             --metadata "$RUNNER_TEMP/boringtun-ios-metadata.json" \
             --lock Vendor/boringtun/Cargo.lock \
             --output "$RUNNER_TEMP/boringtun-ios-license-inventory.json"
+          # Convert only the previously reviewed lock-based source inventory;
+          # this is NOT a native iOS linked-binary SBOM or final NOTICE.
+          python3 scripts/emit-boringtun-sbom.py \
+            --inventory "$RUNNER_TEMP/boringtun-ios-license-inventory.json" \
+            --output "$RUNNER_TEMP/boringtun-ios-source-sbom.json"
       - name: Upload public-license inventory only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: boringtun-ios-license-inventory
-          path: ${{ runner.temp }}/boringtun-ios-license-inventory.json
+          path: |
+            ${{ runner.temp }}/boringtun-ios-license-inventory.json
+            ${{ runner.temp }}/boringtun-ios-source-sbom.json
           retention-days: 14
 
   native-ios:
