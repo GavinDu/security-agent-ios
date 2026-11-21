@@ -13,7 +13,11 @@ class UnderlayDNSPreRouteTests(unittest.TestCase):
         start = TRANSPORT.split("func start(profile:", 1)[1].split("private func networkSettings(", 1)[0]
         self.assertIn("dnsResolver.resolve(host: host", start)
         self.assertIn("ResolvedUnderlayCandidatePolicy.selectPinnedAddress(", start)
-        self.assertIn("Network.NWEndpoint.Host(pinnedHost)", start)
+        self.assertIn("Network.IPv4Address(pinnedHost)", start)
+        self.assertIn("Network.IPv6Address(pinnedHost)", start)
+        self.assertIn("destination = .ipv4(address)", start)
+        self.assertIn("destination = .ipv6(address)", start)
+        self.assertIn("self.connect(host: destination, port: port)", start)
         self.assertIn("networkSettings(profile: profile, remoteHost: pinnedHost)", start)
         self.assertNotIn("Network.NWEndpoint.Host(host)", start)
         self.assertLess(start.index("dnsResolver.resolve(host: host"),

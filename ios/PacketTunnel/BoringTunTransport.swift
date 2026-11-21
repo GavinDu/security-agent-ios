@@ -97,6 +97,16 @@ final class BoringTunTransport {
             codec = try BoringTunCodec(
                 privateKey: secret, serverKey: profile.publicKey, presharedKey: psk
             )
+            // Force a typed numeric endpoint; never fall back to a DNS
+            // .name host even if future resolver normalization changes.
+            let destination: Network.NWEndpoint.Host
+            if let address = Network.IPv4Address(pinnedHost) {
+                destination = .ipv4(address)
+            } else if let address = Network.IPv6Address(pinnedHost) {
+                destination = .ipv6(address)
+            } else {
+                throw AgentConfigurationError.unsafeUnderlayEndpoint
+            }
             let settings = try networkSettings(profile: profile, remoteHost: pinnedHost)
             provider.setTunnelNetworkSettings(settings) { [weak self] error in
                 self?.queue.async {
@@ -106,7 +116,7 @@ final class BoringTunTransport {
                         self.fail(error)
                         return
                     }
-                    self.connect(host: Network.NWEndpoint.Host(pinnedHost), port: port)
+                    self.connect(host: destination, port: port)
                 }
             }
         } catch {
