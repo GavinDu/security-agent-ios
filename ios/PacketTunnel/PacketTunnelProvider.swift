@@ -1,0 +1,109 @@
+import Foundation
+import NetworkExtension
+import OSLog
+
+// All WireGuard cryptography runs inside pinned Rust BoringTun (staticlib).
+// All provider engine ownership and callback completion transitions are
+// serialized on lifecycleQueue, separately from BoringTunTransport's
+// queue-confined Rust C ABI.
+final class PacketTunnelProvider: NEPacketTunnelProvider {
+    private let logger = Logger(subsystem: "com.gavindu.securityagent", category: "PacketTunnel")
+    private let lifecycleQueue = DispatchQueue(label: "com.gavindu.securityagent.provider-lifecycle")
+    private var lifecycle = PacketTunnelProviderState()
+    private var engine: BoringTunTransport?
+    private var stopWaiters: [() -> Void] = []
+
+    override func startTunnel(options: [String: NSObject]?,
+                              completionHandler: @escaping (Error?) -> Void) {
+        lifecycleQueue.async {
+            guard self.lifecycle.beginStart() else {
+                completionHandler(BoringTunError.initializationFailed)
+                return
+            }
+            SharedDiagnostics.record("starting")
+            guard let profile = SharedProfileStore.load() else {
+                _ = self.lifecycle.finishStart(success: false)
+                SharedDiagnostics.record("start_failed")
+                completionHandler(AgentConfigurationError.missingProfile)
+                return
+            }
+            // Do not trust a stale App Group profile after a partial native
+            // preferences save. Reject v1/missing/mismatched metadata before
+            // constructing the Rust engine or installing VPN routes.
+            guard let native = self.protocolConfiguration as? NETunnelProviderProtocol,
+                  native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+                  native.serverAddress == profile.endpoint,
+                  NativeProfileBindingPolicy.allowsStart(
+                    metadata: native.providerConfiguration,
+                    profileDigest: try? profile.publicProfileDigest()
+                  ) else {
+                _ = self.lifecycle.finishStart(success: false)
+                SharedDiagnostics.record("start_failed")
+                completionHandler(AgentConfigurationError.nativeProfileMismatch)
+                return
+            }
+            let transport = BoringTunTransport(provider: self)
+            self.engine = transport
+            transport.start(profile: profile) { [weak self] error in
+                guard let self else {
+                    completionHandler(BoringTunError.stopped)
+                    return
+                }
+                self.lifecycleQueue.async {
+                    // An old callback must never clear the next engine.
+                    guard self.engine === transport,
+                          self.lifecycle.finishStart(success: error == nil) else {
+                        SharedDiagnostics.record("start_failed")
+                        completionHandler(BoringTunError.stopped)
+                        return
+                    }
+                    if let error {
+                        SharedDiagnostics.record("start_failed")
+                        self.logger.error("BoringTun tunnel start failed")
+                        self.engine = nil
+                        completionHandler(error)
+                    } else {
+                        // Success means a verified WireGuard handshake,
+                        // never merely an open UDP socket.
+                        SharedDiagnostics.record("connected")
+                        self.logger.info("Rust WireGuard peer handshake complete")
+                        completionHandler(nil)
+                    }
+                }
+            }
+        }
+    }
+
+    override func stopTunnel(with reason: NEProviderStopReason,
+                             completionHandler: @escaping () -> Void) {
+        lifecycleQueue.async {
+            self.stopWaiters.append(completionHandler)
+            guard self.lifecycle.beginStop() else {
+                // A second stop during teardown only queues its completion.
+                if self.lifecycle.phase == .idle { self.finishStopWaiters() }
+                return
+            }
+            guard let transport = self.engine else {
+                _ = self.lifecycle.finishStop()
+                self.finishStopWaiters()
+                return
+            }
+            transport.stop {
+                self.lifecycleQueue.async {
+                    if self.engine === transport { self.engine = nil }
+                    _ = self.lifecycle.finishStop()
+                    self.finishStopWaiters()
+                }
+            }
+        }
+    }
+
+    private func finishStopWaiters() {
+        // The provider cannot release callbacks early; collect once and
+        // invoke outside the mutable waiter array.
+        let waiters = stopWaiters
+        stopWaiters.removeAll()
+        SharedDiagnostics.record("stopped")
+        for completion in waiters { completion() }
+    }
+}

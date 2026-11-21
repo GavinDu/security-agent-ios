@@ -1,0 +1,70 @@
+# Dependencies by platform
+
+## iPhone / iPad
+
+| Component | Library / framework | Integration |
+| --- | --- | --- |
+| UI | SwiftUI, Foundation | Apple SDK |
+| Packet tunnel / on-demand | NetworkExtension | Apple entitlement required |
+| Tunnel transport | Swift NetworkExtension + Network.framework | Native iOS PacketTunnel extension |
+| WireGuard crypto | Cloudflare BoringTun BSD-3-Clause | Pinned Rust staticlib, C FFI; see BORINGTUN_BUILD.md |
+| Chat | WebKit (WKWebView) | Apple SDK |
+| Private key generation | CryptoKit (Curve25519.KeyAgreement) | Apple SDK |
+| Secret persistence | Security (Keychain Services) | Shared Keychain access group |
+| Pairing scan | AVFoundation | Camera permission |
+| Pairing output | CoreImage, CoreImage.CIFilterBuiltins | QR generation |
+| Speech | Speech, AVFoundation | Optional later phase |
+| Diagnostics | OSLog | Apple SDK |
+| Build | Xcode, Tuist, Swift Package Manager | Development machine |
+| Testing | XCTest | Apple SDK |
+
+**Not needed for v1:** Alamofire, SQLite, Firebase, CocoaPods, Lottie,
+SwiftUIIntrospect, ProtonUIFoundations. Proton Lumo's implementation pulls
+Lottie and an internal Proton UI foundations dependency, which is unsuitable
+as a mandatory prerequisite for this independent application.
+
+## Mac Mini desktop + server
+
+| Component | Library / tool | Integration |
+| --- | --- | --- |
+| Companion UI | SwiftUI, AppKit, Foundation | Apple SDK |
+| Pairing QR | CoreImage | Apple SDK |
+| Local status/keys | Security, OSLog | Apple SDK |
+| Peer tooling | `wireguard-tools` (`wg`) | Optional key creation and peer inspection, not the server protocol engine |
+| Mac WireGuard userspace protocol | Rust BoringTun CLI | Separately pinned/administered macOS daemon; not linked into AgentMac |
+| Startup | `launchd` | macOS system daemon |
+| IP forwarding / NAT | `sysctl` + `pf` | Only for full tunnel, requires privileged setup |
+| Agent backend | User's HTTP service at `10.8.0.1:8080` | Launchd or containers |
+| Remote endpoint | Public DNS/DDNS record and UDP 51820 forward | Router setup |
+
+The Mac Mini hosts a **separately managed Rust BoringTun server**; the SwiftUI
+Mac companion only displays pairing information. Installing `wg` tools does
+not select the userspace protocol backend. Configure launchd or any
+`wg-quick` wrapper to invoke the reviewed Rust executable explicitly,
+and verify the live process before considering server deployment complete.
+
+## Upstream sources and licensing
+
+- [Cloudflare BoringTun](https://github.com/cloudflare/boringtun) — BSD-3-Clause, pinned tag 0.7.1, commit `253f7afb2b3df9e952065d10bf2af19913cb176b`. Audit all statically linked Cargo crates and the reported liveness regression before release.
+- [Proton Lumo iOS](https://github.com/ProtonLumo/ios-lumo) — Tuist / SwiftUI architectural reference; GPL-3.0. No source copied.
+- [Apple NetworkExtension](https://developer.apple.com/documentation/networkextension) — system VPN API.
+
+## Automated Rust dependency declaration inventory (#64)
+
+The Linux CI job runs `cargo metadata --locked --no-default-features --features
+ffi-bindings --filter-platform aarch64-apple-ios` against pinned BoringTun
+0.7.1. The checked-in `scripts/audit-boringtun-licenses.py` joins every
+resolved package to the immutable Cargo.lock record and checks its declared
+SPDX expression against a deliberately small reviewed permissive-license
+set. Registry packages require a 64-character lockfile checksum. Unreviewed
+SPDX IDs, local path/git sources, absent metadata and missing lockfile records
+fail the CI job rather than being silently omitted.
+
+The CI artifact is deterministic JSON containing names, versions, registry
+checksums and declared licenses only. It has **no signing keys, private
+WireGuard data or user profiles**. This is an *inventory of the BoringTun
+library's normal/build dependency closure* (excluding workspace CLI and
+dev-only benchmark edges), not a
+linker map or a complete audit of statically linked code. It does not include
+full third-party notice texts; before distributing the signed app, review all
+transitive notices, the built binary and license obligations under #55/#31.

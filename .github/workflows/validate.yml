@@ -1,0 +1,265 @@
+name: Native Xcode Rust WireGuard build and tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax:
+    name: Foundation static checks (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
+      - name: Parse Swift sources without Apple SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          find ios macos Shared Tests -name '*.swift' -print0 | while IFS= read -r -d '' path; do
+            swiftc -frontend -parse "$path"
+          done
+          # Pure Foundation transaction also admits a real Linux Swift typecheck.
+          # Native NetworkExtension/WKWebView and XCTest remain macOS-only gates.
+          swiftc -swift-version 5 -typecheck ios/AgentApp/VPN/ProfileSaveSequencer.swift
+          # Compile and actually execute the production Foundation-only
+          # diagnostic codec against malformed/private/oversized inputs.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
+            Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
+          "$RUNNER_TEMP/vpn-event-history-tests"
+          # Run Foundation-only security policies with real Swift, not syntax-only.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
+            ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
+          "$RUNNER_TEMP/chat-navigation-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
+            ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
+          "$RUNNER_TEMP/vpn-profile-tests"
+          # Verify packet-envelope checks on the exact shared Swift source.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
+            Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
+          "$RUNNER_TEMP/ip-envelope-tests"
+          # Real Swift check of the app+extension full-route fail-closed gate.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/route-safety-tests" \
+            Shared/TunnelRouteSafetyPolicy.swift Tests/build/tunnel_route_safety_smoke.swift
+          "$RUNNER_TEMP/route-safety-tests"
+          # Actual production Swift CIDR/outer UDP loop prevention policy.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-policy-tests" \
+            Shared/TunnelUnderlayPolicy.swift Tests/build/tunnel_underlay_policy_smoke.swift
+          "$RUNNER_TEMP/underlay-policy-tests"
+          # Exercise the production legacy migration decision matrix.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
+            Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
+          "$RUNNER_TEMP/legacy-recovery-tests"
+          # Execute the production generation token in real Linux Swift.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/tunnel-lifecycle-tests" \
+            Shared/TunnelLifecycleGeneration.swift Tests/build/tunnel_lifecycle_smoke.swift
+          "$RUNNER_TEMP/tunnel-lifecycle-tests"
+          # Exercise the actual provider state machine without Apple SDK.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
+            Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
+          "$RUNNER_TEMP/provider-state-tests"
+          # Exercise safe asynchronous route edit prerequisites in real Swift.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/route-edit-tests" \
+            Shared/RouteEditSafetyPolicy.swift Tests/build/route_edit_safety_smoke.swift
+          "$RUNNER_TEMP/route-edit-tests"
+          # Pairing and on-demand writes use the generic native save path:
+          # reject updates while the old tunnel is alive or auto-connects.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-save-safety-tests" \
+            Shared/ProfileSaveSafetyPolicy.swift Tests/build/profile_save_safety_smoke.swift
+          "$RUNNER_TEMP/profile-save-safety-tests"
+          # A temporary full UDP send backlog must drop, not kill, the VPN.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/udp-backpressure-tests" \
+            Shared/UDPBackpressurePolicy.swift Tests/build/udp_backpressure_smoke.swift
+          "$RUNNER_TEMP/udp-backpressure-tests"
+          # Reject out-of-order native loadAllFromPreferences callbacks.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-reload-tests" \
+            ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
+            Tests/build/native_preference_reload_smoke.swift
+          "$RUNNER_TEMP/native-reload-tests"
+          # Real production Swift Keychain race-resolution policy (Linux).
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/immutable-identity-tests" \
+            Shared/ImmutableIdentityInstaller.swift Tests/build/immutable_identity_installer_smoke.swift
+          "$RUNNER_TEMP/immutable-identity-tests"
+          # Reject stale native VPN metadata before Swift/Rust PacketTunnel start.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-binding-tests" \
+            Shared/NativeProfileBindingPolicy.swift Tests/build/native_profile_binding_smoke.swift
+          "$RUNNER_TEMP/profile-binding-tests"
+          # Refuse ambiguous duplicate native VPN managers (real Swift).
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-manager-inventory-tests" \
+            ios/AgentApp/VPN/NativeVPNManagerInventory.swift \
+            Tests/build/native_vpn_manager_inventory_smoke.swift
+          "$RUNNER_TEMP/native-manager-inventory-tests"
+          # Fail closed after failed native preferences inventory reload; test
+          # actual production state transitions and #78 generation interplay.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-inventory-trust-tests" \
+            ios/AgentApp/VPN/NativeVPNInventoryTrust.swift \
+            ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
+            Tests/build/native_vpn_inventory_trust_smoke.swift
+          "$RUNNER_TEMP/native-inventory-trust-tests"
+          # A successful native reload callback alone must not publish stale
+          # or mismatched system preferences into App Group metadata.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-commit-verifier-tests" \
+            Shared/NativeProfileBindingPolicy.swift \
+            Shared/NativePreferenceCommitVerifier.swift \
+            Tests/build/native_preference_commit_verifier_smoke.swift
+          "$RUNNER_TEMP/native-commit-verifier-tests"
+      - name: Validate VPN entitlements
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, plistlib
+          for path in ("ios/Entitlements/AgentApp.entitlements", "ios/Entitlements/PacketTunnel.entitlements"):
+              d = plistlib.loads(pathlib.Path(path).read_bytes())
+              assert "group.com.gavindu.securityagent" in d["com.apple.security.application-groups"]
+              assert "packet-tunnel-provider" in d["com.apple.developer.networking.networkextension"]
+          print("Entitlements OK")
+          PY
+      - name: Rust pins and negative-case regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/bootstrap-boringtun.sh
+          bash -n scripts/build-boringtun.sh
+          bash scripts/verify-foundation-pins.sh
+          bash Tests/build/pin-validation-tests.sh
+          bash Tests/build/rust-wrapper-tests.sh
+          python3 -m unittest discover -s Tests/build -p 'test_*.py' -v
+      - name: Compile pinned BoringTun C ABI on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.90.0 --profile minimal
+          bash scripts/bootstrap-boringtun.sh
+          # This imports the actual pinned BoringTun C header and checks every
+          # Swift FFI call/type. It is stronger than parser-only validation,
+          # but does not check native iOS NetworkExtension or linking.
+          swiftc -swift-version 5 -typecheck \
+            -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
+            -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
+            ios/PacketTunnel/BoringTunCodec.swift
+          echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
+          cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
+            --lib --release --no-default-features --features ffi-bindings --locked
+          test -s "$CARGO_TARGET_DIR/release/libboringtun.a"
+          test -s "$CARGO_TARGET_DIR/release/libboringtun.so"
+          python3 Tests/build/boringtun_ffi_smoke.py "$CARGO_TARGET_DIR/release/libboringtun.so"
+          python3 Tests/build/boringtun_ffi_malformed.py "$CARGO_TARGET_DIR/release/libboringtun.so"
+          nm -g "$CARGO_TARGET_DIR/release/libboringtun.a" | grep -Fq ' new_tunnel'
+          nm -g "$CARGO_TARGET_DIR/release/libboringtun.a" | grep -Fq ' wireguard_tick'
+          echo "Linux Rust C FFI exports verified; iPhone link is a separate check"
+
+
+      - name: Audit BoringTun Cargo license declarations for iOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Metadata includes build/dev resolution; not a native binary link map.
+          cargo metadata --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
+            --format-version 1 --locked --no-default-features \
+            --features ffi-bindings --filter-platform aarch64-apple-ios \
+            > "$RUNNER_TEMP/boringtun-ios-metadata.json"
+          python3 scripts/audit-boringtun-licenses.py \
+            --metadata "$RUNNER_TEMP/boringtun-ios-metadata.json" \
+            --lock Vendor/boringtun/Cargo.lock \
+            --output "$RUNNER_TEMP/boringtun-ios-license-inventory.json"
+      - name: Upload public-license inventory only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boringtun-ios-license-inventory
+          path: ${{ runner.temp }}/boringtun-ios-license-inventory.json
+          retention-days: 14
+
+  native-ios:
+    name: Tuist + iOS device and simulator XCTest
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Install pinned iOS Rust toolchain and targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup target add --toolchain 1.90.0 aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          test "$(rustc --version | awk '{print $2}')" = "1.90.0"
+      - name: Bootstrap BoringTun and generate Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/bootstrap-boringtun.sh
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Build iPhoneOS app + PacketTunnel (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Run iOS Simulator XCTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
+            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+      - name: Upload safe toolchain summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            xcodebuild -version
+            rustc --version
+            tuist version
+            echo 'No signing secrets or VPN credentials collected'
+          } > "$RUNNER_TEMP/native-rust-summary.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-rust-build-summary
+          path: ${{ runner.temp }}/native-rust-summary.txt
+          retention-days: 7
+
+  native-mac:
+    name: Tuist + macOS companion build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: jdx/mise-action@v3
+        with:
+          install: true
+      - name: Generate clean macOS project
+        shell: bash
+        run: |
+          set -euo pipefail
+          tuist generate --no-open
+          test -d SecurityAgent.xcodeproj
+      - name: Build macOS SwiftUI companion (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project SecurityAgent.xcodeproj -scheme AgentMac \
+            -configuration Debug -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
