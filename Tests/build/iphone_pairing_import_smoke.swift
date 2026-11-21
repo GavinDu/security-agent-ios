@@ -2,33 +2,36 @@ import Foundation
 
 @main
 struct IPhonePairingImportSmoke {
-    static func main() throws {
+    static func main() {
         let valid = Data(repeating: 0x2a, count: 32).base64EncodedString()
         func payload(_ key: String, version: Int = 1,
-                     kind: String = "iphone", endpoint: String? = nil) throws -> String {
+                     kind: String = "iphone", endpoint: String? = nil) -> String {
             var object: [String: Any] = ["version": version, "kind": kind, "publicKey": key]
             if let endpoint { object["endpoint"] = endpoint }
-            return String(decoding: try JSONSerialization.data(
+            guard let data = try? JSONSerialization.data(
                 withJSONObject: object, options: [.sortedKeys]
-            ), as: UTF8.self)
+            ) else {
+                preconditionFailure("Invalid fixed test fixture")
+            }
+            return String(decoding: data, as: UTF8.self)
         }
-        let good = try payload(valid)
+        let good = payload(valid)
         precondition(IPhonePairingImportPolicy.decodePublicKey(from: good) == valid)
         precondition(IPhonePairingImportPolicy.validatedPublicKey(valid) == valid)
         precondition(IPhonePairingImportPolicy.decodePublicKey(
-            from: try payload(valid, kind: "mac")
+            from: payload(valid, kind: "mac")
         ) == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(
-            from: try payload(valid, version: 2)
+            from: payload(valid, version: 2)
         ) == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(
-            from: try payload(valid, endpoint: "private.example:51820")
+            from: payload(valid, endpoint: "private.example:51820")
         ) == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(
-            from: try payload(Data(repeating: 0, count: 32).base64EncodedString())
+            from: payload(Data(repeating: 0, count: 32).base64EncodedString())
         ) == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(
-            from: try payload("invalid-public-key")
+            from: payload("invalid-public-key")
         ) == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(from: "not json") == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(from: "") == nil)
