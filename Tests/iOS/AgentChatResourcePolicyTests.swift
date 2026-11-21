@@ -10,15 +10,15 @@ final class AgentChatResourcePolicyTests: XCTestCase {
             JSONSerialization.jsonObject(with: Data(text.utf8)) as?
                 [[String: [String: String]]]
         )
-        XCTAssertEqual(decoded.count, 3)
+        XCTAssertEqual(decoded.count, 4)
         XCTAssertEqual(decoded.compactMap { $0["action"]?["type"] },
-                       ["block", "ignore-previous-rules", "ignore-previous-rules"])
+                       ["block", "block", "ignore-previous-rules", "ignore-previous-rules"])
         XCTAssertEqual(decoded[0]["trigger"]?["url-filter"],
-                       "^(http|https|ws|wss)://")
+                       "^https?://")
         XCTAssertEqual(decoded[1]["trigger"]?["url-filter"],
-                       "^http://10\\.8\\.0\\.1:8080(/|$)")
+                       "^wss?://")
         XCTAssertEqual(decoded[2]["trigger"]?["url-filter"],
-                       "^ws://10\\.8\\.0\\.1:8080(/|$)")
+                       "^http://10\\.8\\.0\\.1:8080/")
     }
 
     func testWebKitAcceptsRulesBeforeFirstNavigation() throws {
