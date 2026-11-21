@@ -72,6 +72,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/route-edit-tests" \
             Shared/RouteEditSafetyPolicy.swift Tests/build/route_edit_safety_smoke.swift
           "$RUNNER_TEMP/route-edit-tests"
+          # Pairing and on-demand writes use the generic native save path:
+          # reject updates while the old tunnel is alive or auto-connects.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-save-safety-tests" \
+            Shared/ProfileSaveSafetyPolicy.swift Tests/build/profile_save_safety_smoke.swift
+          "$RUNNER_TEMP/profile-save-safety-tests"
           # Reject out-of-order native loadAllFromPreferences callbacks.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/native-reload-tests" \
             ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
