@@ -9,7 +9,12 @@ class WebBoundaryTests(unittest.TestCase):
         source = (ROOT / "ios/AgentApp/Chat/ChatWebView.swift").read_text()
         self.assertIn("decidePolicyFor action: WKNavigationAction", source)
         self.assertIn("decidePolicyFor navigationResponse: WKNavigationResponse", source)
-        self.assertEqual(source.count("AgentChatNavigationPolicy.allows(destination)"), 2)
+        # Original origin-only assertion was intentionally strengthened:
+        # both delegate callbacks must require main frame AND trusted origin.
+        self.assertEqual(source.count("AgentChatNavigationPolicy.allowsDocumentNavigation("), 2)
+        self.assertIn("action.targetFrame?.isMainFrame == true", source)
+        self.assertIn("navigationResponse.isForMainFrame", source)
+        self.assertNotIn("AgentChatNavigationPolicy.allows(destination)", source)
 
     def test_inert_native_script_handler_is_not_exposed(self):
         source = (ROOT / "ios/AgentApp/Chat/ChatWebView.swift").read_text()
