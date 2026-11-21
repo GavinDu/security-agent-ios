@@ -15,9 +15,6 @@ final class BoringTunTransport {
     private var udp: NWConnection?
     private var tickTimer: DispatchSourceTimer?
     private var handshakeDeadline: DispatchSourceTimer?
-    private var pathWaitDeadline: DispatchSourceTimer?
-    // Queue-confined generation rejects timer callbacks from old wait episodes.
-    private var pathWait = WireGuardPathWaitGeneration()
     private var startCompletion: ((Error?) -> Void)?
     private var active = false
     private var readingPackets = false
@@ -185,7 +182,6 @@ final class BoringTunTransport {
         guard active else { return }
         switch state {
         case .ready:
-            cancelPathWaitDeadline()
             receiveDatagram()
             if tickTimer == nil {
                 let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -211,40 +207,12 @@ final class BoringTunTransport {
             fail(error)
         case .cancelled:
             if active { fail(BoringTunError.stopped) }
-        case .waiting:
-            // Before authentication, handshakeDeadline already bounds startup.
-            // An authenticated tunnel must never stay apparently connected
-            // forever after its encrypted UDP underlay enters waiting.
-            startPathWaitDeadlineIfNeeded()
-        case .preparing, .setup:
+        case .waiting, .preparing, .setup:
+            // NWConnection may recover on interface changes; no busy retry.
             break
         @unknown default:
             fail(BoringTunError.initializationFailed)
         }
-    }
-
-    /// Bounded recovery only after a verified handshake completed. A fresh
-    /// on-demand or manual restart re-resolves DDNS before any inner route.
-    /// This is not an automatic roam or full-tunnel underlay implementation.
-    private func startPathWaitDeadlineIfNeeded() {
-        guard active, startCompletion == nil,
-              let token = pathWait.beginWait() else { return }
-        let epoch = lifecycle.current
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + .seconds(30))
-        timer.setEventHandler { [weak self] in
-            guard let self, self.active, self.lifecycle.matches(epoch),
-                  self.pathWait.accepts(token) else { return }
-            self.fail(BoringTunError.networkPathTimedOut)
-        }
-        pathWaitDeadline = timer
-        timer.resume()
-    }
-
-    private func cancelPathWaitDeadline() {
-        pathWait.invalidate()
-        pathWaitDeadline?.cancel()
-        pathWaitDeadline = nil
     }
 
     private func receiveDatagram() {
@@ -263,7 +231,32 @@ final class BoringTunTransport {
                 if let packet, !packet.isEmpty, let codec = self.codec {
                     // A random/malformed UDP message must not crash or
                     // disable the VPN; discard authentication failures.
-                    if let action = try? codec.decapsulate(packet) {
+                    // Remote authentication errors can be discarded; a
+                    // malformed *local* Rust C ABI result must tear down this
+                    // session rather than vanish behind blanket try?.
+                    var action: BoringTunAction?
+                    do {
+                        action = try codec.decapsulate(packet)
+                    } catch {
+                        let reason: WireGuardDatagramFailurePolicy.Reason
+                        switch error {
+                        case BoringTunError.invalidPacket:
+                            reason = .malformedIncomingPacket
+                        case BoringTunError.engineError:
+                            reason = .authenticationRejected
+                        case BoringTunError.invalidResponse:
+                            reason = .malformedFFIResponse
+                        default:
+                            reason = .unexpectedLocalFailure
+                        }
+                        guard WireGuardDatagramFailurePolicy.disposition(for: reason) == .discard else {
+                            self.fail(error)
+                            return
+                        }
+                    }
+                    if let action {
+                        // Local UDP queue/packetFlow failures are never
+                        // classified as unauthenticated remote rejections.
                         do { try self.process(action) } catch { self.fail(error); return }
                     }
                     if codec.hasAuthenticatedHandshake && self.startCompletion != nil {
@@ -396,7 +389,6 @@ final class BoringTunTransport {
         tickTimer = nil
         handshakeDeadline?.cancel()
         handshakeDeadline = nil
-        cancelPathWaitDeadline()
         udp?.stateUpdateHandler = nil
         udp?.cancel()
         udp = nil

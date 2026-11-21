@@ -1,0 +1,62 @@
+import Foundation
+
+@main
+struct MacPeerAddressAllocationSmoke {
+    static func main() {
+        func key(_ n: UInt8) -> String {
+            Data(repeating: n, count: 32).base64EncodedString()
+        }
+        let a = MacPeerAddressAllocationPolicy.nextReservation(publicKey: key(1), existing: [])
+        precondition(a?.slot == 2)
+        precondition(a?.allowedIPs == "10.8.0.2/32, fd86:ea04:1111::2/128")
+        let b = MacPeerAddressAllocationPolicy.nextReservation(publicKey: key(2), existing: [a!])
+        precondition(b?.slot == 3)
+        precondition(b?.allowedIPs == "10.8.0.3/32, fd86:ea04:1111::3/128")
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(1), existing: [a!]
+        ) == nil, "Same public key may not get a second slot")
+
+        let third = MacPeerAddressReservation(publicKey: key(3), slot: 4)
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(5), existing: [third, a!]
+        )?.slot == 3)
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(5), existing: [a!, third]
+        )?.slot == 3, "Input order must not influence slot selection")
+
+        for bad in ["", String(repeating: "A", count: 44),
+                    Data(repeating: 0, count: 32).base64EncodedString()] {
+            precondition(MacPeerAddressAllocationPolicy.nextReservation(
+                publicKey: bad, existing: []
+            ) == nil)
+        }
+        for slot: UInt8 in [0, 1, 255] {
+            precondition(MacPeerAddressAllocationPolicy.nextReservation(
+                publicKey: key(9), existing: [
+                    MacPeerAddressReservation(publicKey: key(1), slot: slot)
+                ]
+            ) == nil)
+        }
+        let duplicate = MacPeerAddressReservation(publicKey: key(2), slot: a!.slot)
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(9), existing: [a!, duplicate]
+        ) == nil)
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(9), existing: [a!, a!]
+        ) == nil)
+
+        let full = (2...254).map { n in
+            MacPeerAddressReservation(publicKey: key(UInt8(n)), slot: UInt8(n))
+        }
+        precondition(full.count == MacPeerAddressAllocationPolicy.maxClients)
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(1), existing: full
+        ) == nil, "Fully reserved block must not wrap/reassign a slot")
+
+        let gap = full.filter { $0.slot != 133 }
+        precondition(MacPeerAddressAllocationPolicy.nextReservation(
+            publicKey: key(1), existing: gap
+        )?.slot == 133)
+        print("Mac peer address collision-free reservation policy passed")
+    }
+}
