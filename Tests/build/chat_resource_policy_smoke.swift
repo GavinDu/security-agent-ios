@@ -33,7 +33,7 @@ struct ChatResourcePolicySmoke {
             "http://10.8.0.1:8080/static/app.js?v=1",
             "ws://10.8.0.1:8080/chat/stream"
         ] {
-            precondition(permitted(url), "Private resource rejected: \\(url)")
+            precondition(permitted(url), "Private resource rejected: \(url)")
         }
         for url in [
             "https://cdn.example.com/script.js",
@@ -46,7 +46,7 @@ struct ChatResourcePolicySmoke {
             "http://10.8.0.1.evil.example:8080/chat",
             "http://10.8.0.1:8080@evil.example/chat"
         ] {
-            precondition(!permitted(url), "External resource escaped filter: \\(url)")
+            precondition(!permitted(url), "External resource escaped filter: \(url)")
         }
         print("WebKit chat resource allowlist: 3 private + 9 hostile URLs passed")
     }
