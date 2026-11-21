@@ -37,7 +37,7 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
-          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          # User-consented redacted VPN diagnostic export (no raw App Group file).
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
             Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
             Tests/build/vpn_event_export_smoke.swift
@@ -54,11 +54,21 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Reject oversized/malformed Mac companion iPhone public-only QR paste.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Tests/build/iphone_pairing_import_smoke.swift
+          "$RUNNER_TEMP/iphone-pairing-import-tests"
           # Bound scanned Mac QR JSON before any decode; canonical server key only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
-            Shared/MacPairingQRInputPolicy.swift \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/mac_pairing_qr_input_smoke.swift
           "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
+          # Reject duplicate or Unicode-escaped alias members in scanned Mac QR.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/unique-mac-qr-json-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
+            Tests/build/unique_flat_json_root_smoke.swift
+          "$RUNNER_TEMP/unique-mac-qr-json-tests"
           # Validate nonzero canonical WireGuard key representations before Rust FFI.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-key-input-tests" \
             Shared/BoringTunKeyInputPolicy.swift \
@@ -81,6 +91,10 @@ jobs:
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
             Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
+          # DNS preflight must finish before NetworkExtension split-route install.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
+            Shared/AsyncUnderlayDNSResolver.swift Tests/build/async_underlay_dns_smoke.swift
+          "$RUNNER_TEMP/underlay-dns-resolver-tests"
           # Exercise the production legacy migration decision matrix.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
@@ -106,6 +120,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/udp-backpressure-tests" \
             Shared/UDPBackpressurePolicy.swift Tests/build/udp_backpressure_smoke.swift
           "$RUNNER_TEMP/udp-backpressure-tests"
+          # Preserve bounded UDP slots for BoringTun handshake and rekey.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-control-headroom-tests" \
+            Shared/WireGuardControlHeadroomPolicy.swift \
+            Tests/build/wireguard_control_headroom_smoke.swift
+          "$RUNNER_TEMP/wireguard-control-headroom-tests"
           # Reject out-of-order native loadAllFromPreferences callbacks.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/native-reload-tests" \
             ios/AgentApp/VPN/NativePreferenceReloadGate.swift \

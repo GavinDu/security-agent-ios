@@ -14,14 +14,18 @@ struct MacDashboard: View {
         try? ServerProfile(publicKey: publicKey, endpoint: endpoint).validated()
     }
 
+    private var validatedIPhoneKey: String? {
+        IPhonePairingImportPolicy.validatedPublicKey(iphonePublicKey)
+    }
+
     private var peerStanza: String {
-        guard let bytes = Data(base64Encoded: iphonePublicKey), bytes.count == 32 else {
-            return "Enter the iPhone's base64 public key to prepare its WireGuard peer."
+        guard let key = validatedIPhoneKey else {
+            return "Enter a valid, nonzero canonical iPhone public key to prepare its WireGuard peer."
         }
         return """
         [Peer]
         # Security Agent iPhone (public material only)
-        PublicKey = \(iphonePublicKey)
+        PublicKey = \(key)
         AllowedIPs = 10.8.0.2/32, fd86:ea04:1111::2/128
         """
     }
@@ -41,18 +45,15 @@ struct MacDashboard: View {
                     TextField("Paste iPhone pairing QR JSON", text: $iphonePairingText)
                         .textFieldStyle(.roundedBorder)
                     Button("Import iPhone pairing payload") {
-                        do {
-                            let payload = try JSONDecoder().decode(
-                                PairingQRCode.self, from: Data(iphonePairingText.utf8)
-                            )
-                            guard payload.version == 1, payload.kind == .iphone,
-                                  let raw = Data(base64Encoded: payload.publicKey), raw.count == 32 else {
-                                throw AgentConfigurationError.invalidPublicKey
-                            }
-                            iphonePublicKey = payload.publicKey
+                        if let key = IPhonePairingImportPolicy.decodePublicKey(
+                            from: iphonePairingText
+                        ) {
+                            iphonePublicKey = key
                             validationMessage = nil
-                        } catch {
-                            validationMessage = "Invalid iPhone pairing payload: \(error.localizedDescription)"
+                        } else {
+                            // Do not reflect untrusted QR JSON, endpoints or
+                            // arbitrary decoder errors into diagnostics.
+                            validationMessage = "Invalid iPhone QR: expected version 1 and a canonical 32-byte public key."
                         }
                     }
                     TextField("iPhone public key", text: $iphonePublicKey)
@@ -64,6 +65,7 @@ struct MacDashboard: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(peerStanza, forType: .string)
                     }
+                    .disabled(validatedIPhoneKey == nil)
                     Text("Add the peer stanza to the Mac's actual WireGuard server config and activate it. This UI does not run sudo.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
