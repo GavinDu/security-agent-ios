@@ -8,8 +8,8 @@ import re
 import subprocess
 import sys
 
-UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\\Z")
-IOS_RUNTIME = re.compile(r"^com\\.apple\\.CoreSimulator\\.SimRuntime\\.iOS-(\\d+(?:-\\d+)*)$")
+UUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
+IOS_RUNTIME = re.compile(r"^com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+(?:-\d+)*)$")
 
 
 class SimulatorSelectionError(RuntimeError):
@@ -52,9 +52,7 @@ def select_existing(payload):
     if not candidates:
         return None
     # The newest installed iOS runtime wins, and ties are reproducible.
-    candidates.sort(key=lambda item: (-item[0][0], tuple(-v for v in item[0][1:]),
-                                      item[1], item[2]))
-    return candidates[0][2]
+    return max(candidates, key=lambda item: (item[0], item[1], item[2]))[2]
 
 
 def select_runtime(payload):
@@ -108,7 +106,7 @@ def ensure_iphone(invoke=subprocess.check_output):
             "install the correct Xcode iOS simulator runtime on the runner"
         )
     result = invoke(["xcrun", "simctl", "create",
-                     "SecurityAgent CI iPhone", device_type, runtime])
+                     "iPhone SecurityAgent CI", device_type, runtime])
     created = result.decode("utf-8").strip() if isinstance(result, bytes) else str(result).strip()
     if not valid_uuid(created):
         raise SimulatorSelectionError("simctl create did not return a valid UDID")

@@ -38,7 +38,7 @@ class IOSSimulatorSelectorTests(unittest.TestCase):
             calls.append(args)
             if args == ["xcrun", "simctl", "list", "-j", "devices", "available"]:
                 active = len([c for c in calls if len(c) > 2 and c[2] == "create"]) > 0
-                return json.dumps({"devices": {R18: [device("SecurityAgent CI iPhone", A)] if active else []}}).encode()
+                return json.dumps({"devices": {R18: [device("iPhone SecurityAgent CI", A)] if active else []}}).encode()
             if args == ["xcrun", "simctl", "list", "-j", "runtimes"]:
                 return json.dumps({"runtimes": [
                     {"identifier": R17, "isAvailable": True},
@@ -46,7 +46,7 @@ class IOSSimulatorSelectorTests(unittest.TestCase):
             if args == ["xcrun", "simctl", "list", "-j", "devicetypes"]:
                 return json.dumps({"devicetypes": [
                     {"name": "iPhone 16", "identifier": IPHONE}]}).encode()
-            if args == ["xcrun", "simctl", "create", "SecurityAgent CI iPhone", IPHONE, R18]:
+            if args == ["xcrun", "simctl", "create", "iPhone SecurityAgent CI", IPHONE, R18]:
                 return (A + "\n").encode()
             self.fail("Unexpected subprocess invocation: " + str(args))
         self.assertEqual(mod.ensure_iphone(invoke), A)
