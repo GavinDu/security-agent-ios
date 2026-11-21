@@ -54,6 +54,13 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Pure Mac-side peer slot registry: reject duplicate keys/slots
+          # before any future WireGuard server configuration is provisioned.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-allocation-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift \
+            Tests/build/mac_peer_address_allocation_smoke.swift
+          "$RUNNER_TEMP/mac-peer-allocation-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
