@@ -30,7 +30,10 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
 
     def test_production_policy_rejects_aliases_and_cidrs(self):
         self.assertIn("canonicalIPv4(host)", POLICY)
-        self.assertIn("host.utf8.allSatisfy", POLICY)
+        self.assertIn('text.lowercased().hasPrefix("0x")', POLICY)
+        self.assertIn("numericHostLabels.allSatisfy", POLICY)
+        self.assertIn("0x0a080001", SMOKE)
+        self.assertIn("0x0a.0x08.0x00.0x01", SMOKE)
         self.assertIn("prefix == 0", POLICY)
         self.assertIn("splitIPv4Routes(", POLICY)
         self.assertIn("endpoint & route.mask == route.network & route.mask", POLICY)
