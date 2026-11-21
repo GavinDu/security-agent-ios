@@ -32,6 +32,12 @@ struct AsyncUnderlayDNSSmoke {
         assertResult(lookup: { _ in throw UnderlayDNSResolutionError.lookupFailed },
                      expected: .failure(.lookupFailed))
         assertResult(lookup: { _ in [] }, timeout: 0, expected: .failure(.timedOut))
+        assertResult(lookup: { _ in preconditionFailure("Unbounded DNS lookup executed") },
+                     host: String(repeating: "a", count: 254),
+                     expected: .failure(.lookupFailed))
+        assertResult(lookup: { _ in preconditionFailure("NUL DNS lookup executed") },
+                     host: "good.example\\0evil.example",
+                     expected: .failure(.lookupFailed))
 
         let gate = DispatchSemaphore(value: 0)
         let blockedWorker = DispatchSemaphore(value: 0)

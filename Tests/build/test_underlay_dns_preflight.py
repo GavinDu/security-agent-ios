@@ -29,6 +29,8 @@ class UnderlayDNSPreRouteTests(unittest.TestCase):
 
     def test_single_flight_timeout_and_epoch_check(self):
         self.assertIn("private var lookupInFlight = false", RESOLVER)
+        self.assertIn("host.utf8.count <= 253", RESOLVER)
+        self.assertIn("guard let socketAddress = record.pointee.ai_addr", RESOLVER)
         self.assertIn("static let shared = AsyncUnderlayDNSResolver()", RESOLVER)
         self.assertIn("AsyncUnderlayDNSResolver.shared", TRANSPORT)
         self.assertIn("callbackQueue.asyncAfter", RESOLVER)

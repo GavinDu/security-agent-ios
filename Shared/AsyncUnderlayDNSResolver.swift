@@ -43,6 +43,11 @@ final class AsyncUnderlayDNSResolver {
             callbackQueue.async { completion(.failure(.timedOut)) }
             return
         }
+        // Never pass unbounded or NUL-terminated/truncated user input to C.
+        guard !host.isEmpty, host.utf8.count <= 253, !host.contains("\0") else {
+            callbackQueue.async { completion(.failure(.lookupFailed)) }
+            return
+        }
         lock.lock()
         if lookupInFlight {
             lock.unlock()
@@ -119,9 +124,13 @@ enum SystemUnderlayAddressLookup {
             defer { current = record.pointee.ai_next }
             guard record.pointee.ai_family == AF_INET ||
                     record.pointee.ai_family == AF_INET6 else { continue }
+            guard let socketAddress = record.pointee.ai_addr,
+                  record.pointee.ai_addrlen > 0 else {
+                throw UnderlayDNSResolutionError.lookupFailed
+            }
             var numeric = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             let rc = getnameinfo(
-                record.pointee.ai_addr, record.pointee.ai_addrlen,
+                socketAddress, record.pointee.ai_addrlen,
                 &numeric, socklen_t(numeric.count), nil, 0, NI_NUMERICHOST
             )
             guard rc == 0 else { throw UnderlayDNSResolutionError.lookupFailed }
