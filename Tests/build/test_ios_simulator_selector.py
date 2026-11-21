@@ -62,6 +62,23 @@ class IOSSimulatorSelectorTests(unittest.TestCase):
         with self.assertRaises(mod.SimulatorSelectionError):
             mod.ensure_iphone(invoke)
 
+    def test_installed_runtime_without_iphone_type_fails_closed(self):
+        calls = []
+        def invoke(args):
+            calls.append(args)
+            if "devices" in args:
+                return json.dumps({"devices": {R18: []}}).encode()
+            if "runtimes" in args:
+                return json.dumps({"runtimes": [{"identifier": R18, "isAvailable": True}]}).encode()
+            if "devicetypes" in args:
+                return json.dumps({"devicetypes": [
+                    {"name": "iPad Pro", "identifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro"}
+                ]}).encode()
+            self.fail("Unexpected simulator creation")
+        with self.assertRaisesRegex(mod.SimulatorSelectionError, "device type"):
+            mod.ensure_iphone(invoke)
+        self.assertFalse(any("create" in cmd for cmd in calls))
+
     def test_created_uuid_must_be_real_and_available(self):
         calls = []
         def invoke(args):

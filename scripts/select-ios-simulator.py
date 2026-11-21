@@ -99,11 +99,16 @@ def ensure_iphone(invoke=subprocess.check_output):
     if selected:
         return selected
     runtime = select_runtime(query("runtimes"))
-    device_type = select_device_type(query("devicetypes"))
-    if not runtime or not device_type:
+    if not runtime:
         raise SimulatorSelectionError(
-            "no available iPhone simulator or installed iOS runtime/device type; "
+            "no available iPhone simulator or installed iOS runtime; "
             "install the correct Xcode iOS simulator runtime on the runner"
+        )
+    device_type = select_device_type(query("devicetypes"))
+    if not device_type:
+        raise SimulatorSelectionError(
+            "no available iPhone simulator or installed iPhone device type; "
+            "install an iPhone simulator device type on the runner"
         )
     result = invoke(["xcrun", "simctl", "create",
                      "iPhone SecurityAgent CI", device_type, runtime])
