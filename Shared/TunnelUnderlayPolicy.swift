@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Exact IPv4 route values used by NEPacketTunnelNetworkSettings. The outer
 /// WireGuard UDP guard consumes this same parsed route model, so the guard
@@ -39,6 +44,24 @@ enum TunnelUnderlayPolicy {
         let parsedRoutes = includedIPv4CIDRs.compactMap(parseCIDR)
         guard parsedRoutes.count == includedIPv4CIDRs.count else { return false }
 
+        // IPv4-mapped IPv6 endpoints can select the IPv4 underlay, too.
+        // Parse every IPv6 spelling with the platform's strict inet_pton,
+        // then compare mapped IPv4 bytes against the exact installed CIDRs.
+        // Ordinary non-mapped IPv6 remains eligible; its actual network path
+        // still needs signed iPhone proof under #65.
+        if host.contains(":") {
+            guard let ipv6 = ipv6LiteralBytes(host) else { return false }
+            let isMapped = ipv6.prefix(10).allSatisfy { $0 == 0 } &&
+                ipv6[10] == 0xff && ipv6[11] == 0xff
+            guard isMapped else { return true }
+            let mappedIPv4 = ipv6.suffix(4).reduce(UInt32(0)) {
+                ($0 << 8) | UInt32($1)
+            }
+            return !parsedRoutes.contains {
+                mappedIPv4 & $0.mask == $0.network & $0.mask
+            }
+        }
+
         // Some resolvers treat 0x-prefixed components as numeric IPv4
         // (for example 0x0a080001 -> 10.8.0.1). Do not let those aliases
         // bypass the same inner-route check as a dotted-decimal literal.
@@ -77,6 +100,24 @@ enum TunnelUnderlayPolicy {
             }
         }
         return true
+    }
+
+    /// URLComponents.host commonly returns IPv6 literals with brackets on
+    /// Apple platforms. Strip only a correctly matched pair; malformed
+    /// brackets or non-IP colon strings are never treated as DNS names.
+    private static func ipv6LiteralBytes(_ host: String) -> [UInt8]? {
+        let literal: String
+        if host.first == "[" || host.last == "]" {
+            guard host.first == "[", host.last == "]" else { return nil }
+            literal = String(host.dropFirst().dropLast())
+        } else {
+            literal = host
+        }
+        var address = in6_addr()
+        guard literal.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else {
+            return nil
+        }
+        return withUnsafeBytes(of: &address) { Array($0) }
     }
 
     private static func parseCIDR(_ text: String) -> (network: UInt32, mask: UInt32)? {
