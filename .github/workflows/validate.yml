@@ -51,9 +51,14 @@ jobs:
           "$RUNNER_TEMP/vpn-profile-tests"
           # Bound scanned Mac QR JSON before any decode; canonical server key only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
-            Shared/MacPairingQRInputPolicy.swift \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/mac_pairing_qr_input_smoke.swift
           "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
+          # Reject duplicate or Unicode-escaped alias members in scanned Mac QR.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/unique-mac-qr-json-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
+            Tests/build/unique_flat_json_root_smoke.swift
+          "$RUNNER_TEMP/unique-mac-qr-json-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
