@@ -15,6 +15,23 @@ final class AgentChatNavigationPolicyTests: XCTestCase {
         }
     }
 
+    func testMainFrameOnlyNavigation() {
+        let chat = URL(string: "http://10.8.0.1:8080/chat")!
+        let alternatePath = URL(string: "http://10.8.0.1:8080/static/app.js")!
+        let external = URL(string: "https://example.org/chat")!
+        XCTAssertTrue(AgentChatNavigationPolicy.allowsDocumentNavigation(
+            chat, isMainFrame: true
+        ))
+        for target in [chat, alternatePath] {
+            XCTAssertFalse(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                target, isMainFrame: false
+            ), "Block nested/popup documents, including same-origin")
+        }
+        XCTAssertFalse(AgentChatNavigationPolicy.allowsDocumentNavigation(
+            external, isMainFrame: true
+        ))
+    }
+
     func testRejectsSchemeAuthorityAndPortVariants() {
         let rejected = [
             "https://10.8.0.1:8080/chat",
