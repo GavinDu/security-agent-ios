@@ -37,6 +37,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
+          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
+            Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
+            Tests/build/vpn_event_export_smoke.swift
+          "$RUNNER_TEMP/vpn-event-export-tests"
           # Run Foundation-only security policies with real Swift, not syntax-only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
@@ -54,7 +59,7 @@ jobs:
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/mac_pairing_qr_input_smoke.swift
           "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
-          # Reject duplicate or Unicode-escaped alias members in scanned Mac QR.
+          # Reject duplicate/Unicode-escaped alias public QR JSON member names.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/unique-mac-qr-json-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/unique_flat_json_root_smoke.swift
