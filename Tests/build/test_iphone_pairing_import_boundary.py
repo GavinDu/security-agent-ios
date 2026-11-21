@@ -9,7 +9,7 @@ WF = (ROOT / ".github/workflows/validate.yml").read_text()
 
 class MacPairingImportBoundaryTests(unittest.TestCase):
     def test_mac_uses_same_shared_qr_and_manual_peer_validation(self):
-        self.assertIn("IPhonePairingImportPolicy.decodePublicKey(from: iphonePairingText)", MAC)
+        self.assertRegex(MAC, r"IPhonePairingImportPolicy\.decodePublicKey\(\s*from:\s*iphonePairingText\s*\)")
         self.assertIn("IPhonePairingImportPolicy.validatedPublicKey(iphonePublicKey)", MAC)
         self.assertIn(".disabled(validatedIPhoneKey == nil)", MAC)
         self.assertNotIn("JSONDecoder().decode(", MAC)
