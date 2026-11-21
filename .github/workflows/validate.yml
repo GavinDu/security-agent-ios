@@ -79,6 +79,12 @@ jobs:
             Shared/BoringTunKeyInputPolicy.swift \
             Tests/build/boringtun_key_input_smoke.swift
           "$RUNNER_TEMP/boringtun-key-input-tests"
+          # Remote invalid WireGuard packets are nonfatal; malformed local
+          # Rust C ABI output must instead stop the tunnel.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-datagram-failure-tests" \
+            Shared/WireGuardDatagramFailurePolicy.swift \
+            Tests/build/wireguard_datagram_failure_smoke.swift
+          "$RUNNER_TEMP/wireguard-datagram-failure-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift

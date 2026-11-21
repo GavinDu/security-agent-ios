@@ -231,7 +231,32 @@ final class BoringTunTransport {
                 if let packet, !packet.isEmpty, let codec = self.codec {
                     // A random/malformed UDP message must not crash or
                     // disable the VPN; discard authentication failures.
-                    if let action = try? codec.decapsulate(packet) {
+                    // Remote authentication errors can be discarded; a
+                    // malformed *local* Rust C ABI result must tear down this
+                    // session rather than vanish behind blanket try?.
+                    var action: BoringTunAction?
+                    do {
+                        action = try codec.decapsulate(packet)
+                    } catch {
+                        let reason: WireGuardDatagramFailurePolicy.Reason
+                        switch error {
+                        case BoringTunError.invalidPacket:
+                            reason = .malformedIncomingPacket
+                        case BoringTunError.engineError:
+                            reason = .authenticationRejected
+                        case BoringTunError.invalidResponse:
+                            reason = .malformedFFIResponse
+                        default:
+                            reason = .unexpectedLocalFailure
+                        }
+                        guard WireGuardDatagramFailurePolicy.disposition(for: reason) == .discard else {
+                            self.fail(error)
+                            return
+                        }
+                    }
+                    if let action {
+                        // Local UDP queue/packetFlow failures are never
+                        // classified as unauthenticated remote rejections.
                         do { try self.process(action) } catch { self.fail(error); return }
                     }
                     if codec.hasAuthenticatedHandshake && self.startCompletion != nil {
