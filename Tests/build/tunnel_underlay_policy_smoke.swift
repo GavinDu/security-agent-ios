@@ -34,7 +34,8 @@ struct TunnelUnderlayPolicySmoke {
                      "10.8.0.", "10.8.0", "167837697", "10..0.1",
                      "", "10.8.0.1.", "0x0a080001", "0X0A080001",
                      "0x0a.0x08.0x00.0x01", "10.0x08.0.1",
-                     "0xC0000214", "0x00000000"] {
+                     "0xC0000214", "0x00000000", "0x0a080001.",
+                     "0x0a..0x08.0x00.0x01"] {
             precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split
             ), "Ambiguous numeric IPv4 notation accepted: \(host)")
