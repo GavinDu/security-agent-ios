@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MANAGER = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
 POLICY = (ROOT / "Shared/ProfileSaveSafetyPolicy.swift").read_text()
 SMOKE = (ROOT / "Tests/build/profile_save_safety_smoke.swift").read_text()
+PAIRING = (ROOT / "ios/AgentApp/Pairing/PairingView.swift").read_text()
 WORKFLOW = (ROOT / ".github/workflows/validate.yml").read_text()
 
 
@@ -27,6 +28,15 @@ class ProfileSaveSafetyBoundaryTests(unittest.TestCase):
         self.assertIn("old.publicKey != validated.publicKey", save)
         self.assertIn("old.endpoint != validated.endpoint", save)
         self.assertIn("old.routeMode != validated.routeMode", save)
+
+    def test_pairing_keeps_preview_and_shows_native_denial(self):
+        save_button = PAIRING.split('Button("Trust Mac and save VPN")', 1)[1].split(
+            ".disabled(!fingerprintConfirmed)", 1
+        )[0]
+        self.assertIn("tunnel.save(preview)", save_button)
+        self.assertNotIn("macPreview = nil", save_button)
+        self.assertIn(".onChange(of: tunnel.profile)", PAIRING)
+        self.assertIn("if let error = tunnel.errorMessage", PAIRING)
 
     def test_compiled_swift_policy_is_in_required_workflow(self):
         self.assertIn("Shared/ProfileSaveSafetyPolicy.swift", WORKFLOW)
