@@ -9,8 +9,7 @@ class WebBoundaryTests(unittest.TestCase):
         source = (ROOT / "ios/AgentApp/Chat/ChatWebView.swift").read_text()
         self.assertIn("decidePolicyFor action: WKNavigationAction", source)
         self.assertIn("decidePolicyFor navigationResponse: WKNavigationResponse", source)
-        # Original origin-only assertion was intentionally strengthened:
-        # both delegate callbacks must require main frame AND trusted origin.
+        # Both document delegates retain strict main-frame plus private origin checks.
         self.assertEqual(source.count("AgentChatNavigationPolicy.allowsDocumentNavigation("), 2)
         self.assertIn("action.targetFrame?.isMainFrame == true", source)
         self.assertIn("navigationResponse.isForMainFrame", source)
@@ -19,7 +18,13 @@ class WebBoundaryTests(unittest.TestCase):
     def test_inert_native_script_handler_is_not_exposed(self):
         source = (ROOT / "ios/AgentApp/Chat/ChatWebView.swift").read_text()
         self.assertNotIn("WKScriptMessageHandler", source)
-        self.assertNotIn("userContentController.add(", source)
+        # WebKit content-blocking rule lists must be installed, but they
+        # are NOT script message handlers and cannot invoke native callbacks.
+        # Preserve the zero-JS-bridge invariant without forbidding the
+        # new fail-closed resource allowlist.
+        self.assertEqual(source.count("userContentController.add("), 1)
+        self.assertIn("webView.configuration.userContentController.add(list)", source)
+        self.assertNotIn("WKScriptMessageHandler", source)
         self.assertNotIn("agentNative", source)
 
     def test_private_origin_constraints_are_explicit(self):
