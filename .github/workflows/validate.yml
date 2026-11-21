@@ -44,6 +44,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Validate imported public-only iPhone QR before the Mac peer copy path.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
+            Shared/IPhonePairingImportPolicy.swift \
+            Tests/build/iphone_pairing_import_smoke.swift
+          "$RUNNER_TEMP/iphone-pairing-import-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
