@@ -12,10 +12,10 @@ struct ChatResourcePolicySmoke {
         guard let rules = decoded as? [[String: [String: String]]] else {
             preconditionFailure("Malformed WebKit JSON resource rule list")
         }
-        precondition(rules.count == 3)
+        precondition(rules.count == 4)
         let patterns = rules.map { $0["trigger"]!["url-filter"]! }
         let actions = rules.map { $0["action"]!["type"]! }
-        precondition(actions == ["block", "ignore-previous-rules", "ignore-previous-rules"])
+        precondition(actions == ["block", "block", "ignore-previous-rules", "ignore-previous-rules"])
 
         let regex = try patterns.map { try NSRegularExpression(pattern: $0) }
         func permitted(_ url: String) -> Bool {
@@ -48,6 +48,6 @@ struct ChatResourcePolicySmoke {
         ] {
             precondition(!permitted(url), "External resource escaped filter: \(url)")
         }
-        print("WebKit chat resource allowlist: 3 private + 9 hostile URLs passed")
+        print("WebKit chat resource allowlist: 3 private + 9 hostile URLs passed (4 rules)")
     }
 }
