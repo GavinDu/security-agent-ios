@@ -1,0 +1,42 @@
+"""Guard outer WireGuard UDP endpoint against the inner IPv4 split route."""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG = (ROOT / "Shared/AgentConfig.swift").read_text()
+TUNNEL = (ROOT / "ios/PacketTunnel/BoringTunTransport.swift").read_text()
+POLICY = (ROOT / "Shared/TunnelUnderlayPolicy.swift").read_text()
+SMOKE = (ROOT / "Tests/build/tunnel_underlay_policy_smoke.swift").read_text()
+
+
+class TunnelUnderlayBoundaryTests(unittest.TestCase):
+    def test_profile_validated_rejects_captured_underlay(self):
+        validated = CONFIG.split("func validated() throws -> ServerProfile", 1)[1].split(
+            "/// Pin the V2 digest schema", 1
+        )[0]
+        self.assertIn("TunnelUnderlayPolicy.permitsLiteralEndpoint(", validated)
+        self.assertIn("RouteMode.split.allowedIPs", validated)
+        self.assertIn("throw AgentConfigurationError.unsafeUnderlayEndpoint", validated)
+
+    def test_extension_rejects_before_rust_codec_or_routes(self):
+        start = TUNNEL.split("func start(profile: ServerProfile", 1)[1].split(
+            "private func networkSettings(", 1
+        )[0]
+        self.assertLess(start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
+                        start.index("BoringTunCodec("))
+        self.assertLess(start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
+                        start.index("self.networkSettings("))
+        self.assertIn("throw AgentConfigurationError.unsafeUnderlayEndpoint", start)
+
+    def test_production_policy_rejects_aliases_and_cidrs(self):
+        self.assertIn("canonicalIPv4(host)", POLICY)
+        self.assertIn("host.utf8.allSatisfy", POLICY)
+        self.assertIn("prefix == 0", POLICY)
+        self.assertIn("endpoint & mask == network & mask", POLICY)
+        self.assertIn("10.8.0.255", SMOKE)
+        self.assertIn("10.8.0.001", SMOKE)
+        self.assertIn("0.0.0.0/0", SMOKE)
+
+
+if __name__ == "__main__":
+    unittest.main()

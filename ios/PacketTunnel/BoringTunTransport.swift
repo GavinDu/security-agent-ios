@@ -41,11 +41,8 @@ final class BoringTunTransport {
                 guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
                     throw AgentConfigurationError.unverifiedFullTunnel
                 }
-                let secret = try SharedKeychain.existingIdentity()
-                let psk = try SharedKeychain.optionalPreSharedKey()
-                self.codec = try BoringTunCodec(
-                    privateKey: secret, serverKey: validated.publicKey, presharedKey: psk
-                )
+                // Validate the outer UDP endpoint before any Keychain/Rust
+                // codec allocation and before installing the inner IP routes.
                 guard let components = URLComponents(string: "udp://\(validated.endpoint)"),
                       let host = components.host, !host.isEmpty,
                       let portNumber = components.port,
@@ -53,6 +50,18 @@ final class BoringTunTransport {
                       let provider = self.provider else {
                     throw AgentConfigurationError.invalidEndpoint
                 }
+                if validated.routeMode == .split &&
+                    !TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                        host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
+                    ) {
+                    throw AgentConfigurationError.unsafeUnderlayEndpoint
+                }
+
+                let secret = try SharedKeychain.existingIdentity()
+                let psk = try SharedKeychain.optionalPreSharedKey()
+                self.codec = try BoringTunCodec(
+                    privateKey: secret, serverKey: validated.publicKey, presharedKey: psk
+                )
 
                 // Swift routing, not a second tunnel stack inside the Rust crate.
                 let settings = self.networkSettings(profile: validated, remoteHost: host)

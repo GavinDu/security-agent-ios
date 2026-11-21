@@ -23,6 +23,7 @@ enum RouteMode: String, Codable, CaseIterable, Identifiable {
 enum AgentConfigurationError: LocalizedError {
     case invalidPublicKey
     case invalidEndpoint
+    case unsafeUnderlayEndpoint
     case incorrectQRType
     case unsupportedQRVersion
     case missingProfile
@@ -34,6 +35,7 @@ enum AgentConfigurationError: LocalizedError {
         switch self {
         case .invalidPublicKey: return "WireGuard public key must be 32 bytes of base64."
         case .invalidEndpoint: return "Enter an endpoint such as home.example.net:51820."
+        case .unsafeUnderlayEndpoint: return "The Mac WireGuard UDP endpoint cannot be inside the VPN's own split-tunnel network. Use the Mac's LAN/public address or hostname instead."
         case .incorrectQRType: return "This is not a Mac Mini pairing QR code."
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."
@@ -62,6 +64,14 @@ struct ServerProfile: Codable, Equatable {
               components.user == nil, components.password == nil,
               components.path.isEmpty, components.query == nil, components.fragment == nil else {
             throw AgentConfigurationError.invalidEndpoint
+        }
+        // The encrypted outer UDP channel cannot be addressed *inside* the
+        // same 10.8.0.0/24 split route that would depend on its handshake.
+        // Hostname A/AAAA routing still requires physical underlay proof (#65).
+        if routeMode == .split && !TunnelUnderlayPolicy.permitsLiteralEndpoint(
+            host: host, includedIPv4CIDRs: RouteMode.split.allowedIPs
+        ) {
+            throw AgentConfigurationError.unsafeUnderlayEndpoint
         }
         return self
     }

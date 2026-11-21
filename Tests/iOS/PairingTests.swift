@@ -25,6 +25,22 @@ final class PairingTests: XCTestCase {
         XCTAssertThrowsError(try ServerProfile(publicKey: validKey, endpoint: "host:0").validated())
     }
 
+    func testSplitProfileRejectsLiteralUnderlayEndpointInsideItsOwnRoute() {
+        for endpoint in ["10.8.0.0:51820", "10.8.0.1:51820",
+                         "10.8.0.2:51820", "10.8.0.255:51820"] {
+            XCTAssertThrowsError(
+                try ServerProfile(publicKey: validKey, endpoint: endpoint).validated(),
+                "Accepted self-routed UDP endpoint: \(endpoint)"
+            )
+        }
+        XCTAssertNoThrow(
+            try ServerProfile(publicKey: validKey, endpoint: "10.8.1.1:51820").validated()
+        )
+        XCTAssertNoThrow(
+            try ServerProfile(publicKey: validKey, endpoint: "192.168.1.20:51820").validated()
+        )
+    }
+
     func testRoutingPolicies() {
         XCTAssertEqual(RouteMode.split.allowedIPs, ["10.8.0.0/24"])
         XCTAssertEqual(RouteMode.full.allowedIPs, ["0.0.0.0/0", "::/0"])

@@ -52,6 +52,10 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/route-safety-tests" \
             Shared/TunnelRouteSafetyPolicy.swift Tests/build/tunnel_route_safety_smoke.swift
           "$RUNNER_TEMP/route-safety-tests"
+          # Actual production Swift CIDR/outer UDP loop prevention policy.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-policy-tests" \
+            Shared/TunnelUnderlayPolicy.swift Tests/build/tunnel_underlay_policy_smoke.swift
+          "$RUNNER_TEMP/underlay-policy-tests"
           # Exercise the production legacy migration decision matrix.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
