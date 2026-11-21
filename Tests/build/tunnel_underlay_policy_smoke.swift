@@ -4,6 +4,21 @@ import Foundation
 struct TunnelUnderlayPolicySmoke {
     static func main() {
         let split = ["10.8.0.0/24"]
+        precondition(TunnelUnderlayPolicy.splitIPv4Routes(
+            includedIPv4CIDRs: split
+        ) == [TunnelIPv4Route(
+            destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0"
+        )], "Installed NEIPv4Route must derive from same split CIDR")
+        precondition(TunnelUnderlayPolicy.splitIPv4Routes(
+            includedIPv4CIDRs: ["10.8.0.24/24", "192.168.50.1/25"]
+        ) == [
+            TunnelIPv4Route(destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0"),
+            TunnelIPv4Route(destinationAddress: "192.168.50.0", subnetMask: "255.255.255.128")
+        ], "Normalize route destination using its mask")
+        precondition(TunnelUnderlayPolicy.splitIPv4Routes(includedIPv4CIDRs: []) == nil)
+        precondition(TunnelUnderlayPolicy.splitIPv4Routes(
+            includedIPv4CIDRs: ["bogus"]
+        ) == nil)
         for host in ["10.8.0.0", "10.8.0.1", "10.8.0.2", "10.8.0.254", "10.8.0.255"] {
             precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split

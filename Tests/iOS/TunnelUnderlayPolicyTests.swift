@@ -3,6 +3,15 @@ import XCTest
 @testable import AgentApp
 
 final class TunnelUnderlayPolicyTests: XCTestCase {
+    func testInstalledIPv4RoutesUseSameCIDRAsUnderlayGuard() {
+        let routes = TunnelUnderlayPolicy.splitIPv4Routes(
+            includedIPv4CIDRs: RouteMode.split.allowedIPs
+        )
+        XCTAssertEqual(routes, [
+            TunnelIPv4Route(destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0")
+        ])
+    }
+
     func testRejectsAllSplitRouteLiteralEndpointBoundaries() {
         for host in ["10.8.0.0", "10.8.0.1", "10.8.0.2", "10.8.0.255"] {
             XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(

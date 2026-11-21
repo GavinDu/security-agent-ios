@@ -64,7 +64,7 @@ final class BoringTunTransport {
                 )
 
                 // Swift routing, not a second tunnel stack inside the Rust crate.
-                let settings = self.networkSettings(profile: validated, remoteHost: host)
+                let settings = try self.networkSettings(profile: validated, remoteHost: host)
                 provider.setTunnelNetworkSettings(settings) { [weak self] error in
                     self?.queue.async {
                         guard let self, self.active,
@@ -84,15 +84,20 @@ final class BoringTunTransport {
 
     private func networkSettings(
         profile: ServerProfile, remoteHost: String
-    ) -> NEPacketTunnelNetworkSettings {
+    ) throws -> NEPacketTunnelNetworkSettings {
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: remoteHost)
         settings.mtu = NSNumber(value: 1420)
 
         let ipv4 = NEIPv4Settings(addresses: ["10.8.0.2"], subnetMasks: ["255.255.255.255"])
         if profile.routeMode == .split {
-            ipv4.includedRoutes = [
-                NEIPv4Route(destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0")
-            ]
+            guard let routes = TunnelUnderlayPolicy.splitIPv4Routes(
+                includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ) else {
+                throw AgentConfigurationError.unsafeUnderlayEndpoint
+            }
+            ipv4.includedRoutes = routes.map {
+                NEIPv4Route(destinationAddress: $0.destinationAddress, subnetMask: $0.subnetMask)
+            }
         } else {
             ipv4.includedRoutes = [NEIPv4Route.default()]
             let ipv6 = NEIPv6Settings(
