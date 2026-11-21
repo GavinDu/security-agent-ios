@@ -15,7 +15,7 @@ class RedactedVPNExportBoundaryTests(unittest.TestCase):
         self.assertIn("formatter.timeZone = TimeZone(secondsFromGMT: 0)", EXPORT)
         self.assertNotIn("JSONEncoder()", EXPORT)
         self.assertNotIn("uuidString", EXPORT)
-        self.assertNotIn("endpoint", EXPORT.lower().split("static func redactedText", 1)[1])
+        self.assertNotIn("endpoint", EXPORT.lower().split("static func redactedtext", 1)[1])
     def test_ui_exports_only_on_user_share_and_not_on_background(self):
         section = UI.split('Section("Recent VPN events")', 1)[1].split('if let profile = tunnel.profile', 1)[0]
         self.assertIn("let events = SharedDiagnostics.events()", section)
