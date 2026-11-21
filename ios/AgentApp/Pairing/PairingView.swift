@@ -43,12 +43,18 @@ struct PairingView: View {
                     Toggle("I verified the fingerprint on my Mac", isOn: $fingerprintConfirmed)
                     Button("Trust Mac and save VPN") {
                         guard fingerprintConfirmed else { return }
+                        // Keep the scan + fingerprint confirmation available
+                        // until native preferences and App Group commit succeed.
+                        // A denied active-session save must not force a re-scan.
                         tunnel.save(preview)
-                        macPreview = nil
-                        fingerprintConfirmed = false
                     }
                     .disabled(!fingerprintConfirmed)
                     .buttonStyle(.borderedProminent)
+                    if let error = tunnel.errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                 }
                 if let current = tunnel.profile {
                     LabeledContent("Currently paired", value: current.endpoint)
@@ -56,6 +62,11 @@ struct PairingView: View {
             }
         }
         .navigationTitle("Pair devices")
+        .onChange(of: tunnel.profile) { _, committed in
+            guard let macPreview, committed == macPreview else { return }
+            self.macPreview = nil
+            fingerprintConfirmed = false
+        }
         .task {
             do { ownPublicKey = try SharedKeychain.publicKeyBase64() }
             catch { pairingError = error.localizedDescription }
