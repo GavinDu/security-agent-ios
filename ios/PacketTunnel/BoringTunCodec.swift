@@ -18,6 +18,7 @@ enum BoringTunError: LocalizedError {
     case invalidResponse
     case stopped
     case handshakeTimedOut
+    case networkPathTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +29,7 @@ enum BoringTunError: LocalizedError {
         case .invalidResponse: return "Rust WireGuard FFI returned an invalid response."
         case .stopped: return "WireGuard tunnel stopped."
         case .handshakeTimedOut: return "WireGuard peer handshake timed out."
+        case .networkPathTimedOut: return "WireGuard UDP network path did not recover; disconnect and reconnect to resolve the endpoint again."
         }
     }
 }
