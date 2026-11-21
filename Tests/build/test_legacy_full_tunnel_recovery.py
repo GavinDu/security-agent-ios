@@ -11,7 +11,21 @@ class LegacyFullRecoveryBoundaryTests(unittest.TestCase):
         # An app-owned native manager can outlive an unreadable App Group profile.
         self.assertIn("guard let manager else { return }", src)
         self.assertNotIn("guard let profile, let manager else { return }", src)
-        self.assertIn("isFullMode: profile.map { $0.routeMode == .full }", src)
+        recovery = src.split("private func remediateLegacyFullTunnel()", 1)[1].split(
+            "    func save(", 1
+        )[0]
+        # Do not trust a stale App Group split profile unless its native
+        # provider bundle, endpoint and public v2 digest still agree.
+        self.assertIn("native.providerBundleIdentifier == AgentConstants.tunnelBundleID", recovery)
+        self.assertIn("native.serverAddress == profile.endpoint", recovery)
+        self.assertIn("NativeProfileBindingPolicy.allowsStart(", recovery)
+        self.assertIn("profileDigest: try? profile.publicProfileDigest()", recovery)
+        self.assertIn("isFullMode: verifiedRouteIsFull", recovery)
+        self.assertLess(
+            recovery.index("NativeProfileBindingPolicy.allowsStart("),
+            recovery.index("LegacyFullTunnelRecovery.assess("),
+        )
+        self.assertIn("verifiedRouteIsFull == nil", recovery)
         self.assertIn("Security Agent VPN pairing data is missing or invalid.", src)
         self.assertIn("manager.connection.stopVPNTunnel()", src)
         self.assertIn("manager.isOnDemandEnabled = false", src)
