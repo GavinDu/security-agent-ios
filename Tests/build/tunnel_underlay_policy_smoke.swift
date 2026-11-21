@@ -45,6 +45,27 @@ struct TunnelUnderlayPolicySmoke {
         precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
             host: "0xface.home.example", includedIPv4CIDRs: split
         ))
+        // IPv4-mapped IPv6 aliases must use the same installed split-route
+        // CIDR decision even when NWEndpoint receives bracketed URL host.
+        for host in ["::ffff:10.8.0.1", "[::ffff:10.8.0.1]",
+                     "::ffff:a08:1", "::FFFF:0A08:0001",
+                     "::ffff:10.8.0.255"] {
+            precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: split
+            ), "Mapped IPv6 captured inner route: \(host)")
+        }
+        for host in ["::ffff:203.0.113.42", "[::ffff:10.8.1.1]",
+                     "2001:db8::1", "[2001:db8::1]", "::1"] {
+            precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: split
+            ), "Safe IPv6 literal rejected: \(host)")
+        }
+        for host in ["::ffff:10.8.0.256", "::ffff:bad::1",
+                     "[::ffff:10.8.0.1", "::ffff:10.8.0.1]"] {
+            precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: host, includedIPv4CIDRs: split
+            ), "Malformed IPv6 literal accepted: \(host)")
+        }
         precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
             host: "10.8.0.1", includedIPv4CIDRs: ["10.8.1.0/24"]
         ))
