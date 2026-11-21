@@ -8,10 +8,18 @@ class FullTunnelSafetyTests(unittest.TestCase):
     def test_extension_enforces_before_tunnel_network_settings(self):
         source = (ROOT / "ios/PacketTunnel/BoringTunTransport.swift").read_text()
         self.assertIn("TunnelRouteSafetyPolicy.permitsStart(validated.routeMode)", source)
+        # Network settings now throws on invalid CIDR, so preserve the
+        # stronger ordering: route-mode fail-closed gate -> literal underlay
+        # containment -> validated, throwing route construction.
         self.assertLess(
             source.index("TunnelRouteSafetyPolicy.permitsStart(validated.routeMode)"),
-            source.index("let settings = self.networkSettings(profile: validated")
+            source.index("TunnelUnderlayPolicy.permitsLiteralEndpoint(")
         )
+        self.assertLess(
+            source.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
+            source.index("let settings = try self.networkSettings(profile: validated")
+        )
+        self.assertIn("try self.networkSettings(profile: validated", source)
 
     def test_app_fails_closed_before_mode_edit_and_never_forces_disconnect(self):
         source = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
