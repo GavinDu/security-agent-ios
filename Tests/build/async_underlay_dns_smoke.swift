@@ -36,7 +36,7 @@ struct AsyncUnderlayDNSSmoke {
                      host: String(repeating: "a", count: 254),
                      expected: .failure(.lookupFailed))
         assertResult(lookup: { _ in preconditionFailure("NUL DNS lookup executed") },
-                     host: "good.example\\0evil.example",
+                     host: "good.example\0evil.example",
                      expected: .failure(.lookupFailed))
 
         let gate = DispatchSemaphore(value: 0)
