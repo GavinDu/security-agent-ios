@@ -52,7 +52,13 @@ struct ChatWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
+            // targetFrame == nil means a new-window/popup navigation. Reject
+            // it rather than allowing another document context. Nested frames
+            // also cannot navigate, even to the trusted chat origin.
+            let isMainFrame = action.targetFrame?.isMainFrame == true
+            decisionHandler(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                destination, isMainFrame: isMainFrame
+            ) ? .allow : .cancel)
         }
 
         func webView(_ webView: WKWebView,
@@ -62,7 +68,9 @@ struct ChatWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
+            decisionHandler(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                destination, isMainFrame: navigationResponse.isForMainFrame
+            ) ? .allow : .cancel)
         }
     }
 }

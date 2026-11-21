@@ -33,6 +33,25 @@ struct ChatNavigationSmoke {
             guard let url = URL(string: address) else { preconditionFailure("Bad test URL") }
             precondition(!AgentChatNavigationPolicy.allows(url), "Unsafe navigation: \(address)")
         }
-        print("Private chat origin: three valid and 11 adversarial URLs passed")
+        // Main-frame origin alone is insufficient: nested same-origin frames
+        // and nil targetFrame popups must not create extra documents.
+        let chat = URL(string: "http://10.8.0.1:8080/chat")!
+        let external = URL(string: "https://example.org/private")!
+        precondition(AgentChatNavigationPolicy.allowsDocumentNavigation(
+            chat, isMainFrame: true
+        ))
+        precondition(!AgentChatNavigationPolicy.allowsDocumentNavigation(
+            chat, isMainFrame: false
+        ), "Same-origin subframe/popup must be blocked")
+        precondition(!AgentChatNavigationPolicy.allowsDocumentNavigation(
+            external, isMainFrame: true
+        ), "Cross-origin top-level document must be blocked")
+        for address in rejected {
+            let url = URL(string: address)!
+            precondition(!AgentChatNavigationPolicy.allowsDocumentNavigation(
+                url, isMainFrame: true
+            ), "Unsafe top-level URL: \(address)")
+        }
+        print("Private chat origin and frame isolation: 3 valid, 11 adversarial URLs passed")
     }
 }
