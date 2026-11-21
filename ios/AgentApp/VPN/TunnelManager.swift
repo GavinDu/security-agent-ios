@@ -116,17 +116,17 @@ final class TunnelManager: NSObject, ObservableObject {
         // preferences. Only an exact v2 binding certifies a split route;
         // absent or mismatched native metadata is untrusted like missing
         // App Group bytes. Do not assume a running old extension restarted.
-        let verifiedRouteIsFull: Bool? = {
-            guard let profile,
-                  let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
-                  native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
-                  native.serverAddress == profile.endpoint,
-                  NativeProfileBindingPolicy.allowsStart(
-                    metadata: native.providerConfiguration,
-                    profileDigest: try? profile.publicProfileDigest()
-                  ) else { return nil }
-            return profile.routeMode == .full
-        }()
+        var verifiedRouteIsFull: Bool?
+        if let profile,
+           let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
+           native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+           native.serverAddress == profile.endpoint,
+           NativeProfileBindingPolicy.allowsStart(
+            metadata: native.providerConfiguration,
+            profileDigest: try? profile.publicProfileDigest()
+           ) {
+            verifiedRouteIsFull = profile.routeMode == .full
+        }
         let action = LegacyFullTunnelRecovery.assess(
             isFullMode: verifiedRouteIsFull,
             isActive: active,
