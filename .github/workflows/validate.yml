@@ -46,6 +46,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
           "$RUNNER_TEMP/chat-navigation-tests"
+          # Compile and execute production WebKit resource allowlist generator.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
+            ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
+            Tests/build/chat_resource_policy_smoke.swift
+          "$RUNNER_TEMP/chat-resource-policy-tests"
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
