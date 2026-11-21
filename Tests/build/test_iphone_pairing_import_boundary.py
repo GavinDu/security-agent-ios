@@ -18,7 +18,13 @@ class MacPairingImportBoundaryTests(unittest.TestCase):
         self.assertIn("maxPayloadBytes = 4_096", POLICY)
         self.assertIn("bytes.count <= maxPayloadBytes", POLICY)
         self.assertIn('payload.kind == "iphone"', POLICY)
-        self.assertIn("payload.endpoint == nil", POLICY)
+        self.assertIn('Set(dictionary.keys) == Set(["version", "kind", "publicKey"])', POLICY)
+        self.assertIn("UniqueFlatJSONObjectPolicy.hasUniqueStringKeys(bytes)", POLICY)
+        self.assertLess(POLICY.index("text.utf8.count <= maxPayloadBytes"),
+                        POLICY.index("let bytes = Data(text.utf8)"))
+        self.assertLess(POLICY.index("UniqueFlatJSONObjectPolicy.hasUniqueStringKeys(bytes)"),
+                        POLICY.index("JSONSerialization.jsonObject(with: bytes)"))
+        self.assertIn("value.utf8.count == 44", POLICY)
         self.assertIn("bytes.base64EncodedString() == value", POLICY)
         self.assertIn("bytes.contains(where: { $0 != 0 })", POLICY)
     def test_actual_swift_and_native_tests_required(self):

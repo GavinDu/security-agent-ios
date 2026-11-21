@@ -56,7 +56,7 @@ jobs:
           "$RUNNER_TEMP/vpn-profile-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
-            Shared/IPhonePairingImportPolicy.swift \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
             Tests/build/iphone_pairing_import_smoke.swift
           "$RUNNER_TEMP/iphone-pairing-import-tests"
           # Bound scanned Mac QR JSON before any decode; canonical server key only.
