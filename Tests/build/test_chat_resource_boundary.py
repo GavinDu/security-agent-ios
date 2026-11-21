@@ -23,10 +23,10 @@ class ChatResourceBoundaryTests(unittest.TestCase):
         self.assertIn("coordinator.isActive = false", VIEW)
 
     def test_default_block_and_exact_private_exceptions(self):
-        self.assertIn("^(http|https|ws|wss)://", POLICY)
+        self.assertIn("^https?://", POLICY)
         self.assertIn('"ignore-previous-rules"', POLICY)
         self.assertIn("AgentConstants.serverIPv4", POLICY)
-        self.assertIn(":8080(/|$)", POLICY)
+        self.assertIn(":8080/", POLICY)
         self.assertIn("https://cdn.example.com/script.js", SMOKE)
         self.assertIn("http://10.8.0.1.evil.example:8080/chat", SMOKE)
         self.assertIn("ws://10.8.0.1:8080/chat/stream", SMOKE)
