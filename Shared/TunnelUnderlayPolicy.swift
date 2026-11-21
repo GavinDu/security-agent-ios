@@ -47,7 +47,12 @@ enum TunnelUnderlayPolicy {
         let numericHostLabels = host.split(
             separator: ".", omittingEmptySubsequences: false
         )
-        let looksNumeric = numericHostLabels.allSatisfy { numericHostLabel in
+        // Empty labels can come from trailing dots or repeated separators.
+        // Ignore them only while *classifying* the host; canonicalIPv4
+        // rejects them below, rather than letting numeric aliases fall
+        // through as if they were ordinary DNS hostnames.
+        let nonEmptyLabels = numericHostLabels.filter { !$0.isEmpty }
+        let looksNumeric = !nonEmptyLabels.isEmpty && nonEmptyLabels.allSatisfy { numericHostLabel in
             let text = String(numericHostLabel)
             if text.lowercased().hasPrefix("0x") {
                 let hexadecimal = text.dropFirst(2).utf8
