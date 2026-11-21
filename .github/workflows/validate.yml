@@ -37,6 +37,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
+          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
+            Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
+            Tests/build/vpn_event_export_smoke.swift
+          "$RUNNER_TEMP/vpn-event-export-tests"
           # Run Foundation-only security policies with real Swift, not syntax-only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
@@ -66,7 +71,7 @@ jobs:
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
             Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
-          # Real Swift DNS preflight timeout/single-flight and fake resolver tests.
+          # DNS lookup completes on a single-flight pre-route numeric underlay worker.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
             Shared/AsyncUnderlayDNSResolver.swift Tests/build/async_underlay_dns_smoke.swift
           "$RUNNER_TEMP/underlay-dns-resolver-tests"

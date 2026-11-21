@@ -24,7 +24,9 @@ final class AsyncUnderlayDNSResolver {
 
     typealias Lookup = (String) throws -> [String]
 
-    private let worker = DispatchQueue(label: "com.gavindu.securityagent.underlay-dns", qos: .utility)
+    // DNS is on VPN startup's critical path. The worker remains single-flight
+    // and OS getaddrinfo cannot be cancelled, but avoid utility-QoS starvation.
+    private let worker = DispatchQueue(label: "com.gavindu.securityagent.underlay-dns", qos: .userInitiated)
     private let lock = NSLock()
     private var lookupInFlight = false
     private let lookup: Lookup
