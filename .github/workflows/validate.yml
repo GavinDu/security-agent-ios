@@ -37,6 +37,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
+          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
+            Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
+            Tests/build/vpn_event_export_smoke.swift
+          "$RUNNER_TEMP/vpn-event-export-tests"
           # Run Foundation-only security policies with real Swift, not syntax-only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift

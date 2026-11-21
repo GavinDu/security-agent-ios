@@ -40,6 +40,14 @@ struct VPNStatusView: View {
                 }
                 Text("The log stores only state transitions and timestamps. No keys or network payloads.")
                     .font(.footnote).foregroundStyle(.secondary)
+                if !events.isEmpty {
+                    // Sharing requires an explicit tap; never upload diagnostics
+                    // or share the raw App Group file/unknown event strings.
+                    ShareLink(item: VPNEventExport.redactedText(from: events)) {
+                        Label("Share redacted VPN events", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityHint("Share only approved VPN state changes and UTC timestamps.")
+                }
             }
 
             if let profile = tunnel.profile {
