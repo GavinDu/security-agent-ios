@@ -224,6 +224,20 @@ final class BoringTunTransport {
             case .invalid:
                 throw BoringTunError.engineError
             }
+            // Keep eight of the 256 bounded UDP send slots available for
+            // Rust BoringTun handshake/cookie/rekey while data bursts arrive.
+            // Unknown or malformed wire messages remain an engine error.
+            switch WireGuardControlHeadroomPolicy.decision(
+                datagram: datagram, pendingSends: pendingSends,
+                maxPendingSends: maxPendingSends, reservedControlSlots: 8
+            ) {
+            case .enqueue:
+                break
+            case .drop:
+                return
+            case .invalid:
+                throw BoringTunError.engineError
+            }
             pendingSends += 1
             let epoch = lifecycle.current
             udp.send(content: datagram, completion: .contentProcessed { [weak self] error in
