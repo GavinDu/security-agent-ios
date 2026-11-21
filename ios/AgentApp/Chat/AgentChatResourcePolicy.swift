@@ -15,17 +15,24 @@ enum AgentChatResourcePolicy {
         // A blocking network rule followed only by exact, path-delimited
         // private HTTP and matching private WS exceptions. No broad HTTPS,
         // arbitrary domain, public CDN, or alternate port exception.
+        // WebKit content blocker regexes do not accept alternation with '|'.
+        // Split default-deny HTTP(S) and WS(S) into two simple expressions,
+        // and use path-delimited private exceptions without '|'.
         let rules: [[String: Any]] = [
             [
-                "trigger": ["url-filter": "^(http|https|ws|wss)://"],
+                "trigger": ["url-filter": "^https?://"],
                 "action": ["type": "block"]
             ],
             [
-                "trigger": ["url-filter": "^http://\(host):8080(/|$)"],
+                "trigger": ["url-filter": "^wss?://"],
+                "action": ["type": "block"]
+            ],
+            [
+                "trigger": ["url-filter": "^http://\(host):8080/"],
                 "action": ["type": "ignore-previous-rules"]
             ],
             [
-                "trigger": ["url-filter": "^ws://\(host):8080(/|$)"],
+                "trigger": ["url-filter": "^ws://\(host):8080/"],
                 "action": ["type": "ignore-previous-rules"]
             ]
         ]
