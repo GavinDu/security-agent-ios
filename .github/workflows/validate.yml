@@ -92,6 +92,12 @@ jobs:
             Shared/WireGuardDatagramFailurePolicy.swift \
             Tests/build/wireguard_datagram_failure_smoke.swift
           "$RUNNER_TEMP/wireguard-datagram-failure-tests"
+          # Empty UDP receives cannot spin the PacketTunnel serial queue.
+          # Actual production Swift policy, not a parser-only source check.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-rearm-tests" \
+            Shared/WireGuardReceiveRearmPolicy.swift \
+            Tests/build/wireguard_receive_rearm_smoke.swift
+          "$RUNNER_TEMP/wireguard-rearm-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
