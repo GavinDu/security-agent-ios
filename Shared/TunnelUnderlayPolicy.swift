@@ -39,13 +39,32 @@ enum TunnelUnderlayPolicy {
         let parsedRoutes = includedIPv4CIDRs.compactMap(parseCIDR)
         guard parsedRoutes.count == includedIPv4CIDRs.count else { return false }
 
-        let looksNumeric = host.utf8.allSatisfy {
-            ($0 >= 48 && $0 <= 57) || $0 == 46
+        // Some resolvers treat 0x-prefixed components as numeric IPv4
+        // (for example 0x0a080001 -> 10.8.0.1). Do not let those aliases
+        // bypass the same inner-route check as a dotted-decimal literal.
+        // A genuine DNS name with a nonnumeric label stays eligible; its
+        // resolved A/AAAA addresses still require separate underlay proof.
+        let numericHostLabels = host.split(
+            separator: ".", omittingEmptySubsequences: false
+        )
+        let looksNumeric = numericHostLabels.allSatisfy { numericHostLabel in
+            let text = String(numericHostLabel)
+            if text.lowercased().hasPrefix("0x") {
+                let hexadecimal = text.dropFirst(2).utf8
+                return !hexadecimal.isEmpty && hexadecimal.allSatisfy {
+                    ($0 >= 48 && $0 <= 57) ||
+                    ($0 >= 65 && $0 <= 70) ||
+                    ($0 >= 97 && $0 <= 102)
+                }
+            }
+            return !text.isEmpty && text.utf8.allSatisfy {
+                $0 >= 48 && $0 <= 57
+            }
         }
         guard looksNumeric else { return true }
 
-        // Single-integer, abbreviated and leading-zero forms can be
-        // interpreted differently by platform resolvers; reject them.
+        // Single-integer, hexadecimal, abbreviated and leading-zero forms
+        // are ambiguous across resolvers; accept only canonical IPv4.
         guard let endpoint = canonicalIPv4(host) else { return false }
         for route in parsedRoutes {
             if endpoint & route.mask == route.network & route.mask {
