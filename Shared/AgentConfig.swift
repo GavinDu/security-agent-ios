@@ -140,12 +140,20 @@ struct PairingQRCode: Codable {
     }
 
     static func decodeMac(_ text: String) throws -> ServerProfile {
-        let payload = try JSONDecoder().decode(PairingQRCode.self, from: Data(text.utf8))
-        guard payload.version == 1 else { throw AgentConfigurationError.unsupportedQRVersion }
-        guard payload.kind == .mac, let endpoint = payload.endpoint else {
+        // Reject untrusted QR input before allocating/decoding large JSON.
+        // Only validated public QR fields enter the existing strict profile
+        // parser, which checks UDP endpoint and split-route capture.
+        let fields: MacPairingQRInputPolicy.ValidatedFields
+        do {
+            fields = try MacPairingQRInputPolicy.decode(text)
+        } catch MacPairingQRInputPolicy.ValidationError.unsupportedVersion {
+            throw AgentConfigurationError.unsupportedQRVersion
+        } catch MacPairingQRInputPolicy.ValidationError.invalidPublicKey {
+            throw AgentConfigurationError.invalidPublicKey
+        } catch {
             throw AgentConfigurationError.incorrectQRType
         }
-        return try ServerProfile(publicKey: payload.publicKey, endpoint: endpoint).validated()
+        return try ServerProfile(publicKey: fields.publicKey, endpoint: fields.endpoint).validated()
     }
 }
 
