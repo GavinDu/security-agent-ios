@@ -19,6 +19,8 @@ final class AgentChatResourcePolicyTests: XCTestCase {
                        "^wss?://")
         XCTAssertEqual(decoded[2]["trigger"]?["url-filter"],
                        "^http://10\\.8\\.0\\.1:8080/")
+        XCTAssertEqual(decoded[3]["trigger"]?["url-filter"],
+                       "^ws://10\\.8\\.0\\.1:8080/")
     }
 
     func testWebKitAcceptsRulesBeforeFirstNavigation() throws {
