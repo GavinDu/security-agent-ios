@@ -64,4 +64,20 @@ final class PairingTests: XCTestCase {
         )))
         XCTAssertThrowsError(try PairingQRCode.decodeMac("not json"))
     }
+    func testRejectsNoncanonicalOrZeroServerKeyBeforeSharedProfileStorage() throws {
+        let endpoint = "home.example.org:51820"
+        XCTAssertNoThrow(try ServerProfile(publicKey: validKey, endpoint: endpoint).validated())
+        let invalid = [
+            Data(repeating: 0, count: 32).base64EncodedString(),
+            Data(repeating: 2, count: 31).base64EncodedString(),
+            Data(repeating: 2, count: 33).base64EncodedString(),
+            validKey + "\n", " " + validKey, validKey + " "
+        ]
+        for key in invalid {
+            let profile = ServerProfile(publicKey: key, endpoint: endpoint)
+            XCTAssertThrowsError(try profile.validated(), "Accepted invalid key")
+            XCTAssertThrowsError(try profile.publicProfileDigest(), "Hashed invalid key")
+        }
+    }
+
 }

@@ -54,6 +54,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Validate Mac server public key before shared profile persistence.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/server-public-key-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift \
+            Tests/build/canonical_wireguard_public_key_smoke.swift
+          "$RUNNER_TEMP/server-public-key-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
