@@ -33,6 +33,16 @@ struct IPhonePairingImportSmoke {
         precondition(IPhonePairingImportPolicy.decodePublicKey(
             from: payload("invalid-public-key")
         ) == nil)
+        // Reject null/extra endpoints and literal/escaped duplicate members.
+        for bad in [
+            String(good.dropLast()) + #","endpoint":null}"#,
+            String(good.dropLast()) + #","endpoint":"evil.test:51820"}"#,
+            String(good.dropLast()) + #","publicKey":"bad"}"#,
+            String(good.dropLast()) + #","publi\u0063Key":"bad"}"#,
+            String(good.dropLast()) + #","kind":"mac"}"#
+        ] {
+            precondition(IPhonePairingImportPolicy.decodePublicKey(from: bad) == nil)
+        }
         precondition(IPhonePairingImportPolicy.decodePublicKey(from: "not json") == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(from: "") == nil)
         precondition(IPhonePairingImportPolicy.decodePublicKey(

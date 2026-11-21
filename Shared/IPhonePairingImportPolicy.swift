@@ -10,11 +10,13 @@ enum IPhonePairingImportPolicy {
         let version: Int
         let kind: String
         let publicKey: String
-        let endpoint: String?
     }
 
     static func validatedPublicKey(_ value: String) -> String? {
-        guard let bytes = Data(base64Encoded: value),
+        // WireGuard public key Base64 has exactly 44 ASCII bytes.
+        // Bound manual paste before Base64 allocation/decoding.
+        guard value.utf8.count == 44,
+              let bytes = Data(base64Encoded: value),
               bytes.count == 32,
               bytes.base64EncodedString() == value,
               bytes.contains(where: { $0 != 0 }) else {
@@ -24,12 +26,21 @@ enum IPhonePairingImportPolicy {
     }
 
     static func decodePublicKey(from text: String) -> String? {
+        // Reject oversized pasted JSON before allocating Data or parsing.
+        guard !text.isEmpty, text.utf8.count <= maxPayloadBytes else {
+            return nil
+        }
         let bytes = Data(text.utf8)
-        guard !bytes.isEmpty, bytes.count <= maxPayloadBytes,
+        guard bytes.count <= maxPayloadBytes,
+              // Reject literal and escaped duplicate keys before Foundation
+              // parsers can silently normalize first/last values.
+              UniqueFlatJSONObjectPolicy.hasUniqueStringKeys(bytes),
+              let object = try? JSONSerialization.jsonObject(with: bytes),
+              let dictionary = object as? [String: Any],
+              Set(dictionary.keys) == Set(["version", "kind", "publicKey"]),
               let payload = try? JSONDecoder().decode(Payload.self, from: bytes),
               payload.version == 1,
-              payload.kind == "iphone",
-              payload.endpoint == nil else {
+              payload.kind == "iphone" else {
             return nil
         }
         return validatedPublicKey(payload.publicKey)

@@ -32,7 +32,10 @@ enum MacPairingQRInputPolicy {
             throw ValidationError.invalidSchema
         }
         let data = Data(text.utf8)
-        guard let object = try? JSONSerialization.jsonObject(with: data),
+        // Reject duplicate root member names, including Unicode-escaped
+        // aliases, before Foundation's JSON parsers normalize the dictionary.
+        guard UniqueFlatJSONObjectPolicy.hasUniqueStringKeys(data),
+              let object = try? JSONSerialization.jsonObject(with: data),
               let dictionary = object as? [String: Any],
               Set(dictionary.keys) == Set(["version", "kind", "publicKey", "endpoint"]),
               let payload = try? JSONDecoder().decode(Payload.self, from: data) else {

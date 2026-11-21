@@ -23,6 +23,16 @@ final class IPhonePairingImportPolicyTests: XCTestCase {
             from: valid.replacingOccurrences(of: #""version":1"#,
                                             with: #""endpoint":"evil.test","version":1"#)
         ))
+        for suffix in [
+            #","endpoint":null}"#,
+            #","endpoint":"evil.test:51820"}"#,
+            #","publicKey":"bad"}"#,
+            #","publi\u0063Key":"bad"}"#
+        ] {
+            XCTAssertNil(IPhonePairingImportPolicy.decodePublicKey(
+                from: String(valid.dropLast()) + suffix
+            ))
+        }
         XCTAssertNil(IPhonePairingImportPolicy.validatedPublicKey("bad"))
         XCTAssertNil(IPhonePairingImportPolicy.validatedPublicKey(
             Data(repeating: 0, count: 32).base64EncodedString()
