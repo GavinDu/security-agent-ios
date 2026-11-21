@@ -112,8 +112,23 @@ final class TunnelManager: NSObject, ObservableObject {
         guard let manager else { return }
         let status = manager.connection.status
         let active = status == .connected || status == .connecting || status == .reasserting
+        // A loaded public profile can be stale relative to native system
+        // preferences. Only an exact v2 binding certifies a split route;
+        // absent or mismatched native metadata is untrusted like missing
+        // App Group bytes. Do not assume a running old extension restarted.
+        let verifiedRouteIsFull: Bool? = {
+            guard let profile,
+                  let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
+                  native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+                  native.serverAddress == profile.endpoint,
+                  NativeProfileBindingPolicy.allowsStart(
+                    metadata: native.providerConfiguration,
+                    profileDigest: try? profile.publicProfileDigest()
+                  ) else { return nil }
+            return profile.routeMode == .full
+        }()
         let action = LegacyFullTunnelRecovery.assess(
-            isFullMode: profile.map { $0.routeMode == .full },
+            isFullMode: verifiedRouteIsFull,
             isActive: active,
             isOnDemandEnabled: manager.isOnDemandEnabled
         )
@@ -125,7 +140,7 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard action.blockNewConnection else { return }
         if errorMessage == nil {
-            errorMessage = profile == nil
+            errorMessage = verifiedRouteIsFull == nil
                 ? "Security Agent VPN pairing data is missing or invalid. " +
                   "Disconnect, disable Connect on demand and re-pair your Mac."
                 : AgentConfigurationError.unverifiedFullTunnel.localizedDescription
