@@ -189,6 +189,30 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
             return
         }
+        // Pairing and on-demand changes also enter this generic save method,
+        // not just the route editor. Never change the system VPN profile while
+        // an old Rust BoringTun session may still own its peer or routes.
+        let nativeStatus = manager?.connection.status ?? .invalid
+        let nativeDisconnected = nativeStatus == .disconnected || nativeStatus == .invalid
+        let changesPeerOrRoutes = profile.map { old in
+            old.publicKey != validated.publicKey ||
+            old.endpoint != validated.endpoint ||
+            old.routeMode != validated.routeMode
+        } ?? true
+        guard ProfileSaveSafetyPolicy.permitsSave(
+            hasInstalledManager: manager != nil,
+            nativeDisconnected: nativeDisconnected,
+            nativeOnDemandEnabled: manager?.isOnDemandEnabled ?? false,
+            changesPeerOrRoutes: changesPeerOrRoutes,
+            candidateOnDemand: validated.onDemand
+        ) else {
+            // Leave existing native preferences, App Group profile, and running
+            // PacketTunnel untouched; require explicit owner action.
+            errorMessage = "Disconnect VPN and wait for Disconnected before " +
+                "saving a new pairing. If Connect on demand is enabled, " +
+                "turn it off first without changing the peer or routes."
+            return
+        }
 
         // Invalidate prior inventory trust and pending loadAll callbacks
         // before changing any native settings.
