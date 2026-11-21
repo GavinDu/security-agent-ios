@@ -23,9 +23,13 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
             "private func networkSettings(", 1
         )[0]
         self.assertLess(start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-                        start.index("BoringTunCodec("))
-        self.assertLess(start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-                        start.index("self.networkSettings("))
+                        start.index("self.dnsResolver.resolve(host: lookupHost"))
+        self.assertLess(start.index("self.dnsResolver.resolve(host: lookupHost"),
+                        start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("))
+        self.assertLess(start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("),
+                        start.index("codec = try BoringTunCodec("))
+        self.assertLess(start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("),
+                        start.index("networkSettings(profile: profile, remoteHost: pinnedHost)"))
         self.assertIn("throw AgentConfigurationError.unsafeUnderlayEndpoint", start)
 
     def test_production_policy_rejects_aliases_and_cidrs(self):

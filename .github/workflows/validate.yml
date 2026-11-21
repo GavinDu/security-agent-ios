@@ -61,6 +61,10 @@ jobs:
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
             Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
+          # Real Swift DNS preflight timeout/single-flight and fake resolver tests.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
+            Shared/AsyncUnderlayDNSResolver.swift Tests/build/async_underlay_dns_smoke.swift
+          "$RUNNER_TEMP/underlay-dns-resolver-tests"
           # Exercise the production legacy migration decision matrix.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
