@@ -257,8 +257,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Choose a real bootable iPhone UDID from installed iOS runtimes;
+          # create one only if the runner has a runtime but no device.
+          # Missing runtimes fail the job; XCTest is NEVER skipped.
+          SIMULATOR_UDID="$(python3 scripts/select-ios-simulator.py)"
+          test -n "$SIMULATOR_UDID"
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
-            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
       - name: Upload safe toolchain summary
         if: always()
