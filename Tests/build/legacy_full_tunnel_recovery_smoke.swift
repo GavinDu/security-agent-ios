@@ -16,8 +16,14 @@ struct LegacyFullTunnelRecoverySmoke {
                 precondition(full.stopActiveSession == active)
                 precondition(full.disableOnDemand == onDemand)
                 precondition(full.blockNewConnection)
+                // An old app-owned native manager without trusted App Group
+                // pairing data must not silently keep a full tunnel alive.
+                let orphaned = LegacyFullTunnelRecovery.assess(
+                    isFullMode: nil, isActive: active, isOnDemandEnabled: onDemand
+                )
+                precondition(orphaned == full)
             }
         }
-        print("Legacy full-route migration: active/inactive and on-demand matrix passed")
+        print("Legacy/full-orphaned VPN recovery: active/inactive, known/unknown and on-demand matrix passed")
     }
 }
