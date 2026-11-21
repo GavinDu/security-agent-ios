@@ -17,6 +17,11 @@ enum UnderlayDNSResolutionError: Error, Equatable {
 }
 
 final class AsyncUnderlayDNSResolver {
+    // One resolver for the entire PacketTunnel extension process, not one per
+    // restarted BoringTunTransport. A blocked old getaddrinfo must not leave
+    // a growing number of worker threads after repeated tunnel restarts.
+    static let shared = AsyncUnderlayDNSResolver()
+
     typealias Lookup = (String) throws -> [String]
 
     private let worker = DispatchQueue(label: "com.gavindu.securityagent.underlay-dns", qos: .utility)

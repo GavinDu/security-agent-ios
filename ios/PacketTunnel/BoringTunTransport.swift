@@ -9,7 +9,7 @@ final class BoringTunTransport {
     private let queue = DispatchQueue(label: "com.gavindu.securityagent.boringtun")
     private weak var provider: NEPacketTunnelProvider?
     private var codec: BoringTunCodec?
-    private let dnsResolver = AsyncUnderlayDNSResolver()
+    private let dnsResolver = AsyncUnderlayDNSResolver.shared
     // Queue-confined epoch invalidates callbacks after stop/restart.
     private var lifecycle = TunnelLifecycleGeneration()
     private var udp: NWConnection?
