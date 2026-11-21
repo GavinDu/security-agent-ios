@@ -78,7 +78,11 @@ struct ChatWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
+            // Reject popup and nested document navigation, including same-origin frames.
+            let isMainFrame = action.targetFrame?.isMainFrame == true
+            decisionHandler(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                destination, isMainFrame: isMainFrame
+            ) ? .allow : .cancel)
         }
 
         func webView(_ webView: WKWebView,
@@ -88,7 +92,9 @@ struct ChatWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            decisionHandler(AgentChatNavigationPolicy.allows(destination) ? .allow : .cancel)
+            decisionHandler(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                destination, isMainFrame: navigationResponse.isForMainFrame
+            ) ? .allow : .cancel)
         }
     }
 }
