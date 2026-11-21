@@ -73,6 +73,20 @@ final class PairingTests: XCTestCase {
             Data(repeating: 2, count: 33).base64EncodedString(),
             validKey + "\n", " " + validKey, validKey + " "
         ]
+        // Verify URL-safe Base64 characters are rejected even when length is 44.
+        let withPlusSlash = Data(repeating: 0xFB, count: 32).base64EncodedString()
+        XCTAssertTrue(withPlusSlash.contains("+") && withPlusSlash.contains("/"))
+        XCTAssertNoThrow(
+            try ServerProfile(publicKey: withPlusSlash, endpoint: endpoint).validated()
+        )
+        for key in [
+            withPlusSlash.replacingOccurrences(of: "+", with: "-"),
+            withPlusSlash.replacingOccurrences(of: "/", with: "_")
+        ] {
+            XCTAssertThrowsError(
+                try ServerProfile(publicKey: key, endpoint: endpoint).validated()
+            )
+        }
         for key in invalid {
             let profile = ServerProfile(publicKey: key, endpoint: endpoint)
             XCTAssertThrowsError(try profile.validated(), "Accepted invalid key")

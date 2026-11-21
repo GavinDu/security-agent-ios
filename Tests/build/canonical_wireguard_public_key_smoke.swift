@@ -11,15 +11,22 @@ struct CanonicalWireGuardPublicKeySmoke {
             Data(repeating: 7, count: 31).base64EncodedString(),
             Data(repeating: 7, count: 33).base64EncodedString(),
             String(valid.dropLast()), valid + "\n", " " + valid,
-            valid + " ", valid.replacingOccurrences(of: "+", with: "-"),
-            valid.replacingOccurrences(of: "/", with: "_")
+            valid + " "
         ] {
-            if bad != valid {
-                precondition(!CanonicalWireGuardPublicKeyPolicy.accepts(bad))
-            }
+            precondition(!CanonicalWireGuardPublicKeyPolicy.accepts(bad))
         }
         precondition(!CanonicalWireGuardPublicKeyPolicy.accepts(
             String(repeating: "A", count: 44)
+        ))
+        // A genuine URL-safe Base64 substitution case, not a no-op replace.
+        let withPlusSlash = Data(repeating: 0xFB, count: 32).base64EncodedString()
+        precondition(withPlusSlash.contains("+") && withPlusSlash.contains("/"))
+        precondition(CanonicalWireGuardPublicKeyPolicy.accepts(withPlusSlash))
+        precondition(!CanonicalWireGuardPublicKeyPolicy.accepts(
+            withPlusSlash.replacingOccurrences(of: "+", with: "-")
+        ))
+        precondition(!CanonicalWireGuardPublicKeyPolicy.accepts(
+            withPlusSlash.replacingOccurrences(of: "/", with: "_")
         ))
         print("Server WireGuard public key: bounded canonical nonzero representation passed")
     }
