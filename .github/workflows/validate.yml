@@ -69,6 +69,11 @@ jobs:
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/unique_flat_json_root_smoke.swift
           "$RUNNER_TEMP/unique-mac-qr-json-tests"
+          # Validate nonzero canonical WireGuard key representations before Rust FFI.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-key-input-tests" \
+            Shared/BoringTunKeyInputPolicy.swift \
+            Tests/build/boringtun_key_input_smoke.swift
+          "$RUNNER_TEMP/boringtun-key-input-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
@@ -185,7 +190,7 @@ jobs:
           swiftc -swift-version 5 -typecheck \
             -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
             -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
-            ios/PacketTunnel/BoringTunCodec.swift
+            Shared/BoringTunKeyInputPolicy.swift ios/PacketTunnel/BoringTunCodec.swift
           echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
           cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
