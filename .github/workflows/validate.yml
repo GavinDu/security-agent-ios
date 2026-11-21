@@ -37,6 +37,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
+          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
+            Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
+            Tests/build/vpn_event_export_smoke.swift
+          "$RUNNER_TEMP/vpn-event-export-tests"
           # Run Foundation-only security policies with real Swift, not syntax-only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
@@ -49,11 +54,16 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
-          # Validate imported public-only iPhone QR before the Mac peer copy path.
+          # Mac companion only accepts bounded public v1 iPhone QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/IPhonePairingImportPolicy.swift \
             Tests/build/iphone_pairing_import_smoke.swift
           "$RUNNER_TEMP/iphone-pairing-import-tests"
+          # Bound scanned Mac QR JSON before any decode; canonical server key only.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
+            Shared/MacPairingQRInputPolicy.swift \
+            Tests/build/mac_pairing_qr_input_smoke.swift
+          "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
