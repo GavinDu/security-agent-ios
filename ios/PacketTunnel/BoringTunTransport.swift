@@ -211,9 +211,19 @@ final class BoringTunTransport {
             break
         case .sendToNetwork(let datagram):
             guard let udp else { throw BoringTunError.stopped }
-            // Bounded async send backlog; never allow a packet storm to
-            // grow unbounded memory in the constrained iOS extension.
-            guard pendingSends < maxPendingSends else { throw BoringTunError.engineError }
+            // Bounded async send backlog. A congested NWConnection must not
+            // terminate the entire VPN: drop this encrypted datagram when
+            // at capacity, but fail on corrupted local queue accounting.
+            switch UDPBackpressurePolicy.decision(
+                pendingSends: pendingSends, maxPendingSends: maxPendingSends
+            ) {
+            case .enqueue:
+                break
+            case .drop:
+                return
+            case .invalid:
+                throw BoringTunError.engineError
+            }
             pendingSends += 1
             let epoch = lifecycle.current
             udp.send(content: datagram, completion: .contentProcessed { [weak self] error in
