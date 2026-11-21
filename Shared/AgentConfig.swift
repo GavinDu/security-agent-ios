@@ -33,7 +33,7 @@ enum AgentConfigurationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPublicKey: return "WireGuard public key must be 32 bytes of base64."
+        case .invalidPublicKey: return "WireGuard public key must be a canonical, nonzero 32-byte Base64 value."
         case .invalidEndpoint: return "Enter an endpoint such as home.example.net:51820."
         case .unsafeUnderlayEndpoint: return "The Mac WireGuard UDP endpoint cannot be inside the VPN's own split-tunnel network. Use the Mac's LAN/public address or hostname instead."
         case .incorrectQRType: return "This is not a Mac Mini pairing QR code."
@@ -53,7 +53,7 @@ struct ServerProfile: Codable, Equatable {
     var onDemand = false
 
     func validated() throws -> ServerProfile {
-        guard let bytes = Data(base64Encoded: publicKey), bytes.count == 32 else {
+        guard CanonicalWireGuardPublicKeyPolicy.accepts(publicKey) else {
             throw AgentConfigurationError.invalidPublicKey
         }
         // NWConnection resolves the validated endpoint when the tunnel starts.

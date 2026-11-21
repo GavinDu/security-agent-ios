@@ -54,6 +54,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Validate Mac server public key before shared profile persistence.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/server-public-key-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift \
+            Tests/build/canonical_wireguard_public_key_smoke.swift
+          "$RUNNER_TEMP/server-public-key-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
@@ -69,6 +74,11 @@ jobs:
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/unique_flat_json_root_smoke.swift
           "$RUNNER_TEMP/unique-mac-qr-json-tests"
+          # Validate nonzero canonical WireGuard key representations before Rust FFI.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-key-input-tests" \
+            Shared/BoringTunKeyInputPolicy.swift \
+            Tests/build/boringtun_key_input_smoke.swift
+          "$RUNNER_TEMP/boringtun-key-input-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
@@ -98,6 +108,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/tunnel-lifecycle-tests" \
             Shared/TunnelLifecycleGeneration.swift Tests/build/tunnel_lifecycle_smoke.swift
           "$RUNNER_TEMP/tunnel-lifecycle-tests"
+          # Bound post-auth UDP waiting and invalidate stale watchdogs.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-path-wait-tests" \
+            Shared/WireGuardPathWaitGeneration.swift \
+            Tests/build/wireguard_path_wait_smoke.swift
+          "$RUNNER_TEMP/wireguard-path-wait-tests"
           # Exercise the actual provider state machine without Apple SDK.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
             Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
@@ -185,7 +200,7 @@ jobs:
           swiftc -swift-version 5 -typecheck \
             -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
             -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
-            ios/PacketTunnel/BoringTunCodec.swift
+            Shared/BoringTunKeyInputPolicy.swift ios/PacketTunnel/BoringTunCodec.swift
           echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
           cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
@@ -257,8 +272,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Choose a real bootable iPhone UDID from installed iOS runtimes;
+          # create one only if the runner has a runtime but no device.
+          # Missing runtimes fail the job; XCTest is NEVER skipped.
+          SIMULATOR_UDID="$(python3 scripts/select-ios-simulator.py)"
+          test -n "$SIMULATOR_UDID"
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
-            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
       - name: Upload safe toolchain summary
         if: always()

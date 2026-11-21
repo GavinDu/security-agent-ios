@@ -15,10 +15,16 @@ enum ResolvedUnderlayCandidatePolicy {
     static func selectPinnedAddress(
         _ addresses: [String], includedIPv4CIDRs: [String]
     ) -> String? {
-        guard !addresses.isEmpty else { return nil }
+        // The system DNS lookup returns at most 32 answers. Enforce that
+        // contract here too, including for injected/reused resolver results.
+        guard !addresses.isEmpty, addresses.count <= 32 else { return nil }
         var selected: String?
         for host in addresses {
-            guard !host.isEmpty,
+            // A numeric IPv6 literal (including dotted IPv4 tail) is at
+            // most 45 ASCII bytes. Reject NUL before withCString/inet_pton:
+            // otherwise C may validate a truncated prefix, not Swift input.
+            guard !host.isEmpty, host.utf8.count <= 45,
+                  !host.contains("\0"),
                   host == host.trimmingCharacters(in: .whitespacesAndNewlines),
                   !host.contains("%"), !host.contains("["),
                   !host.contains("]") else {
