@@ -14,13 +14,38 @@ struct ChatWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.isInspectable = false
-        webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+        // WKNavigationDelegate does not mediate all subresource loads.
+        // Never fetch the private chat until a fail-closed WebKit resource
+        // allowlist is compiled and installed into this view.
+        let coordinator = context.coordinator
+        do {
+            let ruleSource = try AgentChatResourcePolicy.encodedRules()
+            WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: AgentChatResourcePolicy.identifier,
+                encodedContentRuleList: ruleSource
+            ) { [weak webView] list, _ in
+                DispatchQueue.main.async {
+                    guard coordinator.isActive, let webView else { return }
+                    guard let list else {
+                        coordinator.onLoadState(true)
+                        return
+                    }
+                    webView.configuration.userContentController.add(list)
+                    webView.load(URLRequest(
+                        url: url, cachePolicy: .reloadIgnoringLocalCacheData
+                    ))
+                }
+            }
+        } catch {
+            coordinator.onLoadState(true)
+        }
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.isActive = false
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.loadHTMLString("", baseURL: nil)
@@ -28,6 +53,7 @@ struct ChatWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         let onLoadState: (Bool) -> Void
+        var isActive = true
 
         init(onLoadState: @escaping (Bool) -> Void) { self.onLoadState = onLoadState }
 
@@ -52,9 +78,7 @@ struct ChatWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
-            // targetFrame == nil means a new-window/popup navigation. Reject
-            // it rather than allowing another document context. Nested frames
-            // also cannot navigate, even to the trusted chat origin.
+            // Reject popup and nested document navigation, including same-origin frames.
             let isMainFrame = action.targetFrame?.isMainFrame == true
             decisionHandler(AgentChatNavigationPolicy.allowsDocumentNavigation(
                 destination, isMainFrame: isMainFrame
