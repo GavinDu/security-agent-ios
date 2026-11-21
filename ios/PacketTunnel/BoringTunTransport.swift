@@ -9,6 +9,7 @@ final class BoringTunTransport {
     private let queue = DispatchQueue(label: "com.gavindu.securityagent.boringtun")
     private weak var provider: NEPacketTunnelProvider?
     private var codec: BoringTunCodec?
+    private let dnsResolver = AsyncUnderlayDNSResolver()
     // Queue-confined epoch invalidates callbacks after stop/restart.
     private var lifecycle = TunnelLifecycleGeneration()
     private var udp: NWConnection?
@@ -47,7 +48,7 @@ final class BoringTunTransport {
                       let host = components.host, !host.isEmpty,
                       let portNumber = components.port,
                       let port = Network.NWEndpoint.Port(rawValue: UInt16(portNumber)),
-                      let provider = self.provider else {
+                      self.provider != nil else {
                     throw AgentConfigurationError.invalidEndpoint
                 }
                 if validated.routeMode == .split &&
@@ -57,28 +58,59 @@ final class BoringTunTransport {
                     throw AgentConfigurationError.unsafeUnderlayEndpoint
                 }
 
-                let secret = try SharedKeychain.existingIdentity()
-                let psk = try SharedKeychain.optionalPreSharedKey()
-                self.codec = try BoringTunCodec(
-                    privateKey: secret, serverKey: validated.publicKey, presharedKey: psk
-                )
-
-                // Swift routing, not a second tunnel stack inside the Rust crate.
-                let settings = try self.networkSettings(profile: validated, remoteHost: host)
-                provider.setTunnelNetworkSettings(settings) { [weak self] error in
-                    self?.queue.async {
-                        guard let self, self.active,
-                              self.lifecycle.matches(epoch) else { return }
-                        if let error {
-                            self.fail(error)
-                            return
-                        }
-                        self.connect(host: Network.NWEndpoint.Host(host), port: port)
+                // Resolve outer UDP before installing inner routes. Brackets
+                // are URLComponents formatting, not part of an IPv6 DNS name.
+                let lookupHost = host.first == "[" && host.last == "]"
+                    ? String(host.dropFirst().dropLast()) : host
+                self.dnsResolver.resolve(host: lookupHost, callbackQueue: self.queue) { [weak self] result in
+                    guard let self, self.active,
+                          self.lifecycle.matches(epoch) else { return }
+                    switch result {
+                    case .failure:
+                        self.fail(BoringTunError.initializationFailed)
+                    case .success(let addresses):
+                        self.startResolved(profile: validated, addresses: addresses,
+                                           port: port, epoch: epoch)
                     }
                 }
             } catch {
                 self.fail(error)
             }
+        }
+    }
+
+    /// Exclusively on the engine queue, only for this startup epoch. The
+    /// *same numeric IP* is used by network settings and the UDP NWConnection.
+    private func startResolved(
+        profile: ServerProfile, addresses: [String],
+        port: Network.NWEndpoint.Port, epoch: UInt64
+    ) {
+        guard active, lifecycle.matches(epoch), let provider else { return }
+        do {
+            guard let pinnedHost = ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                addresses, includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ) else {
+                throw AgentConfigurationError.unsafeUnderlayEndpoint
+            }
+            let secret = try SharedKeychain.existingIdentity()
+            let psk = try SharedKeychain.optionalPreSharedKey()
+            codec = try BoringTunCodec(
+                privateKey: secret, serverKey: profile.publicKey, presharedKey: psk
+            )
+            let settings = try networkSettings(profile: profile, remoteHost: pinnedHost)
+            provider.setTunnelNetworkSettings(settings) { [weak self] error in
+                self?.queue.async {
+                    guard let self, self.active,
+                          self.lifecycle.matches(epoch) else { return }
+                    if let error {
+                        self.fail(error)
+                        return
+                    }
+                    self.connect(host: Network.NWEndpoint.Host(pinnedHost), port: port)
+                }
+            }
+        } catch {
+            fail(error)
         }
     }
 
