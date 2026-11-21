@@ -24,6 +24,16 @@ final class ResolvedUnderlayCandidatePolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsUnusableNumericUnderlayEndpoints() {
+        for hostile in ["0.0.0.0", "127.0.0.1", "169.254.1.1", "224.0.0.1",
+                        "255.255.255.255", "::", "::1", "ff02::1", "fe80::1",
+                        "::ffff:127.0.0.1", "::ffff:169.254.1.1"] {
+            XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                [hostile], includedIPv4CIDRs: routes
+            ), hostile)
+        }
+    }
+
     func testRejectsNoAnswersOrInvalidRoute() {
         XCTAssertNil(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
             [], includedIPv4CIDRs: routes

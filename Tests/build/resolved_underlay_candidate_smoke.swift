@@ -19,7 +19,10 @@ struct ResolvedUnderlayCandidateSmoke {
             "10.8.0.0", "10.8.0.1", "10.8.0.255", "::ffff:10.8.0.1",
             "::ffff:a08:1", "0x0a080001", "10.8.0.001", "10.8.0.256",
             "home.example.net", "203.0.113.42:51820", "[2001:db8::1]",
-            "fe80::1%en0", "203.0.113.42 ", "", "2001:db8::oops"
+            "fe80::1%en0", "203.0.113.42 ", "", "2001:db8::oops",
+            "0.0.0.0", "127.0.0.1", "169.254.1.1", "224.0.0.1",
+            "255.255.255.255", "::", "::1", "ff02::1", "fe80::1",
+            "::ffff:127.0.0.1", "::ffff:169.254.1.1"
         ] {
             precondition(choice([forbidden]) == nil, "Unsafe candidate: \(forbidden)")
             precondition(choice(["203.0.113.42", forbidden]) == nil)

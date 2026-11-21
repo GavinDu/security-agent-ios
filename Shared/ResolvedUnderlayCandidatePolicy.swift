@@ -32,6 +32,25 @@ enum ResolvedUnderlayCandidatePolicy {
             let isIPv6 = host.withCString {
                 inet_pton(AF_INET6, $0, &ipv6)
             } == 1
+            // A parsed IP can still be unusable as an encrypted UDP peer
+            // (unspecified, loopback, multicast or interface-scoped link-local).
+            // Reject before handing any candidate to a future resolver consumer.
+            if isIPv4 {
+                let octets = withUnsafeBytes(of: &ipv4) { Array($0) }
+                guard usableIPv4Unicast(octets) else { return nil }
+            } else if isIPv6 {
+                let octets = withUnsafeBytes(of: &ipv6) { Array($0) }
+                let mapped = octets.prefix(10).allSatisfy { $0 == 0 } &&
+                    octets[10] == 0xff && octets[11] == 0xff
+                let isZero = octets.allSatisfy { $0 == 0 }
+                let isLoopback = octets.prefix(15).allSatisfy { $0 == 0 } &&
+                    octets[15] == 1
+                let isLinkLocal = octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80
+                guard !isZero, !isLoopback, !isLinkLocal, octets[0] != 0xff,
+                      !mapped || usableIPv4Unicast(Array(octets.suffix(4))) else {
+                    return nil
+                }
+            }
             guard isIPv4 || isIPv6,
                   TunnelUnderlayPolicy.permitsLiteralEndpoint(
                     host: host, includedIPv4CIDRs: includedIPv4CIDRs
@@ -41,5 +60,13 @@ enum ResolvedUnderlayCandidatePolicy {
             if selected == nil { selected = host }
         }
         return selected
+    }
+
+    private static func usableIPv4Unicast(_ octets: [UInt8]) -> Bool {
+        guard octets.count == 4 else { return false }
+        // 0/8, loopback, link-local and multicast/reserved IPv4 cannot be
+        // reliably used as a WireGuard remote underlay endpoint.
+        return octets[0] != 0 && octets[0] != 127 &&
+            !(octets[0] == 169 && octets[1] == 254) && octets[0] < 224
     }
 }
