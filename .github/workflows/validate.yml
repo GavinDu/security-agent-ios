@@ -37,7 +37,7 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-history-tests" \
             Shared/VPNEventHistory.swift Tests/build/vpn_event_history_smoke.swift
           "$RUNNER_TEMP/vpn-event-history-tests"
-          # User-consented VPN diagnostics export: only UTC timestamp + allowlisted code.
+          # User-consented redacted VPN diagnostic export (no raw App Group file).
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-event-export-tests" \
             Shared/VPNEventHistory.swift Shared/VPNEventExport.swift \
             Tests/build/vpn_event_export_smoke.swift
@@ -54,16 +54,50 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # Validate Mac server public key before shared profile persistence.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/server-public-key-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift \
+            Tests/build/canonical_wireguard_public_key_smoke.swift
+          "$RUNNER_TEMP/server-public-key-tests"
+          # Pure Mac-side peer slot registry: reject duplicate keys/slots
+          # before any future WireGuard server configuration is provisioned.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-allocation-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift \
+            Tests/build/mac_peer_address_allocation_smoke.swift
+          "$RUNNER_TEMP/mac-peer-allocation-tests"
+          # Reject oversized/malformed Mac companion iPhone public-only QR paste.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Tests/build/iphone_pairing_import_smoke.swift
+          "$RUNNER_TEMP/iphone-pairing-import-tests"
           # Bound scanned Mac QR JSON before any decode; canonical server key only.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-pairing-qr-scan-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/mac_pairing_qr_input_smoke.swift
           "$RUNNER_TEMP/mac-pairing-qr-scan-tests"
-          # Reject duplicate/Unicode-escaped alias public QR JSON member names.
+          # Reject duplicate or Unicode-escaped alias members in scanned Mac QR.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/unique-mac-qr-json-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/MacPairingQRInputPolicy.swift \
             Tests/build/unique_flat_json_root_smoke.swift
           "$RUNNER_TEMP/unique-mac-qr-json-tests"
+          # Validate nonzero canonical WireGuard key representations before Rust FFI.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-key-input-tests" \
+            Shared/BoringTunKeyInputPolicy.swift \
+            Tests/build/boringtun_key_input_smoke.swift
+          "$RUNNER_TEMP/boringtun-key-input-tests"
+          # Remote invalid WireGuard packets are nonfatal; malformed local
+          # Rust C ABI output must instead stop the tunnel.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-datagram-failure-tests" \
+            Shared/WireGuardDatagramFailurePolicy.swift \
+            Tests/build/wireguard_datagram_failure_smoke.swift
+          "$RUNNER_TEMP/wireguard-datagram-failure-tests"
+          # Empty UDP receives cannot spin the PacketTunnel serial queue.
+          # Actual production Swift policy, not a parser-only source check.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-rearm-tests" \
+            Shared/WireGuardReceiveRearmPolicy.swift \
+            Tests/build/wireguard_receive_rearm_smoke.swift
+          "$RUNNER_TEMP/wireguard-rearm-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
@@ -81,6 +115,10 @@ jobs:
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
             Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
+          # DNS preflight must finish before NetworkExtension split-route install.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
+            Shared/AsyncUnderlayDNSResolver.swift Tests/build/async_underlay_dns_smoke.swift
+          "$RUNNER_TEMP/underlay-dns-resolver-tests"
           # Exercise the production legacy migration decision matrix.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/legacy-recovery-tests" \
             Shared/LegacyFullTunnelRecovery.swift Tests/build/legacy_full_tunnel_recovery_smoke.swift
@@ -89,6 +127,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/tunnel-lifecycle-tests" \
             Shared/TunnelLifecycleGeneration.swift Tests/build/tunnel_lifecycle_smoke.swift
           "$RUNNER_TEMP/tunnel-lifecycle-tests"
+          # Bound post-auth UDP waiting and invalidate stale watchdogs.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-path-wait-tests" \
+            Shared/WireGuardPathWaitGeneration.swift \
+            Tests/build/wireguard_path_wait_smoke.swift
+          "$RUNNER_TEMP/wireguard-path-wait-tests"
           # Exercise the actual provider state machine without Apple SDK.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
             Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
@@ -106,6 +149,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/udp-backpressure-tests" \
             Shared/UDPBackpressurePolicy.swift Tests/build/udp_backpressure_smoke.swift
           "$RUNNER_TEMP/udp-backpressure-tests"
+          # Preserve bounded UDP slots for BoringTun handshake and rekey.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-control-headroom-tests" \
+            Shared/WireGuardControlHeadroomPolicy.swift \
+            Tests/build/wireguard_control_headroom_smoke.swift
+          "$RUNNER_TEMP/wireguard-control-headroom-tests"
           # Reject out-of-order native loadAllFromPreferences callbacks.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/native-reload-tests" \
             ios/AgentApp/VPN/NativePreferenceReloadGate.swift \
@@ -171,7 +219,7 @@ jobs:
           swiftc -swift-version 5 -typecheck \
             -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
             -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
-            ios/PacketTunnel/BoringTunCodec.swift
+            Shared/BoringTunKeyInputPolicy.swift ios/PacketTunnel/BoringTunCodec.swift
           echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
           cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
@@ -198,12 +246,19 @@ jobs:
             --metadata "$RUNNER_TEMP/boringtun-ios-metadata.json" \
             --lock Vendor/boringtun/Cargo.lock \
             --output "$RUNNER_TEMP/boringtun-ios-license-inventory.json"
+          # Convert only the previously reviewed lock-based source inventory;
+          # this is NOT a native iOS linked-binary SBOM or final NOTICE.
+          python3 scripts/emit-boringtun-sbom.py \
+            --inventory "$RUNNER_TEMP/boringtun-ios-license-inventory.json" \
+            --output "$RUNNER_TEMP/boringtun-ios-source-sbom.json"
       - name: Upload public-license inventory only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: boringtun-ios-license-inventory
-          path: ${{ runner.temp }}/boringtun-ios-license-inventory.json
+          path: |
+            ${{ runner.temp }}/boringtun-ios-license-inventory.json
+            ${{ runner.temp }}/boringtun-ios-source-sbom.json
           retention-days: 14
 
   native-ios:
@@ -243,8 +298,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Choose a real bootable iPhone UDID from installed iOS runtimes;
+          # create one only if the runner has a runtime but no device.
+          # Missing runtimes fail the job; XCTest is NEVER skipped.
+          SIMULATOR_UDID="$(python3 scripts/select-ios-simulator.py)"
+          test -n "$SIMULATOR_UDID"
           xcodebuild -project SecurityAgent.xcodeproj -scheme AgentApp \
-            -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
       - name: Upload safe toolchain summary
         if: always()

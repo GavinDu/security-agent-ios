@@ -18,6 +18,7 @@ enum BoringTunError: LocalizedError {
     case invalidResponse
     case stopped
     case handshakeTimedOut
+    case networkPathTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +29,7 @@ enum BoringTunError: LocalizedError {
         case .invalidResponse: return "Rust WireGuard FFI returned an invalid response."
         case .stopped: return "WireGuard tunnel stopped."
         case .handshakeTimedOut: return "WireGuard peer handshake timed out."
+        case .networkPathTimedOut: return "WireGuard UDP network path did not recover; disconnect and reconnect to resolve the endpoint again."
         }
     }
 }
@@ -38,9 +40,11 @@ final class BoringTunCodec {
     private let handle: OpaquePointer
 
     init(privateKey: Data, serverKey: String, presharedKey: Data?) throws {
-        guard privateKey.count == 32,
-              let serverRaw = Data(base64Encoded: serverKey), serverRaw.count == 32,
-              presharedKey == nil || presharedKey?.count == 32 else {
+        // Validate at the actual Swift-to-Rust FFI boundary, regardless
+        // of how the caller obtained or persisted the public profile.
+        guard BoringTunKeyInputPolicy.accepts(
+            privateKey: privateKey, serverPublicKey: serverKey, presharedKey: presharedKey
+        ) else {
             throw BoringTunError.invalidKey
         }
         let privateBase64 = privateKey.base64EncodedString()

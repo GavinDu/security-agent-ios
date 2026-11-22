@@ -103,14 +103,32 @@ final class TunnelManager: NSObject, ObservableObject {
         }
     }
 
-    /// Stop any inherited full-tunnel session and disable old on-demand rules.
-    /// The extension is still the final boundary for new VPN starts.
+    /// Stop inherited full-mode OR orphaned app-owned native sessions and
+    /// disable on-demand rules. New PacketTunnel starts remain fail-closed.
     private func remediateLegacyFullTunnel() {
-        guard let profile, let manager else { return }
+        // This manager was selected only after matching our provider bundle ID.
+        // A missing/unreadable App Group profile cannot certify a safe split
+        // route; do not leave a potentially old active tunnel running.
+        guard let manager else { return }
         let status = manager.connection.status
         let active = status == .connected || status == .connecting || status == .reasserting
+        // A loaded public profile can be stale relative to native system
+        // preferences. Only an exact v2 binding certifies a split route;
+        // absent or mismatched native metadata is untrusted like missing
+        // App Group bytes. Do not assume a running old extension restarted.
+        var verifiedRouteIsFull: Bool?
+        if let profile,
+           let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
+           native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
+           native.serverAddress == profile.endpoint,
+           NativeProfileBindingPolicy.allowsStart(
+            metadata: native.providerConfiguration,
+            profileDigest: try? profile.publicProfileDigest()
+           ) {
+            verifiedRouteIsFull = profile.routeMode == .full
+        }
         let action = LegacyFullTunnelRecovery.assess(
-            isFullMode: profile.routeMode == .full,
+            isFullMode: verifiedRouteIsFull,
             isActive: active,
             isOnDemandEnabled: manager.isOnDemandEnabled
         )
@@ -122,7 +140,10 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard action.blockNewConnection else { return }
         if errorMessage == nil {
-            errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
+            errorMessage = verifiedRouteIsFull == nil
+                ? "Security Agent VPN pairing data is missing or invalid. " +
+                  "Disconnect, disable Connect on demand and re-pair your Mac."
+                : AgentConfigurationError.unverifiedFullTunnel.localizedDescription
         }
         // Single attempt per app lifecycle. A denied preference write is
         // surfaced to the user; never retry indefinitely in a VPN callback.

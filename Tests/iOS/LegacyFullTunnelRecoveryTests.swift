@@ -21,6 +21,21 @@ final class LegacyFullTunnelRecoveryTests: XCTestCase {
         XCTAssertTrue(decision.blockNewConnection)
     }
 
+    func testOrphanedNativeVPNFailsClosedWithoutPairingProfile() {
+        for active in [false, true] {
+            for onDemand in [false, true] {
+                let decision = LegacyFullTunnelRecovery.assess(
+                    isFullMode: nil, isActive: active, isOnDemandEnabled: onDemand
+                )
+                XCTAssertEqual(decision, .init(
+                    stopActiveSession: active,
+                    disableOnDemand: onDemand,
+                    blockNewConnection: true
+                ))
+            }
+        }
+    }
+
     func testInactiveFullModeStillRejectsManualConnect() {
         let decision = LegacyFullTunnelRecovery.assess(
             isFullMode: true, isActive: false, isOnDemandEnabled: false

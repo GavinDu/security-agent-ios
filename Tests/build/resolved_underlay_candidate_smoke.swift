@@ -28,6 +28,18 @@ struct ResolvedUnderlayCandidateSmoke {
             precondition(choice(["203.0.113.42", forbidden]) == nil)
             precondition(choice([forbidden, "203.0.113.42"]) == nil)
         }
+        // Keep the resolver's 32-answer contract at this reusable policy
+        // boundary, even if a fake/incorrect resolver returns more answers.
+        precondition(choice(Array(repeating: "203.0.113.42", count: 32)) == "203.0.113.42")
+        precondition(choice(Array(repeating: "203.0.113.42", count: 33)) == nil)
+        for hostile in [
+            "203.0.113.42\0unsafe", "\0203.0.113.42",
+            String(repeating: "1", count: 46)
+        ] {
+            precondition(choice([hostile]) == nil)
+            precondition(choice(["203.0.113.42", hostile]) == nil)
+            precondition(choice([hostile, "203.0.113.42"]) == nil)
+        }
         precondition(choice([]) == nil)
         precondition(choice(["203.0.113.42"], routes: []) == nil)
         precondition(choice(["203.0.113.42"], routes: ["not-a-cidr"]) == nil)

@@ -9,11 +9,15 @@ final class BoringTunTransport {
     private let queue = DispatchQueue(label: "com.gavindu.securityagent.boringtun")
     private weak var provider: NEPacketTunnelProvider?
     private var codec: BoringTunCodec?
+    private let dnsResolver = AsyncUnderlayDNSResolver.shared
     // Queue-confined epoch invalidates callbacks after stop/restart.
     private var lifecycle = TunnelLifecycleGeneration()
     private var udp: NWConnection?
     private var tickTimer: DispatchSourceTimer?
     private var handshakeDeadline: DispatchSourceTimer?
+    private var pathWaitDeadline: DispatchSourceTimer?
+    // Queue-confined generation rejects timer callbacks from old wait episodes.
+    private var pathWait = WireGuardPathWaitGeneration()
     private var startCompletion: ((Error?) -> Void)?
     private var active = false
     private var readingPackets = false
@@ -47,7 +51,7 @@ final class BoringTunTransport {
                       let host = components.host, !host.isEmpty,
                       let portNumber = components.port,
                       let port = Network.NWEndpoint.Port(rawValue: UInt16(portNumber)),
-                      let provider = self.provider else {
+                      self.provider != nil else {
                     throw AgentConfigurationError.invalidEndpoint
                 }
                 if validated.routeMode == .split &&
@@ -57,28 +61,69 @@ final class BoringTunTransport {
                     throw AgentConfigurationError.unsafeUnderlayEndpoint
                 }
 
-                let secret = try SharedKeychain.existingIdentity()
-                let psk = try SharedKeychain.optionalPreSharedKey()
-                self.codec = try BoringTunCodec(
-                    privateKey: secret, serverKey: validated.publicKey, presharedKey: psk
-                )
-
-                // Swift routing, not a second tunnel stack inside the Rust crate.
-                let settings = try self.networkSettings(profile: validated, remoteHost: host)
-                provider.setTunnelNetworkSettings(settings) { [weak self] error in
-                    self?.queue.async {
-                        guard let self, self.active,
-                              self.lifecycle.matches(epoch) else { return }
-                        if let error {
-                            self.fail(error)
-                            return
-                        }
-                        self.connect(host: Network.NWEndpoint.Host(host), port: port)
+                // Resolve outer UDP before installing inner routes. Brackets
+                // are URLComponents formatting, not part of an IPv6 DNS name.
+                let lookupHost = host.first == "[" && host.last == "]"
+                    ? String(host.dropFirst().dropLast()) : host
+                self.dnsResolver.resolve(host: lookupHost, callbackQueue: self.queue) { [weak self] result in
+                    guard let self, self.active,
+                          self.lifecycle.matches(epoch) else { return }
+                    switch result {
+                    case .failure:
+                        self.fail(BoringTunError.initializationFailed)
+                    case .success(let addresses):
+                        self.startResolved(profile: validated, addresses: addresses,
+                                           port: port, epoch: epoch)
                     }
                 }
             } catch {
                 self.fail(error)
             }
+        }
+    }
+
+    /// Exclusively on the engine queue, only for this startup epoch. The
+    /// *same numeric IP* is used by network settings and the UDP NWConnection.
+    private func startResolved(
+        profile: ServerProfile, addresses: [String],
+        port: Network.NWEndpoint.Port, epoch: UInt64
+    ) {
+        guard active, lifecycle.matches(epoch), let provider else { return }
+        do {
+            guard let pinnedHost = ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                addresses, includedIPv4CIDRs: RouteMode.split.allowedIPs
+            ) else {
+                throw AgentConfigurationError.unsafeUnderlayEndpoint
+            }
+            let secret = try SharedKeychain.existingIdentity()
+            let psk = try SharedKeychain.optionalPreSharedKey()
+            codec = try BoringTunCodec(
+                privateKey: secret, serverKey: profile.publicKey, presharedKey: psk
+            )
+            // Force a typed numeric endpoint; never fall back to a DNS
+            // .name host even if future resolver normalization changes.
+            let destination: Network.NWEndpoint.Host
+            if let address = Network.IPv4Address(pinnedHost) {
+                destination = .ipv4(address)
+            } else if let address = Network.IPv6Address(pinnedHost) {
+                destination = .ipv6(address)
+            } else {
+                throw AgentConfigurationError.unsafeUnderlayEndpoint
+            }
+            let settings = try networkSettings(profile: profile, remoteHost: pinnedHost)
+            provider.setTunnelNetworkSettings(settings) { [weak self] error in
+                self?.queue.async {
+                    guard let self, self.active,
+                          self.lifecycle.matches(epoch) else { return }
+                    if let error {
+                        self.fail(error)
+                        return
+                    }
+                    self.connect(host: destination, port: port)
+                }
+            }
+        } catch {
+            fail(error)
         }
     }
 
@@ -140,6 +185,7 @@ final class BoringTunTransport {
         guard active else { return }
         switch state {
         case .ready:
+            cancelPathWaitDeadline()
             receiveDatagram()
             if tickTimer == nil {
                 let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -165,12 +211,40 @@ final class BoringTunTransport {
             fail(error)
         case .cancelled:
             if active { fail(BoringTunError.stopped) }
-        case .waiting, .preparing, .setup:
-            // NWConnection may recover on interface changes; no busy retry.
+        case .waiting:
+            // Before authentication, handshakeDeadline already bounds startup.
+            // An authenticated tunnel must never stay apparently connected
+            // forever after its encrypted UDP underlay enters waiting.
+            startPathWaitDeadlineIfNeeded()
+        case .preparing, .setup:
             break
         @unknown default:
             fail(BoringTunError.initializationFailed)
         }
+    }
+
+    /// Bounded recovery only after a verified handshake completed. A fresh
+    /// on-demand or manual restart re-resolves DDNS before any inner route.
+    /// This is not an automatic roam or full-tunnel underlay implementation.
+    private func startPathWaitDeadlineIfNeeded() {
+        guard active, startCompletion == nil,
+              let token = pathWait.beginWait() else { return }
+        let epoch = lifecycle.current
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(30))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.active, self.lifecycle.matches(epoch),
+                  self.pathWait.accepts(token) else { return }
+            self.fail(BoringTunError.networkPathTimedOut)
+        }
+        pathWaitDeadline = timer
+        timer.resume()
+    }
+
+    private func cancelPathWaitDeadline() {
+        pathWait.invalidate()
+        pathWaitDeadline?.cancel()
+        pathWaitDeadline = nil
     }
 
     private func receiveDatagram() {
@@ -189,7 +263,32 @@ final class BoringTunTransport {
                 if let packet, !packet.isEmpty, let codec = self.codec {
                     // A random/malformed UDP message must not crash or
                     // disable the VPN; discard authentication failures.
-                    if let action = try? codec.decapsulate(packet) {
+                    // Remote authentication errors can be discarded; a
+                    // malformed *local* Rust C ABI result must tear down this
+                    // session rather than vanish behind blanket try?.
+                    var action: BoringTunAction?
+                    do {
+                        action = try codec.decapsulate(packet)
+                    } catch {
+                        let reason: WireGuardDatagramFailurePolicy.Reason
+                        switch error {
+                        case BoringTunError.invalidPacket:
+                            reason = .malformedIncomingPacket
+                        case BoringTunError.engineError:
+                            reason = .authenticationRejected
+                        case BoringTunError.invalidResponse:
+                            reason = .malformedFFIResponse
+                        default:
+                            reason = .unexpectedLocalFailure
+                        }
+                        guard WireGuardDatagramFailurePolicy.disposition(for: reason) == .discard else {
+                            self.fail(error)
+                            return
+                        }
+                    }
+                    if let action {
+                        // Local UDP queue/packetFlow failures are never
+                        // classified as unauthenticated remote rejections.
                         do { try self.process(action) } catch { self.fail(error); return }
                     }
                     if codec.hasAuthenticatedHandshake && self.startCompletion != nil {
@@ -199,7 +298,24 @@ final class BoringTunTransport {
                         self.readPackets()
                     }
                 }
-                self.receiveDatagram()
+                // A nil/empty, error-free NWConnection receive callback is
+                // not a reason to re-arm in a tight serial-queue loop.
+                // Positive UDP payloads continue at full receive throughput.
+                if WireGuardReceiveRearmPolicy.needsBackoff(
+                    receivedByteCount: packet?.count
+                ) {
+                    self.queue.asyncAfter(
+                        deadline: .now() + .milliseconds(
+                            WireGuardReceiveRearmPolicy.emptyReceiveDelayMilliseconds
+                        )
+                    ) { [weak self] in
+                        guard let self, self.active,
+                              self.lifecycle.matches(epoch) else { return }
+                        self.receiveDatagram()
+                    }
+                } else {
+                    self.receiveDatagram()
+                }
             }
         }
     }
@@ -216,6 +332,20 @@ final class BoringTunTransport {
             // at capacity, but fail on corrupted local queue accounting.
             switch UDPBackpressurePolicy.decision(
                 pendingSends: pendingSends, maxPendingSends: maxPendingSends
+            ) {
+            case .enqueue:
+                break
+            case .drop:
+                return
+            case .invalid:
+                throw BoringTunError.engineError
+            }
+            // Keep eight of the 256 bounded UDP send slots available for
+            // Rust BoringTun handshake/cookie/rekey while data bursts arrive.
+            // Unknown or malformed wire messages remain an engine error.
+            switch WireGuardControlHeadroomPolicy.decision(
+                datagram: datagram, pendingSends: pendingSends,
+                maxPendingSends: maxPendingSends, reservedControlSlots: 8
             ) {
             case .enqueue:
                 break
@@ -308,6 +438,7 @@ final class BoringTunTransport {
         tickTimer = nil
         handshakeDeadline?.cancel()
         handshakeDeadline = nil
+        cancelPathWaitDeadline()
         udp?.stateUpdateHandler = nil
         udp?.cancel()
         udp = nil
