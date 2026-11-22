@@ -59,6 +59,13 @@ jobs:
             Shared/CanonicalWireGuardPublicKeyPolicy.swift \
             Tests/build/canonical_wireguard_public_key_smoke.swift
           "$RUNNER_TEMP/server-public-key-tests"
+          # Pure Mac-side peer slot registry: reject duplicate keys/slots
+          # before any future WireGuard server configuration is provisioned.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-allocation-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift \
+            Tests/build/mac_peer_address_allocation_smoke.swift
+          "$RUNNER_TEMP/mac-peer-allocation-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
@@ -79,6 +86,12 @@ jobs:
             Shared/BoringTunKeyInputPolicy.swift \
             Tests/build/boringtun_key_input_smoke.swift
           "$RUNNER_TEMP/boringtun-key-input-tests"
+          # Remote invalid WireGuard packets are nonfatal; malformed local
+          # Rust C ABI output must instead stop the tunnel.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-datagram-failure-tests" \
+            Shared/WireGuardDatagramFailurePolicy.swift \
+            Tests/build/wireguard_datagram_failure_smoke.swift
+          "$RUNNER_TEMP/wireguard-datagram-failure-tests"
           # Verify packet-envelope checks on the exact shared Swift source.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/ip-envelope-tests" \
             Shared/IPPacketEnvelope.swift Tests/build/ip_packet_envelope_smoke.swift
@@ -227,12 +240,19 @@ jobs:
             --metadata "$RUNNER_TEMP/boringtun-ios-metadata.json" \
             --lock Vendor/boringtun/Cargo.lock \
             --output "$RUNNER_TEMP/boringtun-ios-license-inventory.json"
+          # Convert only the previously reviewed lock-based source inventory;
+          # this is NOT a native iOS linked-binary SBOM or final NOTICE.
+          python3 scripts/emit-boringtun-sbom.py \
+            --inventory "$RUNNER_TEMP/boringtun-ios-license-inventory.json" \
+            --output "$RUNNER_TEMP/boringtun-ios-source-sbom.json"
       - name: Upload public-license inventory only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: boringtun-ios-license-inventory
-          path: ${{ runner.temp }}/boringtun-ios-license-inventory.json
+          path: |
+            ${{ runner.temp }}/boringtun-ios-license-inventory.json
+            ${{ runner.temp }}/boringtun-ios-source-sbom.json
           retention-days: 14
 
   native-ios:
