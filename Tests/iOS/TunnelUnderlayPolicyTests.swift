@@ -49,6 +49,30 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsHostControlBytesPercentAndOverlengthBeforeFallback() {
+        let routes = RouteMode.split.allowedIPs
+        let maxHost = [
+            String(repeating: "a", count: 63),
+            String(repeating: "b", count: 63),
+            String(repeating: "c", count: 63),
+            String(repeating: "d", count: 61)
+        ].joined(separator: ".")
+        XCTAssertEqual(maxHost.utf8.count, 253)
+        XCTAssertTrue(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+            host: maxHost, includedIPv4CIDRs: routes
+        ))
+        for hostile in [
+            "10.8.0.1\0suffix", "10.8.0.1\0", "\010.8.0.1",
+            "home\0.example", "host.example.org\n", "host\t.example",
+            "host.example.org\u{007F}", "host.example.org\u{0085}",
+            "10.8.0.1%lo0", "host%00.example.org", maxHost + "x"
+        ] {
+            XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: hostile, includedIPv4CIDRs: routes
+            ), "Host control/length bypass")
+        }
+    }
+
     func testRejectsAmbiguousNumericIPv4FormsAndInvalidRoutes() {
         for host in ["10.8.0.001", "10.8.0.256", "10.8.0.1.", "167837697",
                      "0x0a080001", "0X0A080001", "0x0a.0x08.0x00.0x01",

@@ -40,6 +40,29 @@ struct TunnelUnderlayPolicySmoke {
                 host: host, includedIPv4CIDRs: split
             ), "Ambiguous numeric IPv4 notation accepted: \(host)")
         }
+        // Literal and DNS-host candidates must not carry controls, NUL,
+        // percent-escaped aliases or overlong UTF-8 hostnames into C parsers.
+        let validBoundedHost = [
+            String(repeating: "a", count: 63),
+            String(repeating: "b", count: 63),
+            String(repeating: "c", count: 63),
+            String(repeating: "d", count: 61)
+        ].joined(separator: ".")
+        precondition(validBoundedHost.utf8.count == 253)
+        precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+            host: validBoundedHost, includedIPv4CIDRs: split
+        ))
+        for hostileHost in [
+            "10.8.0.1\0non_numeric", "10.8.0.1\0", "\010.8.0.1",
+            "home\0.example.org", "home.example.org\n", "home\t.example.org",
+            "home.example.org\u{007F}", "home.example.org\u{0085}",
+            "10.8.0.1%en0", "home%00.example.org", validBoundedHost + "x",
+            String(repeating: "a", count: 512)
+        ] {
+            precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: hostileHost, includedIPv4CIDRs: split
+            ), "Unsafe raw host accepted")
+        }
         // Legitimate DNS names with 0x-prefixed labels are not parsed as
         // IP aliases; DNS-answer validation remains a separate #65 gate.
         precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
