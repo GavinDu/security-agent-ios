@@ -298,7 +298,24 @@ final class BoringTunTransport {
                         self.readPackets()
                     }
                 }
-                self.receiveDatagram()
+                // A nil/empty, error-free NWConnection receive callback is
+                // not a reason to re-arm in a tight serial-queue loop.
+                // Positive UDP payloads continue at full receive throughput.
+                if WireGuardReceiveRearmPolicy.needsBackoff(
+                    receivedByteCount: packet?.count
+                ) {
+                    self.queue.asyncAfter(
+                        deadline: .now() + .milliseconds(
+                            WireGuardReceiveRearmPolicy.emptyReceiveDelayMilliseconds
+                        )
+                    ) { [weak self] in
+                        guard let self, self.active,
+                              self.lifecycle.matches(epoch) else { return }
+                        self.receiveDatagram()
+                    }
+                } else {
+                    self.receiveDatagram()
+                }
             }
         }
     }
