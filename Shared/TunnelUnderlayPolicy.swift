@@ -38,7 +38,16 @@ enum TunnelUnderlayPolicy {
         host: String,
         includedIPv4CIDRs: [String]
     ) -> Bool {
-        guard !host.isEmpty, !includedIPv4CIDRs.isEmpty else { return false }
+        // Reject hostile raw host bytes before any inet_pton C string or
+        // hostname fallback. Later DNS pinning performs its own independent
+        // numeric-answer validation; this boundary must not accept C-string
+        // truncation aliases or overlong DNS-host candidates.
+        guard !host.isEmpty, host.utf8.count <= 253,
+              !host.contains("\0"), !host.contains("%"),
+              !host.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0)
+              }),
+              !includedIPv4CIDRs.isEmpty else { return false }
         // Validate route syntax even for a hostname, so invalid route config
         // never makes endpoint validation appear successful.
         let parsedRoutes = includedIPv4CIDRs.compactMap(parseCIDR)
