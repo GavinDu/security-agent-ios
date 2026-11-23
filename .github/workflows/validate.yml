@@ -57,6 +57,12 @@ jobs:
             Shared/VPNPrivateChatAccessPolicy.swift \
             Tests/build/vpn_private_chat_access_smoke.swift
           "$RUNNER_TEMP/vpn-chat-authorization-tests"
+          # Public App Group profile saves must not report success with
+          # missing/mismatched immediate readback; exact production Swift gate.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-readback-tests" \
+            Shared/SharedProfileDataPolicy.swift Shared/SharedProfileReadbackPolicy.swift \
+            Tests/build/shared_profile_readback_smoke.swift
+          "$RUNNER_TEMP/profile-readback-tests"
           # Valid Rust-decrypted inner IP traffic must never be silently lost
           # if the system NEPacketTunnelFlow rejects a local write.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/inner-packet-delivery-tests" \

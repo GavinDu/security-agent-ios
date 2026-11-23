@@ -180,5 +180,14 @@ enum SharedProfileStore {
             throw AgentConfigurationError.invalidProfileData
         }
         defaults.set(bytes, forKey: key)
+        // UserDefaults.set has no error result. Reject a missing/mismatched
+        // immediate public-data readback before the native save sequencer
+        // reports success or offers to connect. This does not assert durable
+        // disk commit or atomicity with NEVPNManager preferences.
+        guard SharedProfileReadbackPolicy.accepts(
+            expected: bytes, observed: defaults.data(forKey: key)
+        ) else {
+            throw AgentConfigurationError.invalidProfileData
+        }
     }
 }
