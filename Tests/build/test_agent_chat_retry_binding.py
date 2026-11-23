@@ -11,7 +11,7 @@ TESTS = (ROOT / "Tests/iOS/AgentChatRetryStateTests.swift").read_text()
 
 class AgentChatRetryBindingTests(unittest.TestCase):
     def test_only_connected_vpn_can_render_retried_webkit(self):
-        self.assertIn("if tunnel.status == .connected {", VIEW)
+        self.assertIn("if tunnel.canShowPrivateChat {", VIEW)
         self.assertIn("let generation = chatRetry.generation", VIEW)
         self.assertIn("ChatWebView(url: AgentConstants.agentURL)", VIEW)
         self.assertIn(".id(generation)", VIEW)
