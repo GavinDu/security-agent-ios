@@ -83,7 +83,7 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
         ] {
             XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: hostile, includedIPv4CIDRs: routes
-            ), "Invalid encrypted UDP underlay: \(host)")
+            ), "Invalid encrypted UDP underlay: \(hostile)")
         }
         for valid in [
             "192.168.1.10", "203.0.113.42", "2001:db8::1",
