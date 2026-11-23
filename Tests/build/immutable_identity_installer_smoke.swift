@@ -39,6 +39,29 @@ struct ImmutableIdentityInstallerSmoke {
                 readExisting: { nil }
             )
         }
+        // Zero-filled 32-byte keys must fail before any atomic insert
+        // and cannot be adopted as a Keychain race winner.
+        requiresFailure {
+            try ImmutableIdentityInstaller.install(
+                candidate: Data(repeating: 0, count: 32),
+                insertIfAbsent: { _ in preconditionFailure("zero identity inserted") },
+                readExisting: { nil }
+            )
+        }
+        requiresFailure {
+            try ImmutableIdentityInstaller.install(
+                candidate: second,
+                insertIfAbsent: { _ in .alreadyExists },
+                readExisting: { Data(repeating: 0, count: 32) }
+            )
+        }
+        requiresFailure {
+            try ImmutableIdentityInstaller.install(
+                candidate: Data(repeating: 1, count: 33),
+                insertIfAbsent: { _ in preconditionFailure("oversized identity inserted") },
+                readExisting: { nil }
+            )
+        }
         requiresFailure {
             try ImmutableIdentityInstaller.install(
                 candidate: second,
