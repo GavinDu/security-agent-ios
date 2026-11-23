@@ -33,8 +33,8 @@ class ChatFrameNavigationSecurityTests(unittest.TestCase):
         self.assertIn("AgentChatNavigationPolicy.allowsDocumentNavigation(", action)
         self.assertIn("navigationResponse.isForMainFrame", response)
         self.assertIn("AgentChatNavigationPolicy.allowsDocumentNavigation(", response)
-        self.assertIn("guard let destination = action.request.url", action)
-        self.assertIn("guard let destination = navigationResponse.response.url", response)
+        self.assertIn("guard isActive, let destination = action.request.url", action)
+        self.assertIn("guard isActive, let destination = navigationResponse.response.url", response)
         self.assertNotIn("decisionHandler(AgentChatNavigationPolicy.allows(destination)", WEBVIEW)
 
     def test_actual_compiled_swift_and_native_xctest_have_cases(self):

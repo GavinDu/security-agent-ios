@@ -57,24 +57,32 @@ struct ChatWebView: UIViewRepresentable {
 
         init(onLoadState: @escaping (Bool) -> Void) { self.onLoadState = onLoadState }
 
+        /// WebKit may deliver a queued outcome after SwiftUI removes the
+        /// VPN-gated view. Never publish that stale outcome into the current UI.
+        /// SwiftUI dismantle and WKNavigationDelegate callbacks run on main.
+        func reportLoadResult(_ unreachable: Bool) {
+            guard isActive else { return }
+            onLoadState(unreachable)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            onLoadState(false)
+            reportLoadResult(false)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                      withError error: Error) {
-            onLoadState(true)
+            reportLoadResult(true)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
                      withError error: Error) {
-            onLoadState(true)
+            reportLoadResult(true)
         }
 
         func webView(_ webView: WKWebView,
                      decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            guard let destination = action.request.url else {
+            guard isActive, let destination = action.request.url else {
                 decisionHandler(.cancel)
                 return
             }
@@ -88,7 +96,7 @@ struct ChatWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationResponse: WKNavigationResponse,
                      decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-            guard let destination = navigationResponse.response.url else {
+            guard isActive, let destination = navigationResponse.response.url else {
                 decisionHandler(.cancel)
                 return
             }
