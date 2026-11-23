@@ -133,6 +133,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-underlay-dns-host-155", 156)',
             '("fix/ios-pairing-confirmation-157", 158)',
             '("fix/ios-private-webkit-store-159", 160)',
+            '("fix/verified-branch-cleanup-161", 162)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
