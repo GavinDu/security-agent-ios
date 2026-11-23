@@ -28,6 +28,7 @@ enum AgentConfigurationError: LocalizedError {
     case unsupportedQRVersion
     case missingProfile
     case missingAppGroup
+    case invalidProfileData
     case nativeProfileMismatch
     case unverifiedFullTunnel
 
@@ -40,6 +41,7 @@ enum AgentConfigurationError: LocalizedError {
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."
         case .missingAppGroup: return "App Group is unavailable; check signing capabilities."
+        case .invalidProfileData: return "WireGuard public profile is invalid or too large. Re-pair with your Mac."
         case .nativeProfileMismatch: return "VPN preferences and paired profile do not match. Disconnect and re-save your Mac pairing in Security Agent before connecting."
         case .unverifiedFullTunnel: return "Full tunnel is disabled until encrypted UDP underlay routing and leak safety pass physical iPhone tests. Use split tunnel."
         }
@@ -162,7 +164,9 @@ enum SharedProfileStore {
 
     static func load() -> ServerProfile? {
         guard let defaults = UserDefaults(suiteName: AgentConstants.appGroup),
-              let bytes = defaults.data(forKey: key) else { return nil }
+              let bytes = defaults.data(forKey: key),
+              SharedProfileDataPolicy.accepts(bytes) else { return nil }
+        // A damaged/oversized App Group value never reaches JSONDecoder.
         return try? JSONDecoder().decode(ServerProfile.self, from: bytes).validated()
     }
 
@@ -171,6 +175,10 @@ enum SharedProfileStore {
         guard let defaults = UserDefaults(suiteName: AgentConstants.appGroup) else {
             throw AgentConfigurationError.missingAppGroup
         }
-        defaults.set(try JSONEncoder().encode(validated), forKey: key)
+        let bytes = try JSONEncoder().encode(validated)
+        guard SharedProfileDataPolicy.accepts(bytes) else {
+            throw AgentConfigurationError.invalidProfileData
+        }
+        defaults.set(bytes, forKey: key)
     }
 }
