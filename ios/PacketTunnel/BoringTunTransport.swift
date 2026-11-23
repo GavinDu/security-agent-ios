@@ -385,7 +385,7 @@ final class BoringTunTransport {
                     [validated], withProtocols: [NSNumber(value: protocolFamily)]
                 )
             }
-        } catch {
+        } catch WireGuardInnerPacketDelivery.DeliveryError.writeRejected {
             throw BoringTunError.packetFlowWriteFailed
         }
     }
