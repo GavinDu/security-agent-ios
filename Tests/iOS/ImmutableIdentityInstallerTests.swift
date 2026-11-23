@@ -57,13 +57,16 @@ final class ImmutableIdentityInstallerTests: XCTestCase {
     }
 
     func testZeroSecretConcurrentKeychainWinnerFailsClosed() {
-        var attemptedOverwrite = false
+        var insertAttempts = 0
         XCTAssertThrowsError(try ImmutableIdentityInstaller.install(
             candidate: Data(repeating: 0x55, count: 32),
-            insertIfAbsent: { _ in .alreadyExists },
+            insertIfAbsent: { _ in
+                insertAttempts += 1
+                return .alreadyExists
+            },
             readExisting: { Data(repeating: 0, count: 32) }
         ))
-        XCTAssertFalse(attemptedOverwrite)
+        XCTAssertEqual(insertAttempts, 1)
         // Never repair a corrupted race winner by replacing its identity.
         // Remediation requires explicit trusted account/device action.
     }
