@@ -6,9 +6,8 @@ import Foundation
 ///
 /// The Swift C importer exposes this ABI size_t as Int; do not cast an
 /// error code to an output length. WIREGUARD_ERROR (op 2) encodes an error
-/// code in size; it is
-/// deliberately handled separately by BoringTunCodec without converting
-/// the value to an Int or interpreting it as a packet byte count.
+/// code in size; the BoringTunCodec handles it separately without
+/// interpreting it as a packet byte count.
 enum BoringTunFFIDonePolicy {
     static func acceptsDoneSize(_ size: Int) -> Bool {
         size == 0
