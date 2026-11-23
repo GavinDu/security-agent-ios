@@ -7,7 +7,7 @@ final class BoringTunFFIDonePolicyTests: XCTestCase {
     }
 
     func testMalformedDoneSizesAreAlwaysRejected() {
-        for malformed: UInt in [1, 148, 65_600, UInt.max] {
+        for malformed in [UInt(1), 148, 65_600, UInt.max] {
             XCTAssertFalse(BoringTunFFIDonePolicy.acceptsDoneSize(malformed))
         }
     }
