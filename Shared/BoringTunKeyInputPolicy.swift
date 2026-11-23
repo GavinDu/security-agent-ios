@@ -10,6 +10,11 @@ enum BoringTunKeyInputPolicy {
         guard privateKey.count == 32,
               privateKey.contains(where: { $0 != 0 }),
               presharedKey == nil || presharedKey?.count == 32,
+              // Explicit 32-byte zero PSK is cryptographically neutral:
+              // nil means no PSK; a present zero key adds no separate secret.
+              // Nonzero alone does not prove cryptographic entropy.
+              presharedKey == nil ||
+                  presharedKey?.contains(where: { $0 != 0 }) == true,
               // Canonical WireGuard X25519 public key Base64 is 44 bytes.
               // Bound string input BEFORE any Base64 decode allocation.
               serverPublicKey.utf8.count == 44,
