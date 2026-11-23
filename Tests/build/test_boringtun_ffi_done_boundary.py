@@ -43,8 +43,8 @@ class BoringTunDoneABITests(unittest.TestCase):
     def test_compiled_linux_swift_and_native_xctest_required(self):
         smoke = (ROOT / "Tests/build/boringtun_ffi_done_smoke.swift").read_text()
         native = (ROOT / "Tests/iOS/BoringTunFFIDonePolicyTests.swift").read_text()
-        self.assertIn("UInt.max", smoke)
-        self.assertIn("UInt.max", native)
+        self.assertIn("Int.max", smoke)
+        self.assertIn("Int.max", native)
         self.assertIn("Shared/BoringTunFFIDonePolicy.swift", WF)
         self.assertIn("Tests/build/boringtun_ffi_done_smoke.swift", WF)
         self.assertIn("python3 -m unittest discover -s Tests/build", WF)
