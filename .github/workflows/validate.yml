@@ -51,6 +51,12 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-retry-state-tests" \
             Shared/AgentChatRetryState.swift Tests/build/chat_retry_state_smoke.swift
           "$RUNNER_TEMP/chat-retry-state-tests"
+          # Private chat requires a verified native/public WireGuard binding,
+          # not simply a .connected flag. Execute production Swift policy.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-chat-authorization-tests" \
+            Shared/VPNPrivateChatAccessPolicy.swift \
+            Tests/build/vpn_private_chat_access_smoke.swift
+          "$RUNNER_TEMP/vpn-chat-authorization-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
