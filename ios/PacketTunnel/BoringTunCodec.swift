@@ -82,8 +82,8 @@ final class BoringTunCodec {
                 throw BoringTunError.invalidResponse
             }
             return .done
+        // Rust uses size as an error *code* for op 2, not packet bytes.
         case 2:
-            // Rust uses size as an error *code* here, not packet bytes.
             throw BoringTunError.engineError
         case 1, 4, 6:
             // Only output operations may interpret size as a byte count.
