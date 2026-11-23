@@ -35,7 +35,7 @@ enum AgentConfigurationError: LocalizedError {
         switch self {
         case .invalidPublicKey: return "WireGuard public key must be a canonical, nonzero 32-byte Base64 value."
         case .invalidEndpoint: return "Enter an endpoint such as home.example.net:51820."
-        case .unsafeUnderlayEndpoint: return "The Mac WireGuard UDP endpoint cannot be inside the VPN's own split-tunnel network. Use the Mac's LAN/public address or hostname instead."
+        case .unsafeUnderlayEndpoint: return "Use a usable unicast Mac UDP IP outside the VPN split routes, or a hostname whose resolved A/AAAA addresses are all safe. Loopback, link-local, multicast, and broadcast endpoints are blocked."
         case .incorrectQRType: return "This is not a Mac Mini pairing QR code."
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."
@@ -56,7 +56,7 @@ struct ServerProfile: Codable, Equatable {
         guard CanonicalWireGuardPublicKeyPolicy.accepts(publicKey) else {
             throw AgentConfigurationError.invalidPublicKey
         }
-        // NWConnection resolves the validated endpoint when the tunnel starts.
+        // PacketTunnel resolves and pins safe numeric A/AAAA before installing split routes.
         guard !endpoint.isEmpty, !endpoint.contains(where: { $0.isWhitespace || $0.isNewline }),
               let components = URLComponents(string: "udp://\(endpoint)"),
               let host = components.host, !host.isEmpty,
