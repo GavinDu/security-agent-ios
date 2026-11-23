@@ -420,20 +420,31 @@ final class BoringTunTransport {
                 guard let self, self.active,
                       self.lifecycle.matches(epoch) else { return }
                 self.readingPackets = false
-                if let codec = self.codec {
-                    for (packet, proto) in zip(packets, protocols) {
-                        let af = proto.int32Value
-                        let family: IPPacketFamily
-                        switch af {
-                        case AF_INET: family = .ipv4
-                        case AF_INET6: family = .ipv6
-                        default: continue
-                        }
-                        // Drop malformed/torn IP envelopes before the Rust C ABI.
-                        guard IPPacketEnvelope.isValid(packet, family: family) else { continue }
-                        do { try self.process(codec.encapsulate(packet)) }
-                        catch { self.fail(error); return }
+                // Apple's packetFlow callback must supply one AF per packet.
+                // Swift zip() silently truncates mismatched arrays; this is a
+                // local utun contract failure, not remote Rust authentication.
+                guard WireGuardPacketReadBatchPolicy.accepts(
+                    packetCount: packets.count, protocolCount: protocols.count
+                ) else {
+                    self.fail(BoringTunError.packetFlowReadFailed)
+                    return
+                }
+                guard let codec = self.codec else {
+                    self.fail(BoringTunError.stopped)
+                    return
+                }
+                for (packet, proto) in zip(packets, protocols) {
+                    let af = proto.int32Value
+                    let family: IPPacketFamily
+                    switch af {
+                    case AF_INET: family = .ipv4
+                    case AF_INET6: family = .ipv6
+                    default: continue
                     }
+                    // Drop malformed/torn IP envelopes before the Rust C ABI.
+                    guard IPPacketEnvelope.isValid(packet, family: family) else { continue }
+                    do { try self.process(codec.encapsulate(packet)) }
+                    catch { self.fail(error); return }
                 }
                 if packets.isEmpty {
                     // Never tight-spin when packetFlow returns an empty batch.
