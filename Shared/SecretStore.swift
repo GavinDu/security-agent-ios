@@ -97,6 +97,12 @@ enum SharedKeychain {
     static func optionalPreSharedKey() throws -> Data? {
         guard let data = try read(pskAccount) else { return nil }
         guard data.count == 32 else { throw KeychainError.invalidSecret }
+        // A present but all-zero PSK is the neutral/default key, not an
+        // authenticated extra secret. Fail closed instead of silently
+        // treating it as an enrolled preshared key.
+        guard data.contains(where: { $0 != 0 }) else {
+            throw KeychainError.invalidSecret
+        }
         return data
     }
 
