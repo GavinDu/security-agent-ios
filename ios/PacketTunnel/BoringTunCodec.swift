@@ -76,8 +76,14 @@ final class BoringTunCodec {
         let operation = Int(response.op.rawValue)
         switch operation {
         case 0:
+            // Rust TunnResult::Done must report no output bytes. Never
+            // silently accept a malformed local C ABI result.
+            guard BoringTunFFIDonePolicy.acceptsDoneSize(response.size) else {
+                throw BoringTunError.invalidResponse
+            }
             return .done
         case 2:
+            // Rust uses size as an error *code* here, not packet bytes.
             throw BoringTunError.engineError
         case 1, 4, 6:
             // Only output operations may interpret size as a byte count.
