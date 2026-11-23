@@ -12,6 +12,19 @@ NATIVE = (ROOT / "Tests/iOS/VPNPrivateChatAccessTests.swift").read_text()
 
 
 class VPNPrivateChatNativeBindingTests(unittest.TestCase):
+    def test_inventory_trust_changes_notify_swiftui_for_immediate_revocation(self):
+        self.assertIn("@Published private var nativeInventoryTrust = NativeVPNInventoryTrust()", APP)
+        for transition in (
+            "nativeInventoryTrust.beginLoad()",
+            "nativeInventoryTrust.didFailLoad()",
+            "nativeInventoryTrust.didLoadDuplicateInventory()",
+            "nativeInventoryTrust.didLoadUniqueInventory()",
+            "nativeInventoryTrust.beginWrite()",
+            "nativeInventoryTrust.didCommitVerifiedWrite()",
+        ):
+            with self.subTest(transition=transition):
+                self.assertIn(transition, APP)
+
     def test_tunnel_manager_requires_trusted_split_native_binding(self):
         segment = APP.split("var canShowPrivateChat: Bool {", 1)[1].split(
             "var statusDescription: String {", 1
