@@ -434,13 +434,17 @@ final class BoringTunTransport {
                     return
                 }
                 for (packet, proto) in zip(packets, protocols) {
-                    let af = proto.int32Value
-                    let family: IPPacketFamily
-                    switch af {
-                    case AF_INET: family = .ipv4
-                    case AF_INET6: family = .ipv6
-                    default: continue
+                    // NSNumber.int32Value can wrap an invalid 64-bit AF into a
+                    // supported 32-bit one. Fail the local OS callback instead
+                    // of silently dropping or misclassifying the packet.
+                    guard WireGuardReadProtocolPolicy.accepts(
+                        proto, ipv4: AF_INET, ipv6: AF_INET6
+                    ) else {
+                        self.fail(BoringTunError.packetFlowReadFailed)
+                        return
                     }
+                    let af = proto.int32Value
+                    let family: IPPacketFamily = af == AF_INET ? .ipv4 : .ipv6
                     // Drop malformed/torn IP envelopes before the Rust C ABI.
                     guard IPPacketEnvelope.isValid(packet, family: family) else { continue }
                     do { try self.process(codec.encapsulate(packet)) }
