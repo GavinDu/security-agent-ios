@@ -400,6 +400,39 @@ final class TunnelManager: NSObject, ObservableObject {
         save(updated)
     }
 
+    /// The UI must never construct VPN-private WebKit based solely on the
+    /// system's .connected flag: a previously running or externally edited
+    /// NETunnelProviderManager can be connected with stale App Group data.
+    /// This is an app-side gate; PacketTunnel start performs its own binding
+    /// validation before allocating the Rust BoringTun engine.
+    var canShowPrivateChat: Bool {
+        let native = manager?.protocolConfiguration as? NETunnelProviderProtocol
+        let isValidSplitProfile: Bool
+        let matchesNative: Bool
+        if let profile, let native {
+            isValidSplitProfile = profile.routeMode == .split &&
+                (try? profile.validated()) != nil
+            matchesNative =
+                native.providerBundleIdentifier == AgentConstants.tunnelBundleID &&
+                native.serverAddress == profile.endpoint &&
+                NativeProfileBindingPolicy.allowsStart(
+                    metadata: native.providerConfiguration,
+                    profileDigest: try? profile.publicProfileDigest()
+                )
+        } else {
+            isValidSplitProfile = false
+            matchesNative = false
+        }
+        return VPNPrivateChatAccessPolicy.permitsAccess(
+            observedConnected: status == .connected,
+            nativeConnected: manager?.connection.status == .connected,
+            trustedNativeInventory: nativeInventoryTrust.permitsMutation,
+            verifiedSplitProfile: isValidSplitProfile,
+            nativeProfileBound: matchesNative,
+            noPreferenceWriteInFlight: !profileSave.isBusy && !legacyOnDemandDisableInFlight
+        )
+    }
+
     var statusDescription: String {
         switch status {
         case .connected: return "Connected"
