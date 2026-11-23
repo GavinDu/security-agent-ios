@@ -151,6 +151,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-save-safety-tests" \
             Shared/ProfileSaveSafetyPolicy.swift Tests/build/profile_save_safety_smoke.swift
           "$RUNNER_TEMP/profile-save-safety-tests"
+          # Bound public App Group profile JSON decode/commit in app and tunnel.
+          # Compile/execute the same Foundation-only policy as native iOS.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/public-profile-data-tests" \
+            Shared/SharedProfileDataPolicy.swift Tests/build/shared_profile_data_smoke.swift
+          "$RUNNER_TEMP/public-profile-data-tests"
           # A temporary full UDP send backlog must drop, not kill, the VPN.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/udp-backpressure-tests" \
             Shared/UDPBackpressurePolicy.swift Tests/build/udp_backpressure_smoke.swift
