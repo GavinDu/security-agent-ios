@@ -20,6 +20,7 @@ CANDIDATES = (
     ("fix/ios-underlay-dns-host-155", 156),
     ("fix/ios-pairing-confirmation-157", 158),
     ("fix/ios-private-webkit-store-159", 160),
+    ("fix/verified-branch-cleanup-161", 162),
 )
 
 
