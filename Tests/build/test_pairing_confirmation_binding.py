@@ -15,7 +15,7 @@ class PairingConfirmationBindingTests(unittest.TestCase):
     def test_ui_save_checks_exact_confirmed_profile(self):
         self.assertIn("PairingConfirmationGate<ServerProfile>()", UI)
         self.assertIn("confirmation.setConfirmed(newValue, for: macPreview)", UI)
-        self.assertIn("guard confirmation.permitsSave(preview) else { return }", UI)
+        self.assertIn("guard macPreview == preview, confirmation.permitsSave(macPreview) else { return }", UI)
         self.assertIn(".disabled(!confirmation.permitsSave(preview))", UI)
         self.assertNotIn("@State private var fingerprintConfirmed = false", UI)
         self.assertGreaterEqual(UI.count("confirmation.reset()"), 2)
