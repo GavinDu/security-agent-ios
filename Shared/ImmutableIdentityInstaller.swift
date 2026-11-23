@@ -17,11 +17,11 @@ enum ImmutableIdentityInstaller {
         var errorDescription: String? {
             switch self {
             case .invalidCandidate:
-                return "Generated WireGuard identity has the wrong length."
+                return "Generated WireGuard identity has invalid key material."
             case .missingWinner:
                 return "A competing WireGuard identity could not be reloaded."
             case .invalidWinner:
-                return "The stored WireGuard identity has the wrong length."
+                return "The stored WireGuard identity has invalid key material."
             }
         }
     }
@@ -31,7 +31,10 @@ enum ImmutableIdentityInstaller {
         insertIfAbsent: (Data) throws -> InsertResult,
         readExisting: () throws -> Data?
     ) throws -> Data {
-        guard candidate.count == 32 else {
+        // A zero-filled secret is not an acceptable generated identity.
+        // Fail before SecItemAdd so no invalid candidate enters Keychain.
+        guard candidate.count == 32,
+              candidate.contains(where: { $0 != 0 }) else {
             throw InstallationError.invalidCandidate
         }
         switch try insertIfAbsent(candidate) {
@@ -43,7 +46,10 @@ enum ImmutableIdentityInstaller {
             guard let winner = try readExisting() else {
                 throw InstallationError.missingWinner
             }
-            guard winner.count == 32 else {
+            // The concurrent Keychain winner is immutable, but corrupted
+            // zero material must never be accepted or silently rotated.
+            guard winner.count == 32,
+                  winner.contains(where: { $0 != 0 }) else {
                 throw InstallationError.invalidWinner
             }
             return winner
