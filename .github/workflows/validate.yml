@@ -63,6 +63,12 @@ jobs:
             Shared/SharedProfileDataPolicy.swift Shared/SharedProfileReadbackPolicy.swift \
             Tests/build/shared_profile_readback_smoke.swift
           "$RUNNER_TEMP/profile-readback-tests"
+          # Valid Rust-decrypted inner IP traffic must never be silently lost
+          # if the system NEPacketTunnelFlow rejects a local write.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/inner-packet-delivery-tests" \
+            Shared/IPPacketEnvelope.swift Shared/WireGuardInnerPacketDelivery.swift \
+            Tests/build/wireguard_inner_packet_delivery_smoke.swift
+          "$RUNNER_TEMP/inner-packet-delivery-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \

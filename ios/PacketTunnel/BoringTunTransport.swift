@@ -365,12 +365,28 @@ final class BoringTunTransport {
                 }
             })
         case .writeIPv4(let packet):
-            // The decrypted peer is not allowed to inject malformed frames.
-            guard IPPacketEnvelope.isValid(packet, family: .ipv4) else { return }
-            provider?.packetFlow.writePackets([packet], withProtocols: [NSNumber(value: AF_INET)])
+            try deliverInnerPacket(packet, family: .ipv4, protocolFamily: AF_INET)
         case .writeIPv6(let packet):
-            guard IPPacketEnvelope.isValid(packet, family: .ipv6) else { return }
-            provider?.packetFlow.writePackets([packet], withProtocols: [NSNumber(value: AF_INET6)])
+            try deliverInnerPacket(packet, family: .ipv6, protocolFamily: AF_INET6)
+        }
+    }
+
+    /// Local utun writes report a Boolean. A rejected write must propagate
+    /// through process() to fail(error), not silently blackhole authenticated
+    /// peer data or be confused with a discardable remote auth failure.
+    /// Called only on this transport's serial Rust/packetFlow queue.
+    private func deliverInnerPacket(
+        _ packet: Data, family: IPPacketFamily, protocolFamily: Int32
+    ) throws {
+        guard let provider else { throw BoringTunError.stopped }
+        do {
+            try WireGuardInnerPacketDelivery.deliver(packet, family: family) { validated in
+                provider.packetFlow.writePackets(
+                    [validated], withProtocols: [NSNumber(value: protocolFamily)]
+                )
+            }
+        } catch WireGuardInnerPacketDelivery.DeliveryError.writeRejected {
+            throw BoringTunError.packetFlowWriteFailed
         }
     }
 

@@ -19,6 +19,7 @@ enum BoringTunError: LocalizedError {
     case stopped
     case handshakeTimedOut
     case networkPathTimedOut
+    case packetFlowWriteFailed
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +31,7 @@ enum BoringTunError: LocalizedError {
         case .stopped: return "WireGuard tunnel stopped."
         case .handshakeTimedOut: return "WireGuard peer handshake timed out."
         case .networkPathTimedOut: return "WireGuard UDP network path did not recover; disconnect and reconnect to resolve the endpoint again."
+        case .packetFlowWriteFailed: return "The iOS VPN packet interface rejected a decrypted packet; reconnect the tunnel."
         }
     }
 }

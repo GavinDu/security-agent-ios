@@ -7,11 +7,17 @@ ROOT = Path(__file__).resolve().parents[2]
 class PacketBoundaryTests(unittest.TestCase):
     def test_validates_ingress_and_authenticated_output(self):
         transport = (ROOT / "ios/PacketTunnel/BoringTunTransport.swift").read_text()
+        delivery = (ROOT / "Shared/WireGuardInnerPacketDelivery.swift").read_text()
+        # The ingress path still checks before calling Rust; decrypted egress
+        # now validates in the production shared delivery helper before utun.
         self.assertIn("IPPacketEnvelope.isValid(packet, family: family)", transport)
-        self.assertIn("IPPacketEnvelope.isValid(packet, family: .ipv4)", transport)
-        self.assertIn("IPPacketEnvelope.isValid(packet, family: .ipv6)", transport)
+        self.assertIn("IPPacketEnvelope.isValid(packet, family: family)", delivery)
+        self.assertIn("try deliverInnerPacket(packet, family: .ipv4, protocolFamily: AF_INET)", transport)
+        self.assertIn("try deliverInnerPacket(packet, family: .ipv6, protocolFamily: AF_INET6)", transport)
         self.assertIn("codec.encapsulate(packet)", transport)
-        self.assertIn("packetFlow.writePackets", transport)
+        self.assertIn("provider.packetFlow.writePackets", transport)
+        self.assertIn("guard write(packet) else {", delivery)
+        self.assertIn("throw DeliveryError.writeRejected", delivery)
 
     def test_pure_bounded_validator_is_shared_with_native_xctest(self):
         source = (ROOT / "Shared/IPPacketEnvelope.swift").read_text()

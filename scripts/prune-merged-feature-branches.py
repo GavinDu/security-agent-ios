@@ -24,6 +24,7 @@ CANDIDATES = (
     ("fix/ios-chat-retry-generation-163", 164),
     ("fix/ios-private-chat-native-binding-165", 166),
     ("fix/ios-public-profile-readback-169", 170),
+    ("fix/ios-inner-packet-delivery-167", 168),
 )
 
 
