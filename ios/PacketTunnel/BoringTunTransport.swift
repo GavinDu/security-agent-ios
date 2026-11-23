@@ -15,6 +15,7 @@ final class BoringTunTransport {
     private var udp: NWConnection?
     private var tickTimer: DispatchSourceTimer?
     private var handshakeDeadline: DispatchSourceTimer?
+    private var startupDeadline: DispatchSourceTimer?
     private var pathWaitDeadline: DispatchSourceTimer?
     // Queue-confined generation rejects timer callbacks from old wait episodes.
     private var pathWait = WireGuardPathWaitGeneration()
@@ -38,6 +39,7 @@ final class BoringTunTransport {
             self.active = true
             let epoch = self.lifecycle.advance()
             self.startCompletion = completion
+            self.armStartupDeadline(epoch: epoch)
             do {
                 let validated = try profile.validated()
                 // Enforce inside the extension, including already-persisted
@@ -125,6 +127,25 @@ final class BoringTunTransport {
         } catch {
             fail(error)
         }
+    }
+
+    /// An overall deadline also covers a missing native network-settings callback.
+    /// This timer is independent of the shorter post-connection handshake bound.
+    private func armStartupDeadline(epoch: UInt64) {
+        startupDeadline?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(WireGuardStartupWatchdogPolicy.timeoutSeconds))
+        timer.setEventHandler { [weak self] in
+            guard let self, WireGuardStartupWatchdogPolicy.shouldExpire(
+                active: self.active,
+                pendingCompletion: self.startCompletion != nil,
+                expectedGeneration: epoch,
+                currentGeneration: self.lifecycle.current
+            ) else { return }
+            self.fail(BoringTunError.startupTimedOut)
+        }
+        startupDeadline = timer
+        timer.resume()
     }
 
     private func networkSettings(
@@ -429,6 +450,8 @@ final class BoringTunTransport {
     }
 
     private func finishStart(_ error: Error?) {
+        startupDeadline?.cancel()
+        startupDeadline = nil
         let completion = startCompletion
         startCompletion = nil
         completion?(error)
@@ -454,6 +477,8 @@ final class BoringTunTransport {
         tickTimer = nil
         handshakeDeadline?.cancel()
         handshakeDeadline = nil
+        startupDeadline?.cancel()
+        startupDeadline = nil
         cancelPathWaitDeadline()
         udp?.stateUpdateHandler = nil
         udp?.cancel()
