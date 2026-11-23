@@ -57,6 +57,12 @@ jobs:
             Shared/VPNPrivateChatAccessPolicy.swift \
             Tests/build/vpn_private_chat_access_smoke.swift
           "$RUNNER_TEMP/vpn-chat-authorization-tests"
+          # Public App Group profile saves must not report success with
+          # missing/mismatched immediate readback; exact production Swift gate.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-readback-tests" \
+            Shared/SharedProfileDataPolicy.swift Shared/SharedProfileReadbackPolicy.swift \
+            Tests/build/shared_profile_readback_smoke.swift
+          "$RUNNER_TEMP/profile-readback-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
