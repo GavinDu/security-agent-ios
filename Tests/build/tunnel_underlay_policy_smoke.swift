@@ -25,7 +25,7 @@ struct TunnelUnderlayPolicySmoke {
             ), "Split route must not capture literal outer UDP endpoint: \(host)")
         }
         for host in ["10.8.1.1", "10.7.0.1", "192.168.0.1",
-                     "203.0.113.42", "255.255.255.255", "home.example.org"] {
+                     "203.0.113.42", "home.example.org"] {
             precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split
             ), "Legitimate outside-range literal/hostname rejected: \(host)")
@@ -78,7 +78,8 @@ struct TunnelUnderlayPolicySmoke {
             ), "Mapped IPv6 captured inner route: \(host)")
         }
         for host in ["::ffff:203.0.113.42", "[::ffff:10.8.1.1]",
-                     "2001:db8::1", "[2001:db8::1]", "::1"] {
+                     "2001:db8::1", "[2001:db8::1]", "fd00::42",
+                     "[fd00::42]", "::ffff:192.168.1.10"] {
             precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split
             ), "Safe IPv6 literal rejected: \(host)")
@@ -88,6 +89,18 @@ struct TunnelUnderlayPolicySmoke {
             precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split
             ), "Malformed IPv6 literal accepted: \(host)")
+        }
+        // Reject unusable literals before saving the profile, not only
+        // during a later DNS answer or failed encrypted UDP connection.
+        for hostile in [
+            "0.0.0.0", "127.0.0.1", "169.254.1.1", "224.0.0.1",
+            "255.255.255.255", "::", "::1", "fe80::1", "ff02::1",
+            "::10.8.0.1", "::ffff:127.0.0.1",
+            "::ffff:169.254.1.1", "::ffff:255.255.255.255"
+        ] {
+            precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: hostile, includedIPv4CIDRs: split
+            ), "Unusable literal UDP underlay accepted: \(host)")
         }
         precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
             host: "10.8.0.1", includedIPv4CIDRs: ["10.8.1.0/24"]
