@@ -12,7 +12,10 @@ final class TunnelManager: NSObject, ObservableObject {
     private var preferenceReloadGate = NativePreferenceReloadGate()
     // A failed native preference read must never reopen writes/connections.
     // Keep this state on main with NativePreferenceReloadGate generations.
-    private var nativeInventoryTrust = NativeVPNInventoryTrust()
+    // Publish each value-type trust transition. Otherwise SwiftUI could keep
+    // a previously mounted WKWebView alive after a native inventory load or
+    // preference write revoked verification without changing VPN status.
+    @Published private var nativeInventoryTrust = NativeVPNInventoryTrust()
     private var legacyFullStopRequested = false
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
