@@ -4,6 +4,42 @@ import XCTest
 final class PairingTests: XCTestCase {
     private let validKey = Data(repeating: 0x2a, count: 32).base64EncodedString()
 
+    func testFingerprintConfirmationBindsExactPublicProfile() {
+        let original = ServerProfile(
+            publicKey: validKey, endpoint: "home.example.org:51820"
+        )
+        var gate = PairingConfirmationGate<ServerProfile>()
+        XCTAssertFalse(gate.permitsSave(original))
+        gate.setConfirmed(true, for: nil)
+        XCTAssertFalse(gate.permitsSave(original))
+        gate.setConfirmed(true, for: original)
+        XCTAssertTrue(gate.permitsSave(original))
+        XCTAssertFalse(gate.permitsSave(nil))
+
+        let differentKey = ServerProfile(
+            publicKey: Data(repeating: 0x2b, count: 32).base64EncodedString(),
+            endpoint: original.endpoint
+        )
+        let differentEndpoint = ServerProfile(
+            publicKey: original.publicKey, endpoint: "another.example.org:51820"
+        )
+        var differentMode = original
+        differentMode.routeMode = .full
+        var differentOnDemand = original
+        differentOnDemand.onDemand = true
+        for changed in [differentKey, differentEndpoint, differentMode, differentOnDemand] {
+            XCTAssertFalse(gate.permitsSave(changed), "Old confirmation trusted modified profile")
+        }
+        gate.setConfirmed(true, for: differentKey)
+        XCTAssertTrue(gate.permitsSave(differentKey))
+        XCTAssertFalse(gate.permitsSave(original))
+        gate.setConfirmed(false, for: differentKey)
+        XCTAssertFalse(gate.permitsSave(differentKey))
+        gate.setConfirmed(true, for: original)
+        gate.reset()
+        XCTAssertFalse(gate.permitsSave(original))
+    }
+
     func testRoundTripPairingQRCode() throws {
         let encoded = try PairingQRCode(
             kind: .mac, publicKey: validKey, endpoint: "home.example.org:51820"
