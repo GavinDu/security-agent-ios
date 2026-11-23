@@ -166,6 +166,11 @@ jobs:
             Shared/WireGuardPathWaitGeneration.swift \
             Tests/build/wireguard_path_wait_smoke.swift
           "$RUNNER_TEMP/wireguard-path-wait-tests"
+          # Bound every startup phase, including a lost Apple network-settings callback.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-startup-watchdog-tests" \
+            Shared/WireGuardStartupWatchdogPolicy.swift \
+            Tests/build/wireguard_startup_watchdog_smoke.swift
+          "$RUNNER_TEMP/wireguard-startup-watchdog-tests"
           # Exercise the actual provider state machine without Apple SDK.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/provider-state-tests" \
             Shared/PacketTunnelProviderState.swift Tests/build/provider_lifecycle_smoke.swift
