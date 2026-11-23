@@ -2,25 +2,38 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var tunnel: TunnelManager
-    @State private var serverUnavailable = false
+    @State private var chatRetry = AgentChatRetryState()
 
     var body: some View {
         TabView {
             NavigationStack {
                 Group {
                     if tunnel.status == .connected {
+                        let generation = chatRetry.generation
                         ZStack {
                             ChatWebView(url: AgentConstants.agentURL) { failed in
-                                serverUnavailable = failed
+                                // Ignore late results from an earlier page or
+                                // from a session dismissed by a VPN transition.
+                                chatRetry.reportLoadResult(
+                                    unreachable: failed, generation: generation
+                                )
                             }
+                            .id(generation)
                             .ignoresSafeArea(edges: .bottom)
 
-                            if serverUnavailable {
-                                ContentUnavailableView(
-                                    "Mac Mini unavailable",
-                                    systemImage: "wifi.exclamationmark",
-                                    description: Text("VPN is connected, but the agent server at 10.8.0.1:8080 cannot be reached.")
-                                )
+                            if chatRetry.isUnavailable {
+                                VStack(spacing: 12) {
+                                    ContentUnavailableView(
+                                        "Mac Mini unavailable",
+                                        systemImage: "wifi.exclamationmark",
+                                        description: Text("VPN is connected, but the agent server at 10.8.0.1:8080 cannot be reached.")
+                                    )
+                                    Button("Retry agent chat") {
+                                        chatRetry.retry()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .accessibilityHint("Reload the private agent page while keeping VPN connected.")
+                                }
                             }
                         }
                     } else {
@@ -54,6 +67,12 @@ struct ContentView: View {
                         Button("Done") { tunnel.showSettings = false }
                     } }
             }
+        }
+        .onChange(of: tunnel.status) { oldStatus, newStatus in
+            guard oldStatus != newStatus else { return }
+            // Any transition invalidates prior WebKit callbacks. The
+            // private chat view exists only for the connected state.
+            chatRetry.resetForVPNStatusChange()
         }
     }
 }
