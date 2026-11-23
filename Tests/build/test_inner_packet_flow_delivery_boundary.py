@@ -30,6 +30,7 @@ class InnerPacketFlowDeliveryBoundaryTests(unittest.TestCase):
         self.assertIn("try WireGuardInnerPacketDelivery.deliver(packet, family: family)", delivery)
         self.assertIn("provider.packetFlow.writePackets(", delivery)
         self.assertIn("[validated], withProtocols: [NSNumber(value: protocolFamily)]", delivery)
+        self.assertIn("catch WireGuardInnerPacketDelivery.DeliveryError.writeRejected", delivery)
         self.assertIn("throw BoringTunError.packetFlowWriteFailed", delivery)
         self.assertIn("case packetFlowWriteFailed", CODEC)
         self.assertIn("case .packetFlowWriteFailed:", CODEC)
