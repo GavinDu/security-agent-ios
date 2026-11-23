@@ -45,8 +45,16 @@ final class AsyncUnderlayDNSResolver {
             callbackQueue.async { completion(.failure(.timedOut)) }
             return
         }
-        // Never pass unbounded or NUL-terminated/truncated user input to C.
-        guard !host.isEmpty, host.utf8.count <= 253, !host.contains("\0") else {
+        // Enforce the final pre-getaddrinfo input boundary even if an
+        // upstream ServerProfile validator is accidentally bypassed.
+        // Numeric IPv6 here is unbracketed; interface zone IDs are unsafe.
+        guard !host.isEmpty, host.utf8.count <= 253,
+              !host.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0) ||
+                  CharacterSet.whitespacesAndNewlines.contains($0)
+              }),
+              !host.contains("%"), !host.contains("["),
+              !host.contains("]") else {
             callbackQueue.async { completion(.failure(.lookupFailed)) }
             return
         }

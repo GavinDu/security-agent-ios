@@ -22,6 +22,50 @@ final class AsyncUnderlayDNSResolverTests: XCTestCase {
         wait(for: [done], timeout: 15)
     }
 
+    func testUnsafeHostInputNeverInvokesDNSLookup() {
+        let hosts = [
+            "home.example.test\n", "home\t.example.test",
+            "home example.test", "home.example.test\u{0085}",
+            "fe80::1%en0", "[2001:db8::1]",
+            "home.example.test\u{007F}"
+        ]
+        let done = expectation(description: "reject unsafe underlay host before lookup")
+        done.expectedFulfillmentCount = hosts.count
+        let resolver = AsyncUnderlayDNSResolver(lookup: { _ in
+            XCTFail("Malformed or scoped host reached getaddrinfo boundary")
+            return ["203.0.113.42"]
+        })
+        let queue = DispatchQueue(label: "dns-host-input-test")
+        for host in hosts {
+            resolver.resolve(host: host, callbackQueue: queue) { result in
+                if case .failure(.lookupFailed) = result {} else {
+                    XCTFail("Unsafe underlay hostname was not rejected: \(host)")
+                }
+                done.fulfill()
+            }
+        }
+        wait(for: [done], timeout: 15)
+    }
+
+    func testUnbracketedNumericIPv6StillAcceptedForLookup() {
+        let done = expectation(description: "unbracketed numeric IPv6")
+        let resolver = AsyncUnderlayDNSResolver(lookup: { host in
+            XCTAssertEqual(host, "2001:db8::1")
+            return ["2001:db8::1"]
+        })
+        resolver.resolve(host: "2001:db8::1",
+                         callbackQueue: DispatchQueue(label: "dns-ipv6-test")) { result in
+            switch result {
+            case .success(let addresses):
+                XCTAssertEqual(addresses, ["2001:db8::1"])
+            case .failure(let error):
+                XCTFail("Valid unbracketed IPv6 rejected: \(error)")
+            }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 15)
+    }
+
     // Under macOS Actions heavy parallel simulator load, dispatch scheduling
     // alone can exceed five seconds; do not confuse scheduler starvation
     // with an invalid DNS response. Keep result assertions and the resolver's

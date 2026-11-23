@@ -38,6 +38,25 @@ struct AsyncUnderlayDNSSmoke {
         assertResult(lookup: { _ in preconditionFailure("NUL DNS lookup executed") },
                      host: "good.example\0evil.example",
                      expected: .failure(.lookupFailed))
+        // Final DNS preflight must reject hostile hosts independently of
+        // the profile parser without ever calling libc or injected lookup.
+        for unsafeHost in [
+            "home.example.test\n", "home\t.example.test", "home example.test",
+            "home.example.test\u{0085}", "fe80::1%en0",
+            "[2001:db8::1]", "home.example.test\u{007F}"
+        ] {
+            assertResult(
+                lookup: { _ in preconditionFailure("Unsafe DNS lookup executed") },
+                host: unsafeHost, expected: .failure(.lookupFailed)
+            )
+        }
+        assertResult(
+            lookup: { host in
+                precondition(host == "2001:db8::1")
+                return ["2001:db8::1"]
+            },
+            host: "2001:db8::1", expected: .success(["2001:db8::1"])
+        )
 
         let gate = DispatchSemaphore(value: 0)
         let blockedWorker = DispatchSemaphore(value: 0)
