@@ -56,7 +56,7 @@ jobs:
           "$RUNNER_TEMP/vpn-profile-tests"
           # The actual QR confirmation gate must bind approval to the exact
           # public Mac profile, not a stale SwiftUI Boolean checkbox.
-          swiftc -swift-version 5 -o "$RUNNER_TEMP/pairing-confirmation-tests" \\
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/pairing-confirmation-tests" \
             Shared/PairingConfirmationGate.swift Tests/build/pairing_confirmation_smoke.swift
           "$RUNNER_TEMP/pairing-confirmation-tests"
           # Validate Mac server public key before shared profile persistence.
