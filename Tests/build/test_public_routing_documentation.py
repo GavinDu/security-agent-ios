@@ -25,7 +25,7 @@ class PublicRoutingDocumentationTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text()
         self.assertIn("**Active routing: split-only.**", readme)
         self.assertIn("both reject full-tunnel", readme)
-        self.assertIn("do not treat it as a device-wide kill switch", readme)
+        self.assertIn("do not treat it as a device-wide kill switch", " ".join(readme.split()))
         self.assertIn("CI-verified unsigned Foundation", readme)
         self.assertIn("45060469690", readme)
         self.assertIn("real Mac peer", readme)
