@@ -8,7 +8,7 @@ struct ContentView: View {
         TabView {
             NavigationStack {
                 Group {
-                    if tunnel.status == .connected {
+                    if tunnel.canShowPrivateChat {
                         let generation = chatRetry.generation
                         ZStack {
                             ChatWebView(url: AgentConstants.agentURL) { failed in
@@ -35,6 +35,17 @@ struct ContentView: View {
                                     .accessibilityHint("Reload the private agent page while keeping VPN connected.")
                                 }
                             }
+                        }
+                    } else if tunnel.status == .connected {
+                        ContentUnavailableView(
+                            "Verify VPN configuration",
+                            systemImage: "lock.trianglebadge.exclamationmark",
+                            description: Text("The connected VPN does not match a verified split-tunnel Mac profile. Retry loading VPN preferences or re-pair before opening private chat.")
+                        )
+                        .safeAreaInset(edge: .bottom) {
+                            Button("Open VPN settings") { tunnel.showSettings = true }
+                                .buttonStyle(.borderedProminent)
+                                .padding()
                         }
                     } else {
                         ContentUnavailableView(
@@ -70,8 +81,13 @@ struct ContentView: View {
         }
         .onChange(of: tunnel.status) { oldStatus, newStatus in
             guard oldStatus != newStatus else { return }
-            // Any transition invalidates prior WebKit callbacks. The
-            // private chat view exists only for the connected state.
+            // Reject late callbacks after any transport status transition.
+            chatRetry.resetForVPNStatusChange()
+        }
+        .onChange(of: tunnel.canShowPrivateChat) { oldAccess, newAccess in
+            guard oldAccess != newAccess else { return }
+            // A changed native binding or inventory can revoke access while
+            // the OS still reports Connected. Invalidate old WebKit results.
             chatRetry.resetForVPNStatusChange()
         }
     }
