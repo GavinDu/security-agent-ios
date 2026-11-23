@@ -6,7 +6,7 @@ struct PairingView: View {
     @State private var pairingError: String?
     @State private var isScanning = false
     @State private var macPreview: ServerProfile?
-    @State private var fingerprintConfirmed = false
+    @State private var confirmation = PairingConfirmationGate<ServerProfile>()
 
     var body: some View {
         Form {
@@ -40,15 +40,20 @@ struct PairingView: View {
                     }
                     Text("Compare the entire fingerprint with the trusted Mac Mini screen, not with this QR code alone.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Toggle("I verified the fingerprint on my Mac", isOn: $fingerprintConfirmed)
+                    Toggle("I verified the fingerprint on my Mac", isOn: Binding(
+                        get: { confirmation.permitsSave(macPreview) },
+                        set: { newValue in
+                            confirmation.setConfirmed(newValue, for: macPreview)
+                        }
+                    ))
                     Button("Trust Mac and save VPN") {
-                        guard fingerprintConfirmed else { return }
+                        guard confirmation.permitsSave(preview) else { return }
                         // Keep the scan + fingerprint confirmation available
                         // until native preferences and App Group commit succeed.
                         // A denied active-session save must not force a re-scan.
                         tunnel.save(preview)
                     }
-                    .disabled(!fingerprintConfirmed)
+                    .disabled(!confirmation.permitsSave(preview))
                     .buttonStyle(.borderedProminent)
                     if let error = tunnel.errorMessage {
                         Text(error)
@@ -65,7 +70,7 @@ struct PairingView: View {
         .onChange(of: tunnel.profile) { _, committed in
             guard let macPreview, committed == macPreview else { return }
             self.macPreview = nil
-            fingerprintConfirmed = false
+            confirmation.reset()
         }
         .task {
             do { ownPublicKey = try SharedKeychain.publicKeyBase64() }
@@ -75,7 +80,7 @@ struct PairingView: View {
             NavigationStack {
                 QRScannerView { scanned in
                     isScanning = false
-                    fingerprintConfirmed = false
+                    confirmation.reset()
                     macPreview = nil
                     do { macPreview = try PairingQRCode.decodeMac(scanned) }
                     catch { pairingError = error.localizedDescription }
