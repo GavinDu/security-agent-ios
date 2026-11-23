@@ -86,6 +86,12 @@ jobs:
             Shared/BoringTunKeyInputPolicy.swift \
             Tests/build/boringtun_key_input_smoke.swift
           "$RUNNER_TEMP/boringtun-key-input-tests"
+          # Rust WIREGUARD_DONE is op 0, size 0: catch malformed local C
+          # result envelopes in the same production Swift policy as iOS.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-ffi-done-tests" \
+            Shared/BoringTunFFIDonePolicy.swift \
+            Tests/build/boringtun_ffi_done_smoke.swift
+          "$RUNNER_TEMP/boringtun-ffi-done-tests"
           # Remote invalid WireGuard packets are nonfatal; malformed local
           # Rust C ABI output must instead stop the tunnel.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/wireguard-datagram-failure-tests" \
