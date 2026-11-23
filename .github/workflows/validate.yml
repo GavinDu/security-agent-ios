@@ -69,6 +69,11 @@ jobs:
             Shared/IPPacketEnvelope.swift Shared/WireGuardInnerPacketDelivery.swift \
             Tests/build/wireguard_inner_packet_delivery_smoke.swift
           "$RUNNER_TEMP/inner-packet-delivery-tests"
+          # Never silently truncate mismatched system utun read packets/AFs.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/packet-read-batch-tests" \
+            Shared/WireGuardPacketReadBatchPolicy.swift \
+            Tests/build/wireguard_packet_read_batch_smoke.swift
+          "$RUNNER_TEMP/packet-read-batch-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
