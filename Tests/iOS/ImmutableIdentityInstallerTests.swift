@@ -43,6 +43,31 @@ final class ImmutableIdentityInstallerTests: XCTestCase {
         ))
     }
 
+    func testZeroSecretCandidateNeverReachesAtomicInsert() {
+        var attemptedInsert = false
+        XCTAssertThrowsError(try ImmutableIdentityInstaller.install(
+            candidate: Data(repeating: 0, count: 32),
+            insertIfAbsent: { _ in
+                attemptedInsert = true
+                return .inserted
+            },
+            readExisting: { XCTFail("Invalid candidate read Keychain"); return nil }
+        ))
+        XCTAssertFalse(attemptedInsert)
+    }
+
+    func testZeroSecretConcurrentKeychainWinnerFailsClosed() {
+        var attemptedOverwrite = false
+        XCTAssertThrowsError(try ImmutableIdentityInstaller.install(
+            candidate: Data(repeating: 0x55, count: 32),
+            insertIfAbsent: { _ in .alreadyExists },
+            readExisting: { Data(repeating: 0, count: 32) }
+        ))
+        XCTAssertFalse(attemptedOverwrite)
+        // Never repair a corrupted race winner by replacing its identity.
+        // Remediation requires explicit trusted account/device action.
+    }
+
     func testInvalidCandidateAndKeychainInsertionErrorFailClosed() {
         XCTAssertThrowsError(try ImmutableIdentityInstaller.install(
             candidate: Data(repeating: 0x01, count: 31),
