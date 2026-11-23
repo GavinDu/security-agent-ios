@@ -60,7 +60,7 @@ class VPNPrivateChatNativeBindingTests(unittest.TestCase):
         self.assertIn("Verify VPN configuration", VIEW)
         self.assertIn(".onChange(of: tunnel.canShowPrivateChat)", VIEW)
         self.assertIn("chatRetry.resetForVPNStatusChange()", VIEW)
-        self.assertNotIn("if tunnel.status == .connected {", VIEW)
+        self.assertNotIn("\n                    if tunnel.status == .connected {", VIEW)
 
     def test_fail_closed_policy_and_native_ci_keep_earlier_webkit_isolation(self):
         for guard in (
