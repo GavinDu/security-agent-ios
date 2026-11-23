@@ -22,8 +22,9 @@ class MacPairingQRInputBoundaryTests(unittest.TestCase):
         self.assertIn("MacPairingQRInputPolicy.decode(text)", decoded)
         self.assertIn("ServerProfile(publicKey: fields.publicKey, endpoint: fields.endpoint).validated()", decoded)
         self.assertNotIn("JSONDecoder().decode(PairingQRCode.self, from: Data(text.utf8))", decoded)
-        self.assertIn("guard fingerprintConfirmed else { return }", UI)
-        self.assertIn(".disabled(!fingerprintConfirmed)", UI)
+        self.assertIn("guard macPreview == preview, confirmation.permitsSave(macPreview) else { return }", UI)
+        self.assertIn(".disabled(!confirmation.permitsSave(preview))", UI)
+        self.assertIn("PairingConfirmationGate<ServerProfile>()", UI)
     def test_executed_swift_and_native_tests(self):
         self.assertIn("Shared/MacPairingQRInputPolicy.swift", WORKFLOW)
         self.assertIn("Tests/build/mac_pairing_qr_input_smoke.swift", WORKFLOW)
