@@ -21,6 +21,7 @@ CANDIDATES = (
     ("fix/ios-pairing-confirmation-157", 158),
     ("fix/ios-private-webkit-store-159", 160),
     ("fix/verified-branch-cleanup-161", 162),
+    ("fix/ios-chat-retry-generation-163", 164),
 )
 
 

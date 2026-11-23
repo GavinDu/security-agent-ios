@@ -46,6 +46,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-navigation-tests" \
             ios/AgentApp/Chat/AgentChatNavigationPolicy.swift Tests/build/chat_navigation_smoke.swift
           "$RUNNER_TEMP/chat-navigation-tests"
+          # Bind private WebKit retry/load results to a fresh VPN session
+          # generation; run production Foundation-only Swift state tests.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-retry-state-tests" \
+            Shared/AgentChatRetryState.swift Tests/build/chat_retry_state_smoke.swift
+          "$RUNNER_TEMP/chat-retry-state-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
