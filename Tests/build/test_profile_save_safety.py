@@ -31,9 +31,10 @@ class ProfileSaveSafetyBoundaryTests(unittest.TestCase):
 
     def test_pairing_keeps_preview_and_shows_native_denial(self):
         save_button = PAIRING.split('Button("Trust Mac and save VPN")', 1)[1].split(
-            ".disabled(!fingerprintConfirmed)", 1
+            ".disabled(!confirmation.permitsSave(preview))", 1
         )[0]
         self.assertIn("tunnel.save(preview)", save_button)
+        self.assertIn("guard confirmation.permitsSave(preview) else { return }", save_button)
         self.assertNotIn("macPreview = nil", save_button)
         self.assertIn(".onChange(of: tunnel.profile)", PAIRING)
         self.assertIn("if let error = tunnel.errorMessage", PAIRING)
