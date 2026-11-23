@@ -62,7 +62,11 @@ enum TunnelUnderlayPolicy {
             guard let ipv6 = ipv6LiteralBytes(host) else { return false }
             let isMapped = ipv6.prefix(10).allSatisfy { $0 == 0 } &&
                 ipv6[10] == 0xff && ipv6[11] == 0xff
+            // An outer UDP peer cannot be an unspecified, loopback,
+            // link-local, multicast, or deprecated IPv4-compatible IPv6 host.
+            guard usableIPv6Unicast(ipv6) else { return false }
             guard isMapped else { return true }
+            guard usableIPv4Unicast(Array(ipv6.suffix(4))) else { return false }
             let mappedIPv4 = ipv6.suffix(4).reduce(UInt32(0)) {
                 ($0 << 8) | UInt32($1)
             }
@@ -103,12 +107,38 @@ enum TunnelUnderlayPolicy {
         // Single-integer, hexadecimal, abbreviated and leading-zero forms
         // are ambiguous across resolvers; accept only canonical IPv4.
         guard let endpoint = canonicalIPv4(host) else { return false }
+        let octets = [24, 16, 8, 0].map {
+            UInt8((endpoint >> $0) & 0xff)
+        }
+        guard usableIPv4Unicast(octets) else { return false }
         for route in parsedRoutes {
             if endpoint & route.mask == route.network & route.mask {
                 return false
             }
         }
         return true
+    }
+
+    /// Shared by literal profile preflight and resolved A/AAAA candidate
+    /// validation, so the UI and PacketTunnel reject the same unusable
+    /// encrypted UDP destinations, before route installation.
+    static func usableIPv4Unicast(_ octets: [UInt8]) -> Bool {
+        guard octets.count == 4 else { return false }
+        return octets[0] != 0 && octets[0] != 127 &&
+            !(octets[0] == 169 && octets[1] == 254) && octets[0] < 224
+    }
+
+    static func usableIPv6Unicast(_ octets: [UInt8]) -> Bool {
+        guard octets.count == 16 else { return false }
+        let unspecified = octets.allSatisfy { $0 == 0 }
+        let loopback = octets.prefix(15).allSatisfy { $0 == 0 } &&
+            octets[15] == 1
+        let linkLocal = octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80
+        // ::/96 (except :: and ::1 handled above) is the deprecated
+        // IPv4-compatible encoding. Do not let it bypass IPv4 route checks.
+        let ipv4Compatible = octets.prefix(12).allSatisfy { $0 == 0 }
+        return !unspecified && !loopback && !linkLocal &&
+            octets[0] != 0xff && !ipv4Compatible
     }
 
     /// URLComponents.host commonly returns IPv6 literals with brackets on
