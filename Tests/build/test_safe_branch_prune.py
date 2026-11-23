@@ -139,6 +139,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-private-chat-native-binding-165", 166)',
             '("fix/ios-public-profile-readback-169", 170)',
             '("fix/ios-inner-packet-delivery-167", 168)',
+            '("fix/ios-startup-watchdog-171", 172)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
