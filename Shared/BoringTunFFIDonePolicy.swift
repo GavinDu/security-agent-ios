@@ -4,11 +4,13 @@ import Foundation
 /// WIREGUARD_DONE (op 0) with size = 0. Nonzero size here is a
 /// malformed local C ABI result, not a valid packet or error code.
 ///
-/// WIREGUARD_ERROR (op 2) encodes an error code in size; it is
+/// The Swift C importer exposes this ABI size_t as Int; do not cast an
+/// error code to an output length. WIREGUARD_ERROR (op 2) encodes an error
+/// code in size; it is
 /// deliberately handled separately by BoringTunCodec without converting
 /// the value to an Int or interpreting it as a packet byte count.
 enum BoringTunFFIDonePolicy {
-    static func acceptsDoneSize(_ size: UInt) -> Bool {
+    static func acceptsDoneSize(_ size: Int) -> Bool {
         size == 0
     }
 }
