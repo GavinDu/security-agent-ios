@@ -73,6 +73,29 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsUnusableLiteralIPv4IPv6AtEarlyProfileBoundary() {
+        let routes = RouteMode.split.allowedIPs
+        for hostile in [
+            "0.0.0.0", "127.0.0.1", "169.254.1.1", "224.0.0.1",
+            "255.255.255.255", "::", "::1", "fe80::1", "ff02::1",
+            "::10.8.0.1", "::ffff:127.0.0.1",
+            "::ffff:169.254.1.1", "::ffff:255.255.255.255"
+        ] {
+            XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: hostile, includedIPv4CIDRs: routes
+            ), "Invalid encrypted UDP underlay: \(host)")
+        }
+        for valid in [
+            "192.168.1.10", "203.0.113.42", "2001:db8::1",
+            "[2001:db8::1]", "fd00::42", "[fd00::42]",
+            "::ffff:192.168.1.10", "home.example.org"
+        ] {
+            XCTAssertTrue(TunnelUnderlayPolicy.permitsLiteralEndpoint(
+                host: valid, includedIPv4CIDRs: routes
+            ), "Valid underlay blocked: \(valid)")
+        }
+    }
+
     func testRejectsAmbiguousNumericIPv4FormsAndInvalidRoutes() {
         for host in ["10.8.0.001", "10.8.0.256", "10.8.0.1.", "167837697",
                      "0x0a080001", "0X0A080001", "0x0a.0x08.0x00.0x01",
