@@ -54,13 +54,21 @@ enum SharedKeychain {
 
     static func existingIdentity() throws -> Data {
         guard let secret = try read(identityAccount) else { throw KeychainError.missingSecret }
-        guard secret.count == 32 else { throw KeychainError.invalidSecret }
+        // Reject even a correctly sized but zero-filled stored identity.
+        // The FFI would reject it later; do not expose it to pairing first.
+        guard WireGuardPrivateIdentityPolicy.accepts(secret) else {
+            throw KeychainError.invalidSecret
+        }
         return secret
     }
 
     static func createIdentityIfNeeded() throws -> Data {
         if let existing = try read(identityAccount) {
-            guard existing.count == 32 else { throw KeychainError.invalidSecret }
+            // Present invalid Keychain material is not an absent identity:
+            // fail closed rather than replacing an existing device key.
+            guard WireGuardPrivateIdentityPolicy.accepts(existing) else {
+                throw KeychainError.invalidSecret
+            }
             return existing
         }
         // SecItemAdd is atomic across the app and PacketTunnel processes.
