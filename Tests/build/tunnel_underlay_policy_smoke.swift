@@ -100,7 +100,7 @@ struct TunnelUnderlayPolicySmoke {
         ] {
             precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: hostile, includedIPv4CIDRs: split
-            ), "Unusable literal UDP underlay accepted: \(host)")
+            ), "Unusable literal UDP underlay accepted: \(hostile)")
         }
         precondition(TunnelUnderlayPolicy.permitsLiteralEndpoint(
             host: "10.8.0.1", includedIPv4CIDRs: ["10.8.1.0/24"]
