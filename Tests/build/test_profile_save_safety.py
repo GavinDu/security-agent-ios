@@ -34,7 +34,7 @@ class ProfileSaveSafetyBoundaryTests(unittest.TestCase):
             ".disabled(!confirmation.permitsSave(preview))", 1
         )[0]
         self.assertIn("tunnel.save(preview)", save_button)
-        self.assertIn("guard confirmation.permitsSave(preview) else { return }", save_button)
+        self.assertIn("guard macPreview == preview, confirmation.permitsSave(macPreview) else { return }", save_button)
         self.assertNotIn("macPreview = nil", save_button)
         self.assertIn(".onChange(of: tunnel.profile)", PAIRING)
         self.assertIn("if let error = tunnel.errorMessage", PAIRING)
