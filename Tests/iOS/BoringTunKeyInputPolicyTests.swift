@@ -12,7 +12,7 @@ final class BoringTunKeyInputPolicyTests: XCTestCase {
         ))
         XCTAssertTrue(BoringTunKeyInputPolicy.accepts(
             privateKey: privateKey, serverPublicKey: serverKey,
-            presharedKey: Data(repeating: 0, count: 32)
+            presharedKey: Data(repeating: 0x7B, count: 32)
         ))
     }
 
@@ -34,9 +34,15 @@ final class BoringTunKeyInputPolicyTests: XCTestCase {
                 privateKey: privateKey, serverPublicKey: invalidPeer, presharedKey: nil
             ))
         }
-        XCTAssertFalse(BoringTunKeyInputPolicy.accepts(
-            privateKey: privateKey, serverPublicKey: serverKey,
-            presharedKey: Data(repeating: 1, count: 31)
-        ))
+        for invalidPSK in [
+            Data(repeating: 0, count: 32),
+            Data(repeating: 1, count: 31),
+            Data(repeating: 1, count: 33)
+        ] {
+            XCTAssertFalse(BoringTunKeyInputPolicy.accepts(
+                privateKey: privateKey, serverPublicKey: serverKey,
+                presharedKey: invalidPSK
+            ))
+        }
     }
 }
