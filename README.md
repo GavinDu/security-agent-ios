@@ -4,11 +4,14 @@ Native SwiftUI applications for secure, self-hosted agent access through WireGua
 The iPhone loads the private agent web UI only after iOS reports a connected VPN.
 The Mac Mini companion provides pairing QR generation and peer enrollment guidance.
 
-**Status (initial scaffold):** SwiftUI apps, Keychain-backed identity, pairing QR,
-NetworkExtension manager and packet-tunnel adapter source are provided. This does
-**not** certify that BoringTun Rust is natively built and linked, developer entitlements have been granted,
-VPN connectivity has been tested on an iPhone, or that the Mac is an operational VPN server.
-See [docs/BORINGTUN_BUILD.md](docs/BORINGTUN_BUILD.md) for native prerequisites.
+**Status (CI-verified unsigned Foundation, November 22, 2026):** the native
+iPhoneOS app and PacketTunnel compile and link pinned Rust Cloudflare BoringTun,
+iOS Simulator XCTest passes, and the SwiftUI Mac companion builds in
+[main-branch Actions #45060469690](https://github.com/GavinDu/security-agent-ios/actions/runs/45060469690).
+These checks do **not** establish Apple signing/entitlements on a physical
+iPhone, an authenticated connection to a real Mac peer, safe full-tunnel routes,
+or release approval. See [docs/BORINGTUN_BUILD.md](docs/BORINGTUN_BUILD.md)
+for native prerequisites and outstanding device gates.
 
 ## Applications
 
@@ -54,18 +57,26 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
   item with `AfterFirstUnlockThisDeviceOnly` protection.
 - Only the chat WebView receives the ATS web-content HTTP exception; the VPN protects
   transport to a trusted home agent, but the agent must authenticate users itself.
-- Split tunnel leaves normal DNS and web traffic on the regular network. Full tunnel
-  configures `0.0.0.0/0` and `::/0`; correct IPv6 routing/NAT is a server requirement.
-- On-demand is **opt-in**, not enabled by default, until a user has verified server
-  connectivity and understood full-tunnel fail-closed behavior.
+- **Active routing: split-only.** The app and PacketTunnel both reject full-tunnel
+  activation before installing any `0.0.0.0/0` or `::/0` routes. Full mode is
+  intentionally disabled pending signed iPhone/Mac verification of underlay
+  isolation, NAT64/IPv6 and leak/fail-close behavior
+  ([#65](https://github.com/GavinDu/security-agent-ios/issues/65),
+  [#29](https://github.com/GavinDu/security-agent-ios/issues/29)).
+  Split mode leaves ordinary web and DNS traffic on the regular network; do
+  not treat it as a device-wide kill switch.
+- On-demand is **opt-in** for a correctly configured split-tunnel profile;
+  signed-device connection/roaming reliability is still unverified.
 - The browser bridge has an allowlist and does not expose VPN credentials.
 - Proton Lumo was consulted for architecture only. **No Proton GPLv3 source was copied.**
 
 ## Roadmap / verification
 
-- Phase 0: Tuist + app/extension targets (device build not verified)
-- Phase 1: VPN manager and adapter source (device connect not verified)
+- Phase 0: Tuist + app/extension targets (unsigned native build and simulator XCTest
+  verified in Actions #45060469690; signed physical-device build not verified)
+- Phase 1: VPN manager and Rust adapter source (real iPhone/Mac handshake unverified)
 - Phase 2: QR payloads and Keychain identity (basic UI; full automated peer enrollment pending)
 - Phase 3: VPN-gated chat WebView (streaming is provided by the web backend)
-- Phase 4: Split/full routing mode toggle (Safari, DNS, MTU and roaming tests pending)
+- Phase 4: Split-route safety and pre-route DNS pinning (full mode deliberately
+  blocked; physical DNS/MTU/IPv6/NAT64/roaming route tests pending)
 - Phase 5: Device QA, on-demand, TestFlight and crash/logging hardening pending

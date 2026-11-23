@@ -39,10 +39,22 @@ checked into this repository.
 Static Linux tests verify pinned hashes, source layout and wrapper
 failure behavior; these are not native linkage tests. Native Xcode
 Actions must compile iPhoneOS, iOS Simulator and XCTest, and separately
-compile AgentMac. Signed device testing requires Apple developer
-entitlements and an operational Mac Mini peer. Verify authenticated
-handshake, encrypted UDP packets, DNS/IPv6, split/full routes, stop,
-roaming, background resume and battery/memory consumption.
+compile AgentMac. These unsigned gates passed on main commit
+`b4d772ee9ac4babddd779cb3cbef66a717e1a98a`
+([Actions #45060469690](https://github.com/GavinDu/security-agent-ios/actions/runs/45060469690)).
+Signed device testing still requires Apple developer entitlements and an
+operational Mac Mini peer. Verify authenticated handshake, encrypted UDP,
+split routes and DNS/IPv6, stop, roaming, background resume and
+battery/memory consumption ([#40](https://github.com/GavinDu/security-agent-ios/issues/40),
+[#54](https://github.com/GavinDu/security-agent-ios/issues/54)).
+
+**Do not test or advertise full tunnel as enabled:** production
+`TunnelRouteSafetyPolicy` rejects `.full` in both the app and the extension.
+Default IPv4/IPv6 routes, encrypted-underlay exclusion, NAT64 behavior and a
+fail-closed kill switch require separate signed-device Mac/iPhone evidence
+([#65](https://github.com/GavinDu/security-agent-ios/issues/65),
+[#29](https://github.com/GavinDu/security-agent-ios/issues/29)) before that
+guard may be reconsidered. Green CI is not release/route certification.
 
 BoringTun's upstream 0.7.1 session-liveness report
 [#495](https://github.com/cloudflare/boringtun/issues/495) requires
