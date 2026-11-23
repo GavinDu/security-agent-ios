@@ -54,6 +54,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # The actual QR confirmation gate must bind approval to the exact
+          # public Mac profile, not a stale SwiftUI Boolean checkbox.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/pairing-confirmation-tests" \\
+            Shared/PairingConfirmationGate.swift Tests/build/pairing_confirmation_smoke.swift
+          "$RUNNER_TEMP/pairing-confirmation-tests"
           # Validate Mac server public key before shared profile persistence.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/server-public-key-tests" \
             Shared/CanonicalWireGuardPublicKeyPolicy.swift \
