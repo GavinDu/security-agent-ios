@@ -226,7 +226,7 @@ jobs:
             -import-objc-header ios/PacketTunnel/BoringTunBridge.h \
             -Xcc -I"$PWD/Vendor/boringtun/boringtun/src" \
             Shared/BoringTunKeyInputPolicy.swift Shared/BoringTunFFIDonePolicy.swift \
-  ios/PacketTunnel/BoringTunCodec.swift
+            ios/PacketTunnel/BoringTunCodec.swift
           echo "Swift BoringTun C ABI codec typecheck passed (Linux, no iOS SDK)"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/boringtun-linux"
           cargo build --manifest-path Vendor/boringtun/boringtun/Cargo.toml \
