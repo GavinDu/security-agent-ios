@@ -47,7 +47,7 @@ struct PairingView: View {
                         }
                     ))
                     Button("Trust Mac and save VPN") {
-                        guard confirmation.permitsSave(preview) else { return }
+                        guard macPreview == preview, confirmation.permitsSave(macPreview) else { return }
                         // Keep the scan + fingerprint confirmation available
                         // until native preferences and App Group commit succeed.
                         // A denied active-session save must not force a re-scan.
