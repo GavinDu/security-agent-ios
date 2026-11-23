@@ -1,0 +1,40 @@
+name: Prune proven merged feature branches
+
+# Only a successful push to main after all three native Foundation jobs may
+# exercise a write-scoped GitHub token. Never trigger from PR-controlled code.
+on:
+  workflow_run:
+    workflows: ["Native Xcode Rust WireGuard build and tests"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  safe-prune:
+    name: Verify and delete allowlisted merged refs
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: proven-ref-prune-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout only tested main commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (Node 24)
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Exercise fail-closed policy without elevated token
+        run: python3 -m unittest discover -s Tests/build -p 'test_safe_branch_prune.py' -v
+      - name: Delete only independently verified merged ref heads
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          EXPECTED_MAIN_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/prune-merged-feature-branches.py
