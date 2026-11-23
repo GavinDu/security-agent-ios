@@ -117,6 +117,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             "github.event.workflow_run.head_branch == 'main'",
             "github.event.workflow_run.head_repository.full_name == github.repository",
             "contents: write",
+            "pull-requests: read",
             "persist-credentials: false",
             "github.event.workflow_run.head_sha",
             "test_safe_branch_prune.py",
