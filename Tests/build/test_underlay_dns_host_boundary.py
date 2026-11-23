@@ -30,7 +30,7 @@ class DNSHostBoundaryTests(unittest.TestCase):
     def test_actual_swift_linux_and_native_xctest_are_required(self):
         for payload in [
             '"fe80::1%en0"', '"[2001:db8::1]"', '"home example.test"',
-            '"home\\\\t.example.test"',
+            '"home\\t.example.test"',
         ]:
             self.assertIn(payload, LINUX)
             self.assertIn(payload, NATIVE)
