@@ -8,9 +8,18 @@ struct ChatWebView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(onLoadState: onLoadState) }
 
-    func makeUIView(context: Context) -> WKWebView {
+    /// Private agent chat must not retain cookies/cache/site storage on disk
+    /// after a VPN disconnect or across application launches. This setting
+    /// does not substitute for WebKit process teardown or origin filtering.
+    static func makePrivateConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        return configuration
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = Self.makePrivateConfiguration()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.isInspectable = false
