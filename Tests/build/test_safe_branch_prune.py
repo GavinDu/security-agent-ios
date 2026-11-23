@@ -135,6 +135,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-pairing-confirmation-157", 158)',
             '("fix/ios-private-webkit-store-159", 160)',
             '("fix/verified-branch-cleanup-161", 162)',
+            '("fix/ios-chat-retry-generation-163", 164)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
