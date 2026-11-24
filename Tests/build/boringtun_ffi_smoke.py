@@ -80,7 +80,7 @@ def handshake_roundtrip(lib):
         return check_action(result, dst)
 
     def exchange(tunnel, input_datagram):
-        src = ctypes.create_string_buffer(input_datagram, len(input_datagram))
+        src = ctypes.create_string_buffer(input_datagram, max(1, len(input_datagram)))
         dst = ctypes.create_string_buffer(MAX_PACKET)
         result = lib.wireguard_read(tunnel, src, len(input_datagram), dst, MAX_PACKET)
         return check_action(result, dst)
@@ -94,6 +94,14 @@ def handshake_roundtrip(lib):
     try:
         op, initiation = initiate(client)
         assert op == NETWORK, f"Expected handshake initiation, got op={op}"
+        # A pending handshake queues writes instead of producing data.
+        queued = [
+            bytes.fromhex("4500001400020000401100000a0800020a080001"),
+            bytes.fromhex("4500001400030000401100000a0800020a080001"),
+        ]
+        for packet in queued:
+            op, _ = send_ip(client, packet)
+            assert op == DONE, f"Expected queued pre-handshake write, got {op}"
         op, response = exchange(server, initiation)
         assert op == NETWORK, f"Expected handshake response, got op={op}"
         op, confirm = exchange(client, response)
@@ -101,6 +109,16 @@ def handshake_roundtrip(lib):
         if op == NETWORK:
             back_op, _ = exchange(server, confirm)
             assert back_op in (DONE, NETWORK), f"Unexpected peer confirmation {back_op}"
+
+        # The upstream continuation contract requires empty-input reads
+        # after NETWORK. The buffer pointer remains nonnull even at size 0.
+        for expected in queued:
+            op, encrypted = exchange(client, b"")
+            assert op == NETWORK, f"Expected queued network output, got {op}"
+            op, recovered = exchange(server, encrypted)
+            assert op == IPV4 and recovered == expected, "Queued IPv4 mismatch"
+        op, remaining = exchange(client, b"")
+        assert op == DONE and not remaining, "Drain did not terminate"
 
         # Minimal illustrative IPv4 datagram; this is NOT an internet packet test.
         ipv4 = bytes.fromhex("4500001400010000401100000a0800020a080001")
@@ -114,7 +132,7 @@ def handshake_roundtrip(lib):
         assert op == NETWORK, f"Expected reverse encrypted data, got op={op}"
         op, recovered = exchange(client, encrypted)
         assert op == IPV4 and recovered == ipv4, "Reverse WireGuard packet mismatch"
-        print("BoringTun C ABI: test peer handshake and bidirectional IPv4 OK")
+        print("BoringTun C ABI: test peer handshake, queued packet drain and bidirectional IPv4 OK")
     finally:
         lib.tunnel_free(client)
         lib.tunnel_free(server)

@@ -141,6 +141,28 @@ final class BoringTunCodec {
         }
     }
 
+    /// Local engine continuation, NOT an empty UDP datagram. Rust's
+    /// from_raw_parts requires a nonnull aligned pointer even for zero bytes.
+    /// The sentinel is alive for the synchronous C call only.
+    func drainQueuedPackets(deliver: (Data) throws -> Void) throws {
+        try BoringTunPendingDrainPolicy.drain {
+            var sentinel: UInt8 = 0
+            let action = try withUnsafePointer(to: &sentinel) { pointer in
+                try run {
+                    wireguard_read(handle, pointer, 0, $0, UInt32(Self.bufferSize))
+                }
+            }
+            switch action {
+            case .done: return false
+            case .sendToNetwork(let datagram):
+                try deliver(datagram)
+                return true
+            case .writeIPv4, .writeIPv6:
+                throw BoringTunError.invalidResponse
+            }
+        }
+    }
+
     var hasAuthenticatedHandshake: Bool {
         wireguard_stats(handle).time_since_last_handshake >= 0
     }
