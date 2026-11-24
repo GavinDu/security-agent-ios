@@ -20,10 +20,10 @@ class FullTunnelSafetyTests(unittest.TestCase):
         # networkSettings call from the original synchronous start method.
         self.assertLess(
             source.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-            source.index("self.dnsResolver.resolve(host: lookupHost")
+            source.index("self.dnsResolver.resolve(")
         )
         self.assertLess(
-            source.index("self.dnsResolver.resolve(host: lookupHost"),
+            source.index("self.dnsResolver.resolve("),
             source.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress(")
         )
         self.assertLess(

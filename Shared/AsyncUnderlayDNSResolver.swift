@@ -16,6 +16,25 @@ enum UnderlayDNSResolutionError: Error, Equatable {
     case lookupFailed
 }
 
+/// Cancellation suppresses an obsolete startup callback; it cannot stop
+/// getaddrinfo or free the singleton resolver's occupied worker.
+final class UnderlayDNSCancellation {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
 final class AsyncUnderlayDNSResolver {
     // One resolver for the entire PacketTunnel extension process, not one per
     // restarted BoringTunTransport. A blocked old getaddrinfo must not leave
@@ -35,15 +54,19 @@ final class AsyncUnderlayDNSResolver {
         self.lookup = lookup
     }
 
+    @discardableResult
     func resolve(
         host: String,
         timeout: TimeInterval = 5,
         callbackQueue: DispatchQueue,
         completion: @escaping (Result<[String], UnderlayDNSResolutionError>) -> Void
-    ) {
+    ) -> UnderlayDNSCancellation {
+        let cancellation = UnderlayDNSCancellation()
         guard timeout > 0, timeout.isFinite else {
-            callbackQueue.async { completion(.failure(.timedOut)) }
-            return
+            callbackQueue.async {
+                if !cancellation.isCancelled { completion(.failure(.timedOut)) }
+            }
+            return cancellation
         }
         // Enforce the final pre-getaddrinfo input boundary even if an
         // upstream ServerProfile validator is accidentally bypassed.
@@ -55,19 +78,26 @@ final class AsyncUnderlayDNSResolver {
               }),
               !host.contains("%"), !host.contains("["),
               !host.contains("]") else {
-            callbackQueue.async { completion(.failure(.lookupFailed)) }
-            return
+            callbackQueue.async {
+                if !cancellation.isCancelled { completion(.failure(.lookupFailed)) }
+            }
+            return cancellation
         }
         lock.lock()
         if lookupInFlight {
             lock.unlock()
-            callbackQueue.async { completion(.failure(.busy)) }
-            return
+            callbackQueue.async {
+                if !cancellation.isCancelled { completion(.failure(.busy)) }
+            }
+            return cancellation
         }
         lookupInFlight = true
         lock.unlock()
 
-        let once = UnderlayDNSOnce(callbackQueue: callbackQueue, completion: completion)
+        let once = UnderlayDNSOnce(
+            callbackQueue: callbackQueue, cancellation: cancellation,
+            completion: completion
+        )
         callbackQueue.asyncAfter(deadline: .now() + timeout) {
             once.finish(.failure(.timedOut))
         }
@@ -84,6 +114,7 @@ final class AsyncUnderlayDNSResolver {
             lock.unlock()
             once.finish(result)
         }
+        return cancellation
     }
 }
 
@@ -91,13 +122,16 @@ private final class UnderlayDNSOnce {
     private let lock = NSLock()
     private var finished = false
     private let callbackQueue: DispatchQueue
+    private let cancellation: UnderlayDNSCancellation
     private let completion: (Result<[String], UnderlayDNSResolutionError>) -> Void
 
     init(
         callbackQueue: DispatchQueue,
+        cancellation: UnderlayDNSCancellation,
         completion: @escaping (Result<[String], UnderlayDNSResolutionError>) -> Void
     ) {
         self.callbackQueue = callbackQueue
+        self.cancellation = cancellation
         self.completion = completion
     }
 
@@ -106,7 +140,11 @@ private final class UnderlayDNSOnce {
         guard !finished else { lock.unlock(); return }
         finished = true
         lock.unlock()
-        callbackQueue.async { [completion] in completion(result) }
+        // Check at callback execution, not just when it is scheduled:
+        // teardown may cancel after worker return but before queue delivery.
+        callbackQueue.async { [completion, cancellation] in
+            if !cancellation.isCancelled { completion(result) }
+        }
     }
 }
 

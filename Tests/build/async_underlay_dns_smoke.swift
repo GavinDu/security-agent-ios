@@ -80,6 +80,71 @@ struct AsyncUnderlayDNSSmoke {
         blockedWorker.signal()
         precondition(gate.wait(timeout: .now() + .milliseconds(150)) == .timedOut,
                      "Timed-out DNS completion was called twice")
-        print("Async DNS pre-route: success, empty/error, timeout, busy and once-only passed")
+        // Cancellation silences an obsolete startup callback WITHOUT
+        // releasing a still-blocked getaddrinfo worker for another request.
+        let cancelEntered = DispatchSemaphore(value: 0)
+        let cancelWorkerRelease = DispatchSemaphore(value: 0)
+        let canceledDelivered = DispatchSemaphore(value: 0)
+        let canceledResolver = AsyncUnderlayDNSResolver(lookup: { _ in
+            cancelEntered.signal()
+            cancelWorkerRelease.wait()
+            return ["203.0.113.42"]
+        })
+        let stale = canceledResolver.resolve(
+            host: "stale.test", timeout: 1, callbackQueue: callbackQueue
+        ) { _ in canceledDelivered.signal() }
+        precondition(cancelEntered.wait(timeout: .now() + 2) == .success)
+        stale.cancel()
+        stale.cancel() // idempotent, safe even after the worker returns
+        let busyDone = DispatchSemaphore(value: 0)
+        canceledResolver.resolve(
+            host: "must-still-be-busy.test", timeout: 1, callbackQueue: callbackQueue
+        ) { result in
+            guard case .failure(.busy) = result else {
+                preconditionFailure("Canceled DNS released blocked worker")
+            }
+            busyDone.signal()
+        }
+        precondition(busyDone.wait(timeout: .now() + 2) == .success)
+        cancelWorkerRelease.signal()
+        precondition(canceledDelivered.wait(timeout: .now() + .milliseconds(200)) == .timedOut)
+
+        // Suppress callback even when an invalid-host completion has been
+        // queued but the destination serial callback queue is paused.
+        let queuedCallback = DispatchQueue(label: "underlay-dns-cancel-queued")
+        let queueBlocked = DispatchSemaphore(value: 0)
+        let unblockQueue = DispatchSemaphore(value: 0)
+        queuedCallback.async {
+            queueBlocked.signal()
+            unblockQueue.wait()
+        }
+        precondition(queueBlocked.wait(timeout: .now() + 2) == .success)
+        let canceledInvalidResult = DispatchSemaphore(value: 0)
+        let invalid = AsyncUnderlayDNSResolver(
+            lookup: { _ in preconditionFailure("Invalid host reached DNS lookup") }
+        ).resolve(
+            host: "invalid\n.example", callbackQueue: queuedCallback
+        ) { _ in canceledInvalidResult.signal() }
+        invalid.cancel()
+        unblockQueue.signal()
+        let queueDrained = DispatchSemaphore(value: 0)
+        queuedCallback.async { queueDrained.signal() }
+        precondition(queueDrained.wait(timeout: .now() + 2) == .success)
+        precondition(canceledInvalidResult.wait(timeout: .now()) == .timedOut)
+
+        // Timeout scheduled on callbackQueue must also respect cancellation.
+        let canceledTimeout = DispatchSemaphore(value: 0)
+        let invalidDeadline = AsyncUnderlayDNSResolver(
+            lookup: { _ in preconditionFailure("Zero deadline started DNS worker") }
+        ).resolve(
+            host: "no-time.test", timeout: 0, callbackQueue: callbackQueue
+        ) { _ in canceledTimeout.signal() }
+        invalidDeadline.cancel()
+        let callbacksDrained = DispatchSemaphore(value: 0)
+        callbackQueue.async { callbacksDrained.signal() }
+        precondition(callbacksDrained.wait(timeout: .now() + 2) == .success)
+        precondition(canceledTimeout.wait(timeout: .now()) == .timedOut)
+
+        print("Async DNS pre-route: success, empty/error, timeout, busy, once-only and cancellation passed")
     }
 }

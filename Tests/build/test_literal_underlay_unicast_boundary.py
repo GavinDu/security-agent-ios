@@ -32,10 +32,10 @@ class LiteralUnderlayUnicastBoundaryTests(unittest.TestCase):
         )[0]
         self.assertLess(
             start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-            start.index("dnsResolver.resolve(host: lookupHost"),
+            start.index("dnsResolver.resolve("),
         )
         self.assertLess(
-            start.index("dnsResolver.resolve(host: lookupHost"),
+            start.index("dnsResolver.resolve("),
             start.index("codec = try BoringTunCodec("),
         )
 

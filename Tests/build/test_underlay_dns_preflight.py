@@ -11,7 +11,8 @@ TEST = (ROOT / "Tests/build/async_underlay_dns_smoke.swift").read_text()
 class UnderlayDNSPreRouteTests(unittest.TestCase):
     def test_hostname_is_not_reused_after_dns_selection(self):
         start = TRANSPORT.split("func start(profile:", 1)[1].split("private func networkSettings(", 1)[0]
-        self.assertIn("dnsResolver.resolve(host: lookupHost", start)
+        self.assertIn("dnsResolver.resolve(", start)
+        self.assertIn("host: lookupHost, callbackQueue: self.queue", start)
         self.assertIn("let lookupHost = host.first ==", start)
         self.assertIn("ResolvedUnderlayCandidatePolicy.selectPinnedAddress(", start)
         self.assertIn("Network.IPv4Address(pinnedHost)", start)
@@ -21,7 +22,7 @@ class UnderlayDNSPreRouteTests(unittest.TestCase):
         self.assertIn("self.connect(host: destination, port: port)", start)
         self.assertIn("networkSettings(profile: profile, remoteHost: pinnedHost)", start)
         self.assertNotIn("Network.NWEndpoint.Host(host)", start)
-        self.assertLess(start.index("dnsResolver.resolve(host: lookupHost"),
+        self.assertLess(start.index("dnsResolver.resolve("),
                         start.index("private func startResolved("))
         self.assertLess(start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("),
                         start.index("setTunnelNetworkSettings(settings)"))
