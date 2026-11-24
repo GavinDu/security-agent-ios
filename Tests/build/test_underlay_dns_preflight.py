@@ -12,6 +12,7 @@ class UnderlayDNSPreRouteTests(unittest.TestCase):
     def test_hostname_is_not_reused_after_dns_selection(self):
         start = TRANSPORT.split("func start(profile:", 1)[1].split("private func networkSettings(", 1)[0]
         self.assertIn("dnsResolver.resolve(", start)
+        self.assertIn("host: lookupHost, callbackQueue: self.queue", start)
         self.assertIn("let lookupHost = host.first ==", start)
         self.assertIn("ResolvedUnderlayCandidatePolicy.selectPinnedAddress(", start)
         self.assertIn("Network.IPv4Address(pinnedHost)", start)
