@@ -142,6 +142,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-startup-watchdog-171", 172)',
             '("fix/ios-utun-batch-cardinality-173", 174)',
             '("fix/ios-vpn-main-entrypoints-175", 176)',
+            '("fix/ios-utun-protocol-family-177", 178)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
