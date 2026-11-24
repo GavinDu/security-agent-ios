@@ -32,6 +32,39 @@ final class AgentChatNavigationPolicyTests: XCTestCase {
         ))
     }
 
+    func testOnlyCanonicalChatPathsBecomeTopLevelDocuments() {
+        let allowed = [
+            "http://10.8.0.1:8080/chat",
+            "http://10.8.0.1:8080/chat/",
+            "http://10.8.0.1:8080/chat/thread-123",
+            "http://10.8.0.1:8080/chat/thread_456/",
+            "http://10.8.0.1:8080/chat?thread=9#reply"
+        ]
+        for address in allowed {
+            XCTAssertTrue(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                URL(string: address)!, isMainFrame: true
+            ), address)
+        }
+        let rejected = [
+            "http://10.8.0.1:8080/admin",
+            "http://10.8.0.1:8080/status",
+            "http://10.8.0.1:8080/static/app.js",
+            "http://10.8.0.1:8080/chat-admin",
+            "http://10.8.0.1:8080/chat//admin",
+            "http://10.8.0.1:8080/chat/%2e%2e/admin",
+            "http://10.8.0.1:8080/chat%2fadmin",
+            "http://10.8.0.1:8080/chat/%5cadmin"
+        ]
+        for address in rejected {
+            XCTAssertFalse(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                URL(string: address)!, isMainFrame: true
+            ), address)
+        }
+        XCTAssertTrue(AgentChatNavigationPolicy.allows(
+            URL(string: "http://10.8.0.1:8080/static/app.js")!
+        ), "Subresource origin policy must remain unaffected")
+    }
+
     func testRejectsSchemeAuthorityAndPortVariants() {
         let rejected = [
             "https://10.8.0.1:8080/chat",
