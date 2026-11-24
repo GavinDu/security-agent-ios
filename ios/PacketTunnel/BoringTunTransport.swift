@@ -10,6 +10,9 @@ final class BoringTunTransport {
     private weak var provider: NEPacketTunnelProvider?
     private var codec: BoringTunCodec?
     private let dnsResolver = AsyncUnderlayDNSResolver.shared
+    // The DNS worker may outlive an aborted startup. Cancel callback
+    // delivery on teardown; the singleton still owns its blocked worker.
+    private var dnsCancellation: UnderlayDNSCancellation?
     // Queue-confined epoch invalidates callbacks after stop/restart.
     private var lifecycle = TunnelLifecycleGeneration()
     private var udp: NWConnection?
@@ -67,9 +70,12 @@ final class BoringTunTransport {
                 // are URLComponents formatting, not part of an IPv6 DNS name.
                 let lookupHost = host.first == "[" && host.last == "]"
                     ? String(host.dropFirst().dropLast()) : host
-                self.dnsResolver.resolve(host: lookupHost, callbackQueue: self.queue) { [weak self] result in
+                self.dnsCancellation = self.dnsResolver.resolve(
+                    host: lookupHost, callbackQueue: self.queue
+                ) { [weak self] result in
                     guard let self, self.active,
                           self.lifecycle.matches(epoch) else { return }
+                    self.dnsCancellation = nil
                     switch result {
                     case .failure:
                         self.fail(BoringTunError.initializationFailed)
@@ -488,6 +494,10 @@ final class BoringTunTransport {
         // callback must not touch a subsequently started Rust session.
         _ = lifecycle.advance()
         active = false
+        // Must suppress an already queued DNS callback before releasing
+        // the Rust codec/UDP state. It does not cancel getaddrinfo.
+        dnsCancellation?.cancel()
+        dnsCancellation = nil
         tickTimer?.cancel()
         tickTimer = nil
         handshakeDeadline?.cancel()
