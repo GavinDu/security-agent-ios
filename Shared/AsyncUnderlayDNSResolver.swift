@@ -54,6 +54,7 @@ final class AsyncUnderlayDNSResolver {
         self.lookup = lookup
     }
 
+    @discardableResult
     func resolve(
         host: String,
         timeout: TimeInterval = 5,
