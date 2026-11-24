@@ -9,7 +9,15 @@ class ProfileSaveEpochTests(unittest.TestCase):
         src = (ROOT / "ios/AgentApp/VPN/ProfileSaveSequencer.swift").read_text()
         self.assertIn("private var transactionEpoch: UInt64", src)
         self.assertIn("let epoch = advanceTransactionEpoch()", src)
-        self.assertEqual(src.count("self.transactionEpoch == epoch"), 2)
+        # Exactly two native save/reload callbacks must still bind to the
+        # owning transaction. The new watchdog may also check that epoch;
+        # do not mistake its *additional* safety gate for a third callback.
+        callbacks = src.split("saveNative { [weak self] error in", 1)[1]
+        self.assertEqual(callbacks.count("self.transactionEpoch == epoch"), 2)
+        deadline = src.split("let cancellation = scheduleDeadline(", 1)[1].split(
+            "saveNative { [weak self]", 1
+        )[0]
+        self.assertIn("self.transactionEpoch == epoch", deadline)
         self.assertIn("guard let self, self.stage == .saving,", src)
         self.assertIn("guard let self, self.stage == .loading,", src)
         # Completion is reentrant; invalidate before caller starts next save.
