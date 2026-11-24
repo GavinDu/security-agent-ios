@@ -74,6 +74,12 @@ jobs:
             Shared/WireGuardPacketReadBatchPolicy.swift \
             Tests/build/wireguard_packet_read_batch_smoke.swift
           "$RUNNER_TEMP/packet-read-batch-tests"
+          # Reject malformed NSNumber address-family values before Int32
+          # narrowing or Swift-Rust packet encapsulation.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/packet-protocol-family-tests" \
+            Shared/WireGuardReadProtocolPolicy.swift \
+            Tests/build/wireguard_read_protocol_smoke.swift
+          "$RUNNER_TEMP/packet-protocol-family-tests"
           # Compile and execute production WebKit resource allowlist generator.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/chat-resource-policy-tests" \
             ios/AgentApp/Chat/AgentChatResourcePolicy.swift \
