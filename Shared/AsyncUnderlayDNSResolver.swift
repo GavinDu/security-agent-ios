@@ -9,11 +9,26 @@ import Glibc
 /// getaddrinfo call never runs on the serial BoringTun engine queue.
 /// A timed-out worker stays busy until it actually returns, so repeated
 /// attempts fail closed rather than spawn an unbounded number of threads.
-enum UnderlayDNSResolutionError: Error, Equatable {
+enum UnderlayDNSResolutionError: Error, Equatable, LocalizedError {
     case busy
     case timedOut
     case noAddresses
     case lookupFailed
+
+    /// Deliberately redacted: a DNS failure is not a Rust codec error,
+    /// and exposing the private peer hostname or libc text is unnecessary.
+    var errorDescription: String? {
+        switch self {
+        case .busy:
+            return "A previous VPN DNS lookup is still running; reconnect after it finishes."
+        case .timedOut:
+            return "VPN server DNS lookup timed out; check connectivity and reconnect."
+        case .noAddresses:
+            return "VPN server DNS lookup returned no usable IP addresses."
+        case .lookupFailed:
+            return "Unable to resolve the VPN server address; check DNS and reconnect."
+        }
+    }
 }
 
 /// Cancellation suppresses an obsolete startup callback; it cannot stop

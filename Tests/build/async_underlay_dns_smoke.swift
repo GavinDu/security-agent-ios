@@ -145,6 +145,23 @@ struct AsyncUnderlayDNSSmoke {
         precondition(callbacksDrained.wait(timeout: .now() + 2) == .success)
         precondition(canceledTimeout.wait(timeout: .now()) == .timedOut)
 
-        print("Async DNS pre-route: success, empty/error, timeout, busy, once-only and cancellation passed")
+        // Every failure is a fixed, redacted DNS error: the Rust codec
+        // has not yet been allocated on any of these startup paths.
+        let expectedDescriptions: [(UnderlayDNSResolutionError, String)] = [
+            (.busy, "A previous VPN DNS lookup is still running; reconnect after it finishes."),
+            (.timedOut, "VPN server DNS lookup timed out; check connectivity and reconnect."),
+            (.noAddresses, "VPN server DNS lookup returned no usable IP addresses."),
+            (.lookupFailed, "Unable to resolve the VPN server address; check DNS and reconnect.")
+        ]
+        var uniqueDescriptions = Set<String>()
+        for (failure, message) in expectedDescriptions {
+            precondition(failure.errorDescription == message)
+            precondition(failure.localizedDescription == message)
+            precondition(!message.contains("home.example.test"))
+            precondition(!message.contains("Rust"))
+            uniqueDescriptions.insert(message)
+        }
+        precondition(uniqueDescriptions.count == 4)
+        print("Async DNS pre-route: success, empty/error, timeout, busy, once-only, cancellation and redacted diagnostics passed")
     }
 }
