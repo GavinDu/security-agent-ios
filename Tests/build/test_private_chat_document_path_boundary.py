@@ -15,7 +15,8 @@ class PrivateChatDocumentPathBoundaryTests(unittest.TestCase):
         entry = POLICY.split("static func allowsDocumentNavigation(", 1)[1].split(
             "private static func allowsChatDocumentPath(", 1
         )[0]
-        self.assertIn("guard isMainFrame, allows(url)", entry)
+        self.assertIn("guard isMainFrame else { return false }", entry)
+        self.assertIn("guard allows(url)", entry)
         self.assertIn("URLComponents(url: url, resolvingAgainstBaseURL: false)", entry)
         self.assertIn("allowsChatDocumentPath(components.percentEncodedPath)", entry)
         origin = POLICY.split("static func allows(_ url: URL) -> Bool {", 1)[1]
