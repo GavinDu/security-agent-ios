@@ -20,6 +20,7 @@ final class ProfileSaveTimeoutTests: XCTestCase {
         )
         var nativeSave: ((Error?) -> Void)?
         var completions = 0
+        let timedOut = expectation(description: "native save timed out")
         sequencer.run(
             saveNative: { nativeSave = $0 },
             reloadNative: { _ in XCTFail("Timed-out save must not reload") },
@@ -32,10 +33,12 @@ final class ProfileSaveTimeoutTests: XCTestCase {
                     return
                 }
                 completions += 1
+                timedOut.fulfill()
             }
         )
         XCTAssertTrue(sequencer.isBusy)
         manual.event?()
+        wait(for: [timedOut], timeout: 3)
         XCTAssertFalse(sequencer.isBusy)
         XCTAssertEqual(completions, 1)
         XCTAssertTrue(manual.cancelled)
@@ -54,6 +57,7 @@ final class ProfileSaveTimeoutTests: XCTestCase {
         let reloading = expectation(description: "native reload started")
         var reload: ((Error?) -> Void)?
         var completions = 0
+        let timedOut = expectation(description: "native reload timed out")
         sequencer.run(
             saveNative: { $0(nil) },
             reloadNative: { reload = $0; reloading.fulfill() },
@@ -61,11 +65,15 @@ final class ProfileSaveTimeoutTests: XCTestCase {
             completed: { result in
                 if case .failure(let error) = result,
                    let typed = error as? ProfileSaveSequencer.TransactionError,
-                   case .timedOut = typed { completions += 1 }
+                   case .timedOut = typed {
+                    completions += 1
+                    timedOut.fulfill()
+                }
             }
         )
         wait(for: [reloading], timeout: 3)
         manual.event?()
+        wait(for: [timedOut], timeout: 3)
         XCTAssertFalse(sequencer.isBusy)
         XCTAssertTrue(manual.cancelled)
         reload?(nil)
