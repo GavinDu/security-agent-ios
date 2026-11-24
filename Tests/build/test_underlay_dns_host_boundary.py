@@ -24,7 +24,7 @@ class DNSHostBoundaryTests(unittest.TestCase):
             self.assertIn(text, section)
         self.assertLess(section.index("CharacterSet.controlCharacters.contains($0)"),
                         section.index("lock.lock()"))
-        self.assertLess(section.index("callbackQueue.async { completion(.failure(.lookupFailed)) }"),
+        self.assertLess(section.index("if !cancellation.isCancelled { completion(.failure(.lookupFailed)) }"),
                         section.index("worker.async { [self] in"))
 
     def test_actual_swift_linux_and_native_xctest_are_required(self):
