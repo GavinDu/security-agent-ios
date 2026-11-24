@@ -363,9 +363,21 @@ final class TunnelManager: NSObject, ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    func disconnect() { manager?.connection.stopVPNTunnel() }
+    func disconnect() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.disconnect() }
+            return
+        }
+        manager?.connection.stopVPNTunnel()
+    }
 
     func changeRoute(to mode: RouteMode) {
+        // All reads and mutations of published profile/native manager state
+        // must share save()/connect() main-queue confinement.
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.changeRoute(to: mode) }
+            return
+        }
         guard var updated = profile, updated.routeMode != mode else { return }
         guard TunnelRouteSafetyPolicy.permitsStart(mode) else {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
@@ -393,6 +405,10 @@ final class TunnelManager: NSObject, ObservableObject {
     }
 
     func setOnDemand(_ enabled: Bool) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.setOnDemand(enabled) }
+            return
+        }
         guard var updated = profile else { return }
         if enabled && !TunnelRouteSafetyPolicy.permitsStart(updated.routeMode) {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
