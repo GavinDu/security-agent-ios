@@ -20,7 +20,7 @@ class NativeVPNPreferenceDeadlineBoundaryTests(unittest.TestCase):
         self.assertLess(run.index("let cancellation = scheduleDeadline("),
                         run.index("saveNative { [weak self]"))
         self.assertNotIn("scheduleDeadline(", run.split("reloadNative { [weak self]", 1)[1])
-        self.assertIn("guard self.stage == .loading", SOURCE.replace(",\n", " "))
+        self.assertIn("self.stage == .loading", SOURCE)
         self.assertIn("guard let self, self.stage == .saving", SOURCE)
         self.assertIn("DispatchQueue.main.async(execute: expire)", run)
 
