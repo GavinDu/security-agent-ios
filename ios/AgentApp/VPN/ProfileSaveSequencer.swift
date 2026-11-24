@@ -8,13 +8,18 @@ import Foundation
 /// on background queues; all state changes are serialized onto main.
 final class ProfileSaveSequencer {
     typealias NativeStep = (@escaping (Error?) -> Void) -> Void
+    typealias DeadlineCancel = () -> Void
+    typealias DeadlineScheduler = (TimeInterval, @escaping () -> Void) -> DeadlineCancel
+    static let defaultDeadlineSeconds: TimeInterval = 30
 
     enum TransactionError: LocalizedError {
         case busy
+        case timedOut
 
         var errorDescription: String? {
             switch self {
             case .busy: return "A VPN configuration save is already in progress."
+            case .timedOut: return "VPN preferences did not finish updating; reload VPN settings before retrying."
             }
         }
     }
@@ -24,6 +29,26 @@ final class ProfileSaveSequencer {
     // Main-queue-confined identity. A stale native callback must not be
     // accepted when a later transaction happens to be in the same stage.
     private var transactionEpoch: UInt64 = 0
+    // Main-queue-confined, per-transaction deadline that covers BOTH native
+    // save and reload callbacks. Cancelling it does not cancel an Apple OS
+    // preferences write that is already in progress.
+    private var cancelDeadline: DeadlineCancel?
+    private let deadlineSeconds: TimeInterval
+    private let scheduleDeadline: DeadlineScheduler
+
+    init(
+        deadlineSeconds: TimeInterval = ProfileSaveSequencer.defaultDeadlineSeconds,
+        scheduleDeadline: @escaping DeadlineScheduler = { seconds, handler in
+            let item = DispatchWorkItem(block: handler)
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
+            return { item.cancel() }
+        }
+    ) {
+        // An invalid injected timeout may never disable the production gate.
+        self.deadlineSeconds = deadlineSeconds.isFinite && deadlineSeconds > 0
+            ? deadlineSeconds : Self.defaultDeadlineSeconds
+        self.scheduleDeadline = scheduleDeadline
+    }
 
     @discardableResult
     private func advanceTransactionEpoch() -> UInt64 {
@@ -59,6 +84,25 @@ final class ProfileSaveSequencer {
         }
         stage = .saving
         let epoch = advanceTransactionEpoch()
+        let cancellation = scheduleDeadline(deadlineSeconds) { [weak self] in
+            let expire = { [weak self] in
+                guard let self, self.stage != .idle,
+                      self.transactionEpoch == epoch else { return }
+                self.finish(.failure(TransactionError.timedOut), completed: completed)
+            }
+            if Thread.isMainThread {
+                expire()
+            } else {
+                DispatchQueue.main.async(execute: expire)
+            }
+        }
+        // A test scheduler may invoke synchronously. Never initiate native
+        // writes if its deadline already invalidated this transaction.
+        guard stage == .saving, transactionEpoch == epoch else {
+            cancellation()
+            return
+        }
+        cancelDeadline = cancellation
         saveNative { [weak self] error in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.stage == .saving,
@@ -93,6 +137,8 @@ final class ProfileSaveSequencer {
         _ result: Result<Void, Error>,
         completed: (Result<Void, Error>) -> Void
     ) {
+        cancelDeadline?()
+        cancelDeadline = nil
         stage = .idle
         // Invalidate before the client completion, which may immediately
         // start a new transaction on this same sequencer instance.
