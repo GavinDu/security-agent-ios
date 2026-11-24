@@ -8,7 +8,9 @@ enum AgentChatNavigationPolicy {
     /// let nested iframes or new-window targets become extra document contexts.
     /// This is not a subresource firewall; #23 tracks network loads separately.
     static func allowsDocumentNavigation(_ url: URL, isMainFrame: Bool) -> Bool {
-        guard isMainFrame, allows(url),
+        // Keep explicit frame rejection as a standalone, auditable gate.
+        guard isMainFrame else { return false }
+        guard allows(url),
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return false
         }
