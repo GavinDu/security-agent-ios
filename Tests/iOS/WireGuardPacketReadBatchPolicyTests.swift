@@ -25,6 +25,9 @@ final class WireGuardPacketReadBatchPolicyTests: XCTestCase {
     }
 
     func testPayloadBudgetRejectsLocalOversizeAndOverflow() {
+        XCTAssertEqual(WireGuardPacketReadBatchPolicy.maxPacketBytes, IPPacketEnvelope.maxInnerBytes)
+        XCTAssertTrue(WireGuardPacketReadBatchPolicy.acceptsPayloadLengths([IPPacketEnvelope.maxInnerBytes]))
+        XCTAssertFalse(WireGuardPacketReadBatchPolicy.acceptsPayloadLengths([IPPacketEnvelope.maxInnerBytes + 1]))
         XCTAssertTrue(WireGuardPacketReadBatchPolicy.acceptsPayloadLengths(
             Array(repeating: 1420, count: 256)
         ))

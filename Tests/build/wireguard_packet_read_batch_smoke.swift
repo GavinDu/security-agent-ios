@@ -5,6 +5,9 @@ struct WireGuardPacketReadBatchSmoke {
     static func main() {
         let accepts = WireGuardPacketReadBatchPolicy.accepts
         let lengths = WireGuardPacketReadBatchPolicy.acceptsPayloadLengths
+        precondition(WireGuardPacketReadBatchPolicy.maxPacketBytes == IPPacketEnvelope.maxInnerBytes)
+        precondition(lengths([IPPacketEnvelope.maxInnerBytes]))
+        precondition(!lengths([IPPacketEnvelope.maxInnerBytes + 1]))
         precondition(accepts(0, 0), "Empty callbacks remain legal; empty-rearm backoff applies")
         precondition(accepts(1, 1))
         precondition(accepts(256, 256))

@@ -5,7 +5,8 @@ import Foundation
 /// fail closed, not monopolize the queue or silently truncate via zip().
 enum WireGuardPacketReadBatchPolicy {
     static let maxPacketsPerBatch = 256
-    static let maxPacketBytes = 65_536
+    // Share the exact inner-envelope limit; do not let the pre-FFI gates drift.
+    static let maxPacketBytes = IPPacketEnvelope.maxInnerBytes
     static let maxBatchBytes = 8 * 1_024 * 1_024
 
     static func accepts(packetCount: Int, protocolCount: Int) -> Bool {

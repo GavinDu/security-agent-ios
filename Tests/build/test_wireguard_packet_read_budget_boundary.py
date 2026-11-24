@@ -14,7 +14,7 @@ class WireGuardPacketReadBudgetTests(unittest.TestCase):
     def test_production_count_and_byte_limits_are_bounded(self):
         for token in (
             "static let maxPacketsPerBatch = 256",
-            "static let maxPacketBytes = 65_536",
+            "static let maxPacketBytes = IPPacketEnvelope.maxInnerBytes",
             "static let maxBatchBytes = 8 * 1_024 * 1_024",
             "packetCount <= maxPacketsPerBatch",
             "packetCount == protocolCount",
@@ -46,7 +46,7 @@ class WireGuardPacketReadBudgetTests(unittest.TestCase):
         self.assertIn("IPPacketEnvelope.isValid(packet, family: family)", read)
 
     def test_real_swift_and_native_tests_remain_required(self):
-        self.assertIn("Shared/WireGuardPacketReadBatchPolicy.swift", WORKFLOW)
+        self.assertIn("Shared/IPPacketEnvelope.swift Shared/WireGuardPacketReadBatchPolicy.swift", WORKFLOW)
         self.assertIn("Tests/build/wireguard_packet_read_batch_smoke.swift", WORKFLOW)
         self.assertIn("python3 -m unittest discover -s Tests/build", WORKFLOW)
         self.assertIn("Tuist + iOS device and simulator XCTest", WORKFLOW)
