@@ -88,6 +88,12 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/vpn-profile-tests" \
             ios/AgentApp/VPN/ProfileSaveSequencer.swift Tests/build/profile_save_sequencer_smoke.swift
           "$RUNNER_TEMP/vpn-profile-tests"
+          # A missing Apple native save/reload callback must not strand the
+          # main-queue VPN preferences transaction or commit stale App Group data.
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/profile-save-timeout-tests" \
+            ios/AgentApp/VPN/ProfileSaveSequencer.swift \
+            Tests/build/profile_save_timeout_smoke.swift
+          "$RUNNER_TEMP/profile-save-timeout-tests"
           # The actual QR confirmation gate must bind approval to the exact
           # public Mac profile, not a stale SwiftUI Boolean checkbox.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/pairing-confirmation-tests" \
