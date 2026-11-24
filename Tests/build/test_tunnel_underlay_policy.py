@@ -23,8 +23,8 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
             "private func networkSettings(", 1
         )[0]
         self.assertLess(start.index("TunnelUnderlayPolicy.permitsLiteralEndpoint("),
-                        start.index("self.dnsResolver.resolve(host: lookupHost"))
-        self.assertLess(start.index("self.dnsResolver.resolve(host: lookupHost"),
+                        start.index("self.dnsResolver.resolve("))
+        self.assertLess(start.index("self.dnsResolver.resolve("),
                         start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("))
         self.assertLess(start.index("ResolvedUnderlayCandidatePolicy.selectPinnedAddress("),
                         start.index("codec = try BoringTunCodec("))
