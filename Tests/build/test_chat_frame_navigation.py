@@ -16,7 +16,12 @@ class ChatFrameNavigationSecurityTests(unittest.TestCase):
             "static func allows(", 1
         )[0]
         self.assertIn("guard isMainFrame else { return false }", f)
-        self.assertIn("return allows(url)", f)
+        # The original origin-only return would permit /admin or /status
+        # to become top-level chat documents; retain the origin requirement
+        # but require the stronger canonical /chat document-path check.
+        self.assertIn("guard allows(url)", f)
+        self.assertIn("return allowsChatDocumentPath(components.percentEncodedPath)", f)
+        self.assertNotIn("return allows(url)", f)
         self.assertIn('components.scheme?.lowercased() == "http"', POLICY)
         self.assertIn("components.host == AgentConstants.serverIPv4", POLICY)
         self.assertIn("components.port == 8080", POLICY)

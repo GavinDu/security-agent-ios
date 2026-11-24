@@ -52,6 +52,41 @@ struct ChatNavigationSmoke {
                 url, isMainFrame: true
             ), "Unsafe top-level URL: \(address)")
         }
+        // A resource path on the same trusted origin is NOT a trusted
+        // top-level document; only canonical /chat paths can host chat.
+        let acceptedDocuments = [
+            "http://10.8.0.1:8080/chat",
+            "http://10.8.0.1:8080/chat/",
+            "http://10.8.0.1:8080/chat/thread-123",
+            "http://10.8.0.1:8080/chat/thread_123/",
+            "http://10.8.0.1:8080/chat?thread=123#reply"
+        ]
+        let rejectedDocuments = [
+            "http://10.8.0.1:8080/admin",
+            "http://10.8.0.1:8080/status",
+            "http://10.8.0.1:8080/static/app.js?v=1",
+            "http://10.8.0.1:8080/chat-admin",
+            "http://10.8.0.1:8080/chat//admin",
+            "http://10.8.0.1:8080/chat/thread//admin",
+            "http://10.8.0.1:8080/chat/../admin",
+            "http://10.8.0.1:8080/chat/%2e%2e/admin",
+            "http://10.8.0.1:8080/chat%2fadmin",
+            "http://10.8.0.1:8080/chat/%5cadmin"
+        ]
+        for address in acceptedDocuments {
+            precondition(AgentChatNavigationPolicy.allowsDocumentNavigation(
+                URL(string: address)!, isMainFrame: true
+            ), "Legitimate chat document refused: \(address)")
+        }
+        for address in rejectedDocuments {
+            precondition(!AgentChatNavigationPolicy.allowsDocumentNavigation(
+                URL(string: address)!, isMainFrame: true
+            ), "Non-chat top-level document accepted: \(address)")
+        }
+        // Origin policy for JS/CSS/XHR subresources is intentionally unchanged.
+        precondition(AgentChatNavigationPolicy.allows(
+            URL(string: "http://10.8.0.1:8080/static/app.js")!
+        ))
         print("Private chat origin and frame isolation: 3 valid, 11 adversarial URLs passed")
     }
 }
