@@ -1,10 +1,29 @@
 import Foundation
 
-/// Check the native packetFlow read callback contract before using Swift zip.
-/// zip truncates a mismatched packet/protocol pair silently; a broken local
-/// system-tunnel batch is not an unauthenticated peer packet to discard.
+/// Validate the local NEPacketTunnelFlow callback before ever entering the
+/// serialized Rust BoringTun packet loop. A broken/huge local callback must
+/// fail closed, not monopolize the queue or silently truncate via zip().
 enum WireGuardPacketReadBatchPolicy {
+    static let maxPacketsPerBatch = 256
+    static let maxPacketBytes = 65_536
+    static let maxBatchBytes = 8 * 1_024 * 1_024
+
     static func accepts(packetCount: Int, protocolCount: Int) -> Bool {
-        packetCount >= 0 && protocolCount >= 0 && packetCount == protocolCount
+        packetCount >= 0 && protocolCount >= 0 &&
+            packetCount <= maxPacketsPerBatch &&
+            packetCount == protocolCount
+    }
+
+    /// Called only AFTER count validation limits the length-array size.
+    /// Subtract before comparing to avoid Int overflow on untrusted lengths.
+    static func acceptsPayloadLengths(_ lengths: [Int]) -> Bool {
+        guard lengths.count <= maxPacketsPerBatch else { return false }
+        var total = 0
+        for size in lengths {
+            guard size > 0, size <= maxPacketBytes,
+                  size <= maxBatchBytes - total else { return false }
+            total += size
+        }
+        return true
     }
 }
