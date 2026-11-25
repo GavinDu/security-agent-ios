@@ -147,6 +147,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-native-profile-timeout-181", 182)',
             '("fix/ios-underlay-dns-cancel-183", 184)',
             '("fix/ios-dns-error-reasons-185", 187)',
+            '("fix/ios-utun-read-budget-186", 188)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',

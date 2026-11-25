@@ -438,6 +438,14 @@ final class BoringTunTransport {
                     self.fail(BoringTunError.packetFlowReadFailed)
                     return
                 }
+                // Only materialize lengths after count is capped. A huge
+                // local utun batch must not starve rekey/tick/teardown work.
+                guard WireGuardPacketReadBatchPolicy.acceptsPayloadLengths(
+                    packets.map(\.count)
+                ) else {
+                    self.fail(BoringTunError.packetFlowReadFailed)
+                    return
+                }
                 guard let codec = self.codec else {
                     self.fail(BoringTunError.stopped)
                     return

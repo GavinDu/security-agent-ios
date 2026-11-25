@@ -71,7 +71,7 @@ jobs:
           "$RUNNER_TEMP/inner-packet-delivery-tests"
           # Never silently truncate mismatched system utun read packets/AFs.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/packet-read-batch-tests" \
-            Shared/WireGuardPacketReadBatchPolicy.swift \
+            Shared/IPPacketEnvelope.swift Shared/WireGuardPacketReadBatchPolicy.swift \
             Tests/build/wireguard_packet_read_batch_smoke.swift
           "$RUNNER_TEMP/packet-read-batch-tests"
           # Reject malformed NSNumber address-family values before Int32
