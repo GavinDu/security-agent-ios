@@ -52,6 +52,19 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
         self.assertNotIn("settings.ipv6Settings", settings)
         self.assertIn("Unapproved private split route accepted", SMOKE)
 
+    def test_ddns_is_resolved_only_during_fresh_start(self):
+        start = TUNNEL.split("func start(profile: ServerProfile", 1)[1].split(
+            "private func startResolved(", 1
+        )[0]
+        self.assertEqual(TUNNEL.count("dnsResolver.resolve("), 1)
+        self.assertIn("self.lifecycle.advance()", start)
+        self.assertIn("self.lifecycle.matches(epoch)", start)
+        self.assertIn("fresh preflight", start)
+        self.assertIn("A ready connection retains its current pin.", start)
+        self.assertIn("Fresh DDNS", (ROOT / "Tests/build/resolved_underlay_candidate_smoke.swift").read_text())
+        workflow = (ROOT / ".github/workflows/validate.yml").read_text()
+        self.assertIn("Shared/AsyncUnderlayDNSResolver.swift Tests/build/resolved_underlay_candidate_smoke.swift", workflow)
+
     def test_production_policy_rejects_aliases_and_cidrs(self):
         self.assertIn("canonicalIPv4(host)", POLICY)
         self.assertIn('text.lowercased().hasPrefix("0x")', POLICY)
