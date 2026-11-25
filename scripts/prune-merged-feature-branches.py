@@ -38,6 +38,7 @@ CANDIDATES = (
     ("fix/ios-split-route-contract-95", 197),
     ("test/ios-split-device-evidence-28", 198),
     ("test/split-evidence-artifact-integrity-3", 199),
+    ("fix/ios-dns-failure-diagnostics-200", 201),
 )
 
 
