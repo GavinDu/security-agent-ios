@@ -32,6 +32,26 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
                         start.index("networkSettings(profile: profile, remoteHost: pinnedHost)"))
         self.assertIn("throw AgentConfigurationError.unsafeUnderlayEndpoint", start)
 
+    def test_exact_private_route_before_dns_and_at_native_settings(self):
+        start = TUNNEL.split("func start(profile: ServerProfile", 1)[1].split(
+            "private func startResolved(", 1
+        )[0]
+        settings = TUNNEL.split("private func networkSettings(", 1)[1].split(
+            "private func connect(", 1
+        )[0]
+        self.assertLess(start.index("TunnelUnderlayPolicy.privateAgentSplitRoutes("),
+                        start.index("self.dnsResolver.resolve("))
+        self.assertIn("guard profile.routeMode == .split else", settings)
+        self.assertLess(settings.index("TunnelUnderlayPolicy.privateAgentSplitRoutes("),
+                        settings.index("NEPacketTunnelNetworkSettings(tunnelRemoteAddress:"))
+        self.assertIn("throw AgentConfigurationError.invalidSplitRoute", settings)
+        self.assertNotIn("NEIPv4Route.default()", settings)
+        self.assertNotIn("NEIPv6Route", settings)
+        self.assertNotIn("NEDNSSettings", settings)
+        self.assertNotIn("settings.dnsSettings", settings)
+        self.assertNotIn("settings.ipv6Settings", settings)
+        self.assertIn("Unapproved private split route accepted", SMOKE)
+
     def test_production_policy_rejects_aliases_and_cidrs(self):
         self.assertIn("canonicalIPv4(host)", POLICY)
         self.assertIn('text.lowercased().hasPrefix("0x")', POLICY)
@@ -47,7 +67,7 @@ class TunnelUnderlayBoundaryTests(unittest.TestCase):
         self.assertIn("prefix == 0", POLICY)
         self.assertIn("splitIPv4Routes(", POLICY)
         self.assertIn("endpoint & route.mask == route.network & route.mask", POLICY)
-        self.assertIn("TunnelUnderlayPolicy.splitIPv4Routes(", TUNNEL)
+        self.assertIn("TunnelUnderlayPolicy.privateAgentSplitRoutes(", TUNNEL)
         self.assertIn("RouteMode.split.allowedIPs", TUNNEL)
         self.assertIn("NEIPv4Route(destinationAddress: $0.destinationAddress", TUNNEL)
         self.assertNotIn('NEIPv4Route(destinationAddress: "10.8.0.0"', TUNNEL)
