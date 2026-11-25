@@ -50,6 +50,13 @@ final class BoringTunTransport {
                 guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
                     throw AgentConfigurationError.unverifiedFullTunnel
                 }
+                // Refuse accidental route expansion before DNS/FFI. The
+                // same approved private plan is checked at installation.
+                guard TunnelUnderlayPolicy.privateAgentSplitRoutes(
+                    includedIPv4CIDRs: RouteMode.split.allowedIPs
+                ) != nil else {
+                    throw AgentConfigurationError.invalidSplitRoute
+                }
                 // Validate the outer UDP endpoint before any Keychain/Rust
                 // codec allocation and before installing the inner IP routes.
                 guard let components = URLComponents(string: "udp://\(validated.endpoint)"),
@@ -160,29 +167,25 @@ final class BoringTunTransport {
     private func networkSettings(
         profile: ServerProfile, remoteHost: String
     ) throws -> NEPacketTunnelNetworkSettings {
+        // This builder is split-only. No dormant full-mode defaults or DNS
+        // overrides can be reached by a future caller bypassing start().
+        guard profile.routeMode == .split else {
+            throw AgentConfigurationError.unverifiedFullTunnel
+        }
+        guard let routes = TunnelUnderlayPolicy.privateAgentSplitRoutes(
+            includedIPv4CIDRs: RouteMode.split.allowedIPs
+        ) else {
+            throw AgentConfigurationError.invalidSplitRoute
+        }
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: remoteHost)
         settings.mtu = NSNumber(value: 1420)
-
         let ipv4 = NEIPv4Settings(addresses: ["10.8.0.2"], subnetMasks: ["255.255.255.255"])
-        if profile.routeMode == .split {
-            guard let routes = TunnelUnderlayPolicy.splitIPv4Routes(
-                includedIPv4CIDRs: RouteMode.split.allowedIPs
-            ) else {
-                throw AgentConfigurationError.unsafeUnderlayEndpoint
-            }
-            ipv4.includedRoutes = routes.map {
-                NEIPv4Route(destinationAddress: $0.destinationAddress, subnetMask: $0.subnetMask)
-            }
-        } else {
-            ipv4.includedRoutes = [NEIPv4Route.default()]
-            let ipv6 = NEIPv6Settings(
-                addresses: ["fd86:ea04:1111::2"], networkPrefixLengths: [128]
-            )
-            ipv6.includedRoutes = [NEIPv6Route.default()]
-            settings.ipv6Settings = ipv6
-            settings.dnsSettings = NEDNSSettings(servers: ["1.1.1.1", "2606:4700:4700::1111"])
+        ipv4.includedRoutes = routes.map {
+            NEIPv4Route(destinationAddress: $0.destinationAddress, subnetMask: $0.subnetMask)
         }
         settings.ipv4Settings = ipv4
+        // Leave IPv6 and DNS settings absent so ordinary system traffic
+        // remains outside this private IPv4 tunnel.
         return settings
     }
 
