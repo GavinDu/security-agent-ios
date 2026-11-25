@@ -99,6 +99,32 @@ final class AsyncUnderlayDNSResolverTests: XCTestCase {
         wait(for: [empty], timeout: 15)
     }
 
+    func testExpiredNumericAnswerCannotReachDelayedTransportQueue() {
+        let callbackQueue = DispatchQueue(label: "dns-delayed-transport")
+        callbackQueue.suspend()
+        let workerReturned = expectation(description: "DNS worker returned")
+        let expired = expectation(description: "expired numeric result rejected")
+        let resolver = AsyncUnderlayDNSResolver(lookup: { _ in
+            workerReturned.fulfill()
+            return ["203.0.113.42"]
+        })
+        resolver.resolve(host: "expired.test", timeout: 0.1,
+                         callbackQueue: callbackQueue) { result in
+            if case .failure(.timedOut) = result {} else {
+                XCTFail("Expired DNS result could install tunnel routes")
+            }
+            expired.fulfill()
+        }
+        wait(for: [workerReturned], timeout: 15)
+        let delay = expectation(description: "monotonic deadline elapsed")
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(200)) {
+            delay.fulfill()
+        }
+        wait(for: [delay], timeout: 15)
+        callbackQueue.resume()
+        wait(for: [expired], timeout: 15)
+    }
+
     func testUnresponsiveLookupTimesOutAndSecondAttemptIsRejected() {
         let done = expectation(description: "timeout and single-flight refusal")
         done.expectedFulfillmentCount = 2
