@@ -186,6 +186,14 @@ struct AsyncUnderlayDNSSmoke {
             uniqueDescriptions.insert(message)
         }
         precondition(uniqueDescriptions.count == 4)
+        let diagnosticCases: [(UnderlayDNSResolutionError, String)] = [
+            (.busy, "dns_preflight_busy"), (.timedOut, "dns_preflight_timeout"),
+            (.noAddresses, "dns_preflight_empty"), (.lookupFailed, "dns_preflight_failed")
+        ]
+        for (reason, code) in diagnosticCases {
+            precondition(reason.diagnosticEventCode == code)
+        }
+        precondition(Set(diagnosticCases.map { $0.0.diagnosticEventCode }).count == 4)
         print("Async DNS pre-route: success, empty/error, timeout, busy, once-only, cancellation and redacted diagnostics passed")
     }
 }

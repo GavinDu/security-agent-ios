@@ -53,12 +53,21 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     // An old callback must never clear the next engine.
                     guard self.engine === transport,
                           self.lifecycle.finishStart(success: error == nil) else {
-                        SharedDiagnostics.record("start_failed")
+                        // Obsolete completion is not evidence of the current attempt.
                         completionHandler(BoringTunError.stopped)
                         return
                     }
                     if let error {
-                        SharedDiagnostics.record("start_failed")
+                        // Typed finite classification only, after the current-engine guard.
+                        // Do not log raw NSError text or hostnames. One event per failure.
+                        if let dns = error as? UnderlayDNSResolutionError {
+                            SharedDiagnostics.record(dns.diagnosticEventCode)
+                        } else if let configuration = error as? AgentConfigurationError,
+                                  case .unsafeUnderlayEndpoint = configuration {
+                            SharedDiagnostics.record("unsafe_underlay_rejected")
+                        } else {
+                            SharedDiagnostics.record("start_failed")
+                        }
                         self.logger.error("BoringTun tunnel start failed")
                         self.engine = nil
                         completionHandler(error)

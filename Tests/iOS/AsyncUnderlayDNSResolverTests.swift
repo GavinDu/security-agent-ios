@@ -3,6 +3,22 @@ import XCTest
 @testable import AgentApp
 
 final class AsyncUnderlayDNSResolverTests: XCTestCase {
+    func testTypedDiagnosticCodesAreDistinctAllowlistedAndExportable() {
+        let diagnosticCases: [(UnderlayDNSResolutionError, String)] = [
+            (.busy, "dns_preflight_busy"), (.timedOut, "dns_preflight_timeout"),
+            (.noAddresses, "dns_preflight_empty"), (.lookupFailed, "dns_preflight_failed")
+        ]
+        for (reason, code) in diagnosticCases {
+            XCTAssertEqual(reason.diagnosticEventCode, code)
+            XCTAssertTrue(VPNEventHistory.allows(code))
+            let event = VPNEvent(id: UUID(), at: Date(timeIntervalSince1970: 1_700_000_000), event: code)
+            XCTAssertTrue(VPNEventExport.redactedText(from: [event]).contains(code))
+        }
+        XCTAssertEqual(Set(diagnosticCases.map { $0.0.diagnosticEventCode }).count, 4)
+        XCTAssertTrue(VPNEventHistory.allows("unsafe_underlay_rejected"))
+        XCTAssertFalse(VPNEventHistory.allows("dns_preflight_failed: private.example"))
+    }
+
     func testDNSFailuresHaveRedactedDistinctDescriptions() {
         let expected: [(UnderlayDNSResolutionError, String)] = [
             (.busy, "A previous VPN DNS lookup is still running; reconnect after it finishes."),

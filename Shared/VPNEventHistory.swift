@@ -13,7 +13,9 @@ enum VPNEventHistory {
     static let maxRecords = 100
     static let maxFileBytes = 32_768
     private static let allowedCodes: Set<String> = [
-        "starting", "connected", "start_failed", "stopped", "stop_failed"
+        "starting", "connected", "start_failed", "stopped", "stop_failed",
+        "dns_preflight_busy", "dns_preflight_timeout", "dns_preflight_empty",
+        "dns_preflight_failed", "unsafe_underlay_rejected"
     ]
 
     static func allows(_ code: String) -> Bool {
