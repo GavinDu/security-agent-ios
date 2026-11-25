@@ -19,6 +19,21 @@ struct TunnelUnderlayPolicySmoke {
         precondition(TunnelUnderlayPolicy.splitIPv4Routes(
             includedIPv4CIDRs: ["bogus"]
         ) == nil)
+        let approved = [TunnelIPv4Route(
+            destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0"
+        )]
+        precondition(TunnelUnderlayPolicy.privateAgentSplitRoutes(includedIPv4CIDRs: split) == approved)
+        precondition(TunnelUnderlayPolicy.privateAgentSplitRoutes(includedIPv4CIDRs: ["10.8.0.7/24"]) == approved)
+        for unapproved: [String] in [
+            [], ["0.0.0.0/0"], ["10.8.0.0/16"], ["10.8.0.0/25"],
+            ["10.8.1.0/24"], ["10.8.0.0/24", "0.0.0.0/0"],
+            ["10.8.0.0/24", "192.168.1.0/24"], ["10.8.0.0/24", "::/0"],
+            ["10.8.0.0/24", "10.8.0.0/24"], ["invalid"]
+        ] {
+            precondition(TunnelUnderlayPolicy.privateAgentSplitRoutes(
+                includedIPv4CIDRs: unapproved
+            ) == nil, "Unapproved private split route accepted")
+        }
         for host in ["10.8.0.0", "10.8.0.1", "10.8.0.2", "10.8.0.254", "10.8.0.255"] {
             precondition(!TunnelUnderlayPolicy.permitsLiteralEndpoint(
                 host: host, includedIPv4CIDRs: split
