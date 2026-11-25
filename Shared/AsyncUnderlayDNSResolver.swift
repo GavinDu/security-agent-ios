@@ -109,11 +109,15 @@ final class AsyncUnderlayDNSResolver {
         lookupInFlight = true
         lock.unlock()
 
+        // One absolute monotonic deadline, independent of the transport
+        // queue. A delayed callback must not install routes using an
+        // already-expired DNS preflight even if the worker returned first.
+        let deadline = DispatchTime.now() + timeout
         let once = UnderlayDNSOnce(
             callbackQueue: callbackQueue, cancellation: cancellation,
-            completion: completion
+            deadline: deadline, completion: completion
         )
-        callbackQueue.asyncAfter(deadline: .now() + timeout) {
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline) {
             once.finish(.failure(.timedOut))
         }
         worker.async { [self] in
@@ -138,15 +142,18 @@ private final class UnderlayDNSOnce {
     private var finished = false
     private let callbackQueue: DispatchQueue
     private let cancellation: UnderlayDNSCancellation
+    private let deadline: DispatchTime
     private let completion: (Result<[String], UnderlayDNSResolutionError>) -> Void
 
     init(
         callbackQueue: DispatchQueue,
         cancellation: UnderlayDNSCancellation,
+        deadline: DispatchTime,
         completion: @escaping (Result<[String], UnderlayDNSResolutionError>) -> Void
     ) {
         self.callbackQueue = callbackQueue
         self.cancellation = cancellation
+        self.deadline = deadline
         self.completion = completion
     }
 
@@ -157,8 +164,15 @@ private final class UnderlayDNSOnce {
         lock.unlock()
         // Check at callback execution, not just when it is scheduled:
         // teardown may cancel after worker return but before queue delivery.
-        callbackQueue.async { [completion, cancellation] in
-            if !cancellation.isCancelled { completion(result) }
+        callbackQueue.async { [completion, cancellation, deadline] in
+            guard !cancellation.isCancelled else { return }
+            // Dispatch scheduling is not a real-time guarantee. Recheck
+            // at delivery before any transport-side allocation or routes.
+            if DispatchTime.now() >= deadline {
+                completion(.failure(.timedOut))
+            } else {
+                completion(result)
+            }
         }
     }
 }
