@@ -46,6 +46,32 @@ struct ResolvedUnderlayCandidateSmoke {
         precondition(choice(["203.0.113.42"], routes: []) == nil)
         precondition(choice(["203.0.113.42"], routes: ["not-a-cidr"]) == nil)
         precondition(choice(["203.0.113.42"], routes: ["0.0.0.0/0"]) == nil)
+        // Simulate three explicit starts of the same DDNS hostname. The
+        // production resolver must not cache the previous pinned result,
+        // and each fresh answer set must pass the same strict policy.
+        let answerSets = [
+            ["203.0.113.42"], ["2001:db8::42"], ["203.0.113.42", "10.8.0.1"]
+        ]
+        var nextAnswer = 0
+        let resolver = AsyncUnderlayDNSResolver(lookup: { host in
+            precondition(host == "peer.example.test")
+            let answer = answerSets[nextAnswer]
+            nextAnswer += 1
+            return answer
+        })
+        let callbackQueue = DispatchQueue(label: "ddns-explicit-restart")
+        let expectedPins: [String?] = ["203.0.113.42", "2001:db8::42", nil]
+        for expected in expectedPins {
+            let done = DispatchSemaphore(value: 0)
+            resolver.resolve(host: "peer.example.test", timeout: 5, callbackQueue: callbackQueue) { result in
+                guard case .success(let answers) = result else {
+                    preconditionFailure("Fresh DDNS lookup failed")
+                }
+                precondition(choice(answers) == expected, "Restart must validate fresh DNS answers")
+                done.signal()
+            }
+            precondition(done.wait(timeout: .now() + 7) == .success)
+        }
         print("DNS-resolved numeric underlay candidate fail-closed policy passed")
     }
 }

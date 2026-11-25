@@ -9,11 +9,26 @@ import Glibc
 /// getaddrinfo call never runs on the serial BoringTun engine queue.
 /// A timed-out worker stays busy until it actually returns, so repeated
 /// attempts fail closed rather than spawn an unbounded number of threads.
-enum UnderlayDNSResolutionError: Error, Equatable {
+enum UnderlayDNSResolutionError: Error, Equatable, LocalizedError {
     case busy
     case timedOut
     case noAddresses
     case lookupFailed
+
+    /// Deliberately redacted: a DNS failure is not a Rust codec error,
+    /// and exposing the private peer hostname or libc text is unnecessary.
+    var errorDescription: String? {
+        switch self {
+        case .busy:
+            return "A previous VPN DNS lookup is still running; reconnect after it finishes."
+        case .timedOut:
+            return "VPN server DNS lookup timed out; check connectivity and reconnect."
+        case .noAddresses:
+            return "VPN server DNS lookup returned no usable IP addresses."
+        case .lookupFailed:
+            return "Unable to resolve the VPN server address; check DNS and reconnect."
+        }
+    }
 }
 
 /// Cancellation suppresses an obsolete startup callback; it cannot stop
@@ -94,11 +109,15 @@ final class AsyncUnderlayDNSResolver {
         lookupInFlight = true
         lock.unlock()
 
+        // One absolute monotonic deadline, independent of the transport
+        // queue. A delayed callback must not install routes using an
+        // already-expired DNS preflight even if the worker returned first.
+        let deadline = DispatchTime.now() + timeout
         let once = UnderlayDNSOnce(
             callbackQueue: callbackQueue, cancellation: cancellation,
-            completion: completion
+            deadline: deadline, completion: completion
         )
-        callbackQueue.asyncAfter(deadline: .now() + timeout) {
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline) {
             once.finish(.failure(.timedOut))
         }
         worker.async { [self] in
@@ -123,15 +142,18 @@ private final class UnderlayDNSOnce {
     private var finished = false
     private let callbackQueue: DispatchQueue
     private let cancellation: UnderlayDNSCancellation
+    private let deadline: DispatchTime
     private let completion: (Result<[String], UnderlayDNSResolutionError>) -> Void
 
     init(
         callbackQueue: DispatchQueue,
         cancellation: UnderlayDNSCancellation,
+        deadline: DispatchTime,
         completion: @escaping (Result<[String], UnderlayDNSResolutionError>) -> Void
     ) {
         self.callbackQueue = callbackQueue
         self.cancellation = cancellation
+        self.deadline = deadline
         self.completion = completion
     }
 
@@ -142,8 +164,15 @@ private final class UnderlayDNSOnce {
         lock.unlock()
         // Check at callback execution, not just when it is scheduled:
         // teardown may cancel after worker return but before queue delivery.
-        callbackQueue.async { [completion, cancellation] in
-            if !cancellation.isCancelled { completion(result) }
+        callbackQueue.async { [completion, cancellation, deadline] in
+            guard !cancellation.isCancelled else { return }
+            // Dispatch scheduling is not a real-time guarantee. Recheck
+            // at delivery before any transport-side allocation or routes.
+            if DispatchTime.now() >= deadline {
+                completion(.failure(.timedOut))
+            } else {
+                completion(result)
+            }
         }
     }
 }

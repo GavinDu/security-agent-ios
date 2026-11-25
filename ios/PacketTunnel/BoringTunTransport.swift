@@ -50,6 +50,13 @@ final class BoringTunTransport {
                 guard TunnelRouteSafetyPolicy.permitsStart(validated.routeMode) else {
                     throw AgentConfigurationError.unverifiedFullTunnel
                 }
+                // Refuse accidental route expansion before DNS/FFI. The
+                // same approved private plan is checked at installation.
+                guard TunnelUnderlayPolicy.privateAgentSplitRoutes(
+                    includedIPv4CIDRs: RouteMode.split.allowedIPs
+                ) != nil else {
+                    throw AgentConfigurationError.invalidSplitRoute
+                }
                 // Validate the outer UDP endpoint before any Keychain/Rust
                 // codec allocation and before installing the inner IP routes.
                 guard let components = URLComponents(string: "udp://\(validated.endpoint)"),
@@ -66,6 +73,9 @@ final class BoringTunTransport {
                     throw AgentConfigurationError.unsafeUnderlayEndpoint
                 }
 
+                // Each explicit or previously authorized on-demand start
+                // performs fresh preflight; no previous transport pin is
+                // cached here. A ready connection retains its current pin.
                 // Resolve outer UDP before installing inner routes. Brackets
                 // are URLComponents formatting, not part of an IPv6 DNS name.
                 let lookupHost = host.first == "[" && host.last == "]"
@@ -77,8 +87,11 @@ final class BoringTunTransport {
                           self.lifecycle.matches(epoch) else { return }
                     self.dnsCancellation = nil
                     switch result {
-                    case .failure:
-                        self.fail(BoringTunError.initializationFailed)
+                    case .failure(let error):
+                        // Preserve a redacted DNS-specific failure. Calling
+                        // this a Rust initialization error is misleading:
+                        // no BoringTun codec or inner route exists yet.
+                        self.fail(error)
                     case .success(let addresses):
                         self.startResolved(profile: validated, addresses: addresses,
                                            port: port, epoch: epoch)
@@ -157,29 +170,25 @@ final class BoringTunTransport {
     private func networkSettings(
         profile: ServerProfile, remoteHost: String
     ) throws -> NEPacketTunnelNetworkSettings {
+        // This builder is split-only. No dormant full-mode defaults or DNS
+        // overrides can be reached by a future caller bypassing start().
+        guard profile.routeMode == .split else {
+            throw AgentConfigurationError.unverifiedFullTunnel
+        }
+        guard let routes = TunnelUnderlayPolicy.privateAgentSplitRoutes(
+            includedIPv4CIDRs: RouteMode.split.allowedIPs
+        ) else {
+            throw AgentConfigurationError.invalidSplitRoute
+        }
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: remoteHost)
         settings.mtu = NSNumber(value: 1420)
-
         let ipv4 = NEIPv4Settings(addresses: ["10.8.0.2"], subnetMasks: ["255.255.255.255"])
-        if profile.routeMode == .split {
-            guard let routes = TunnelUnderlayPolicy.splitIPv4Routes(
-                includedIPv4CIDRs: RouteMode.split.allowedIPs
-            ) else {
-                throw AgentConfigurationError.unsafeUnderlayEndpoint
-            }
-            ipv4.includedRoutes = routes.map {
-                NEIPv4Route(destinationAddress: $0.destinationAddress, subnetMask: $0.subnetMask)
-            }
-        } else {
-            ipv4.includedRoutes = [NEIPv4Route.default()]
-            let ipv6 = NEIPv6Settings(
-                addresses: ["fd86:ea04:1111::2"], networkPrefixLengths: [128]
-            )
-            ipv6.includedRoutes = [NEIPv6Route.default()]
-            settings.ipv6Settings = ipv6
-            settings.dnsSettings = NEDNSSettings(servers: ["1.1.1.1", "2606:4700:4700::1111"])
+        ipv4.includedRoutes = routes.map {
+            NEIPv4Route(destinationAddress: $0.destinationAddress, subnetMask: $0.subnetMask)
         }
         settings.ipv4Settings = ipv4
+        // Leave IPv6 and DNS settings absent so ordinary system traffic
+        // remains outside this private IPv4 tunnel.
         return settings
     }
 
@@ -443,6 +452,14 @@ final class BoringTunTransport {
                 // local utun contract failure, not remote Rust authentication.
                 guard WireGuardPacketReadBatchPolicy.accepts(
                     packetCount: packets.count, protocolCount: protocols.count
+                ) else {
+                    self.fail(BoringTunError.packetFlowReadFailed)
+                    return
+                }
+                // Only materialize lengths after count is capped. A huge
+                // local utun batch must not starve rekey/tick/teardown work.
+                guard WireGuardPacketReadBatchPolicy.acceptsPayloadLengths(
+                    packets.map(\.count)
                 ) else {
                     self.fail(BoringTunError.packetFlowReadFailed)
                     return

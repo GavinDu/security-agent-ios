@@ -24,6 +24,7 @@ enum AgentConfigurationError: LocalizedError {
     case invalidPublicKey
     case invalidEndpoint
     case unsafeUnderlayEndpoint
+    case invalidSplitRoute
     case incorrectQRType
     case unsupportedQRVersion
     case missingProfile
@@ -37,6 +38,7 @@ enum AgentConfigurationError: LocalizedError {
         case .invalidPublicKey: return "WireGuard public key must be a canonical, nonzero 32-byte Base64 value."
         case .invalidEndpoint: return "Enter an endpoint such as home.example.net:51820."
         case .unsafeUnderlayEndpoint: return "Use a usable unicast Mac UDP IP outside the VPN split routes, or a hostname whose resolved A/AAAA addresses are all safe. Loopback, link-local, multicast, and broadcast endpoints are blocked."
+        case .invalidSplitRoute: return "The VPN split route does not match the approved private-agent network. Update Security Agent before reconnecting."
         case .incorrectQRType: return "This is not a Mac Mini pairing QR code."
         case .unsupportedQRVersion: return "Unsupported pairing QR format."
         case .missingProfile: return "Pair with your Mac Mini first."

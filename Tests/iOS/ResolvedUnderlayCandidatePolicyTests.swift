@@ -17,6 +17,36 @@ final class ResolvedUnderlayCandidatePolicyTests: XCTestCase {
         ), "fd00::42")
     }
 
+    func testExplicitDDNSRestartUsesFreshAnswersAndRejectsUnsafeChange() {
+        let responses = [
+            ["203.0.113.42"], ["2001:db8::42"], ["203.0.113.42", "10.8.0.1"]
+        ]
+        var nextAnswer = 0
+        let resolver = AsyncUnderlayDNSResolver(lookup: { host in
+            XCTAssertEqual(host, "peer.example.test")
+            let answer = responses[nextAnswer]
+            nextAnswer += 1
+            return answer
+        })
+        let queue = DispatchQueue(label: "ddns-restart-test")
+        let expectedPins: [String?] = ["203.0.113.42", "2001:db8::42", nil]
+        for expected in expectedPins {
+            let done = expectation(description: "fresh DDNS preflight")
+            resolver.resolve(host: "peer.example.test", timeout: 10, callbackQueue: queue) { result in
+                switch result {
+                case .success(let answers):
+                    XCTAssertEqual(ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
+                        answers, includedIPv4CIDRs: self.routes
+                    ), expected)
+                case .failure(let error):
+                    XCTFail("Fresh DDNS lookup failed: \(error)")
+                }
+                done.fulfill()
+            }
+            wait(for: [done], timeout: 15)
+        }
+    }
+
     func testFailClosedForUnsafeMixedResolvedAnswers() {
         for hostile in ["10.8.0.1", "::ffff:10.8.0.1", "home.example.net",
                         "0x0a080001", "203.0.113.42:51820",

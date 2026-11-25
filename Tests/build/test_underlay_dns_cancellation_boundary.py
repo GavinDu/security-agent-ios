@@ -24,15 +24,16 @@ class UnderlayDNSCancellationBoundaryTests(unittest.TestCase):
         self.assertIn("if !cancellation.isCancelled { completion(.failure(.lookupFailed)) }", resolve)
         self.assertIn("if !cancellation.isCancelled { completion(.failure(.timedOut)) }", resolve)
         self.assertIn("let once = UnderlayDNSOnce(", resolve)
-        self.assertIn("callbackQueue.asyncAfter", resolve)
+        self.assertIn("DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: deadline)", resolve)
         self.assertIn("lookupInFlight = false", resolve)
         self.assertIn("once.finish(result)", resolve)
         token = RESOLVER.split("final class UnderlayDNSCancellation", 1)[1].split(
             "final class AsyncUnderlayDNSResolver", 1
         )[0]
         self.assertNotIn("lookupInFlight", token)
-        self.assertIn("callbackQueue.async { [completion, cancellation] in", RESOLVER)
-        self.assertIn("if !cancellation.isCancelled { completion(result) }", RESOLVER)
+        self.assertIn("callbackQueue.async { [completion, cancellation, deadline] in", RESOLVER)
+        self.assertIn("guard !cancellation.isCancelled else { return }", RESOLVER)
+        self.assertIn("if DispatchTime.now() >= deadline", RESOLVER)
 
     def test_packet_tunnel_cancels_before_rust_and_udp_teardown(self):
         self.assertIn("private var dnsCancellation: UnderlayDNSCancellation?", TRANSPORT)

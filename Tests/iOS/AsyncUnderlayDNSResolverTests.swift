@@ -3,6 +3,22 @@ import XCTest
 @testable import AgentApp
 
 final class AsyncUnderlayDNSResolverTests: XCTestCase {
+    func testDNSFailuresHaveRedactedDistinctDescriptions() {
+        let expected: [(UnderlayDNSResolutionError, String)] = [
+            (.busy, "A previous VPN DNS lookup is still running; reconnect after it finishes."),
+            (.timedOut, "VPN server DNS lookup timed out; check connectivity and reconnect."),
+            (.noAddresses, "VPN server DNS lookup returned no usable IP addresses."),
+            (.lookupFailed, "Unable to resolve the VPN server address; check DNS and reconnect.")
+        ]
+        for (reason, message) in expected {
+            XCTAssertEqual(reason.errorDescription, message)
+            XCTAssertEqual(reason.localizedDescription, message)
+            XCTAssertFalse(message.contains("Rust"))
+            XCTAssertFalse(message.contains("home.example.test"))
+        }
+        XCTAssertEqual(Set(expected.map { $0.1 }).count, 4)
+    }
+
     func testSuccessfulNumericAnswerOnConfiguredCallbackQueue() {
         let done = expectation(description: "already resolved A/AAAA answer")
         let resolver = AsyncUnderlayDNSResolver(lookup: { host in
@@ -81,6 +97,32 @@ final class AsyncUnderlayDNSResolverTests: XCTestCase {
             empty.fulfill()
         }
         wait(for: [empty], timeout: 15)
+    }
+
+    func testExpiredNumericAnswerCannotReachDelayedTransportQueue() {
+        let callbackQueue = DispatchQueue(label: "dns-delayed-transport")
+        callbackQueue.suspend()
+        let workerReturned = expectation(description: "DNS worker returned")
+        let expired = expectation(description: "expired numeric result rejected")
+        let resolver = AsyncUnderlayDNSResolver(lookup: { _ in
+            workerReturned.fulfill()
+            return ["203.0.113.42"]
+        })
+        resolver.resolve(host: "expired.test", timeout: 0.1,
+                         callbackQueue: callbackQueue) { result in
+            if case .failure(.timedOut) = result {} else {
+                XCTFail("Expired DNS result could install tunnel routes")
+            }
+            expired.fulfill()
+        }
+        wait(for: [workerReturned], timeout: 15)
+        let delay = expectation(description: "monotonic deadline elapsed")
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(200)) {
+            delay.fulfill()
+        }
+        wait(for: [delay], timeout: 15)
+        callbackQueue.resume()
+        wait(for: [expired], timeout: 15)
     }
 
     func testUnresponsiveLookupTimesOutAndSecondAttemptIsRejected() {

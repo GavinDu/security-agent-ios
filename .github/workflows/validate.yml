@@ -71,7 +71,7 @@ jobs:
           "$RUNNER_TEMP/inner-packet-delivery-tests"
           # Never silently truncate mismatched system utun read packets/AFs.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/packet-read-batch-tests" \
-            Shared/WireGuardPacketReadBatchPolicy.swift \
+            Shared/IPPacketEnvelope.swift Shared/WireGuardPacketReadBatchPolicy.swift \
             Tests/build/wireguard_packet_read_batch_smoke.swift
           "$RUNNER_TEMP/packet-read-batch-tests"
           # Reject malformed NSNumber address-family values before Int32
@@ -167,7 +167,7 @@ jobs:
           # Validate pre-resolved A/AAAA numeric endpoint candidates against split routes.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/resolved-underlay-candidates-tests" \
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
-            Tests/build/resolved_underlay_candidate_smoke.swift
+            Shared/AsyncUnderlayDNSResolver.swift Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
           # DNS preflight must finish before NetworkExtension split-route install.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
