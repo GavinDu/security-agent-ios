@@ -150,6 +150,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/ios-utun-read-budget-186", 188)',
             '("fix/ios-split-dns-deadline-95", 196)',
             '("fix/ios-split-route-contract-95", 197)',
+            '("test/ios-split-device-evidence-28", 198)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
