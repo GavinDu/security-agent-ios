@@ -12,6 +12,29 @@ final class TunnelUnderlayPolicyTests: XCTestCase {
         ])
     }
 
+    func testPrivateSplitContractRejectsAnyRouteExpansionOrDrift() {
+        let expected = [TunnelIPv4Route(
+            destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0"
+        )]
+        XCTAssertEqual(TunnelUnderlayPolicy.privateAgentSplitRoutes(
+            includedIPv4CIDRs: RouteMode.split.allowedIPs
+        ), expected)
+        XCTAssertEqual(TunnelUnderlayPolicy.privateAgentSplitRoutes(
+            includedIPv4CIDRs: ["10.8.0.7/24"]
+        ), expected)
+        let unapprovedRoutes: [[String]] = [
+            [], ["0.0.0.0/0"], ["10.8.0.0/16"], ["10.8.0.0/25"],
+            ["10.8.1.0/24"], ["10.8.0.0/24", "0.0.0.0/0"],
+            ["10.8.0.0/24", "192.168.1.0/24"], ["10.8.0.0/24", "::/0"],
+            ["10.8.0.0/24", "10.8.0.0/24"], ["invalid"]
+        ]
+        for unapproved in unapprovedRoutes {
+            XCTAssertNil(TunnelUnderlayPolicy.privateAgentSplitRoutes(
+                includedIPv4CIDRs: unapproved
+            ))
+        }
+    }
+
     func testRejectsAllSplitRouteLiteralEndpointBoundaries() {
         for host in ["10.8.0.0", "10.8.0.1", "10.8.0.2", "10.8.0.255"] {
             XCTAssertFalse(TunnelUnderlayPolicy.permitsLiteralEndpoint(

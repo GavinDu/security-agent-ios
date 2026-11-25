@@ -31,6 +31,20 @@ enum TunnelUnderlayPolicy {
         return routes
     }
 
+    /// The currently approved private-agent split contract is exactly one
+    /// IPv4 /24, not arbitrary LAN routes or defaults. Keep the generic
+    /// CIDR parser above for containment and future reviewed route modes.
+    /// Check the normalized plan rather than the spelling of a CIDR.
+    static func privateAgentSplitRoutes(
+        includedIPv4CIDRs: [String]
+    ) -> [TunnelIPv4Route]? {
+        guard let routes = splitIPv4Routes(includedIPv4CIDRs: includedIPv4CIDRs),
+              routes == [TunnelIPv4Route(
+                  destinationAddress: "10.8.0.0", subnetMask: "255.255.255.0"
+              )] else { return nil }
+        return routes
+    }
+
     /// Prevent a *literal* encrypted outer UDP destination from being
     /// captured by the installed inner IPv4 route. DNS answers, NAT64 and
     /// physical underlay binding still require #65 real-device verification.

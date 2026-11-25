@@ -164,7 +164,7 @@ jobs:
           # Validate pre-resolved A/AAAA numeric endpoint candidates against split routes.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/resolved-underlay-candidates-tests" \
             Shared/TunnelUnderlayPolicy.swift Shared/ResolvedUnderlayCandidatePolicy.swift \
-            Tests/build/resolved_underlay_candidate_smoke.swift
+            Shared/AsyncUnderlayDNSResolver.swift Tests/build/resolved_underlay_candidate_smoke.swift
           "$RUNNER_TEMP/resolved-underlay-candidates-tests"
           # DNS preflight must finish before NetworkExtension split-route install.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/underlay-dns-resolver-tests" \
