@@ -3,6 +3,22 @@ import XCTest
 @testable import AgentApp
 
 final class AsyncUnderlayDNSResolverTests: XCTestCase {
+    func testDNSFailuresHaveRedactedDistinctDescriptions() {
+        let expected: [(UnderlayDNSResolutionError, String)] = [
+            (.busy, "A previous VPN DNS lookup is still running; reconnect after it finishes."),
+            (.timedOut, "VPN server DNS lookup timed out; check connectivity and reconnect."),
+            (.noAddresses, "VPN server DNS lookup returned no usable IP addresses."),
+            (.lookupFailed, "Unable to resolve the VPN server address; check DNS and reconnect.")
+        ]
+        for (reason, message) in expected {
+            XCTAssertEqual(reason.errorDescription, message)
+            XCTAssertEqual(reason.localizedDescription, message)
+            XCTAssertFalse(message.contains("Rust"))
+            XCTAssertFalse(message.contains("home.example.test"))
+        }
+        XCTAssertEqual(Set(expected.map { $0.1 }).count, 4)
+    }
+
     func testSuccessfulNumericAnswerOnConfiguredCallbackQueue() {
         let done = expectation(description: "already resolved A/AAAA answer")
         let resolver = AsyncUnderlayDNSResolver(lookup: { host in

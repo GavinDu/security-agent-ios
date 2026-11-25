@@ -77,8 +77,11 @@ final class BoringTunTransport {
                           self.lifecycle.matches(epoch) else { return }
                     self.dnsCancellation = nil
                     switch result {
-                    case .failure:
-                        self.fail(BoringTunError.initializationFailed)
+                    case .failure(let error):
+                        // Preserve a redacted DNS-specific failure. Calling
+                        // this a Rust initialization error is misleading:
+                        // no BoringTun codec or inner route exists yet.
+                        self.fail(error)
                     case .success(let addresses):
                         self.startResolved(profile: validated, addresses: addresses,
                                            port: port, epoch: epoch)
