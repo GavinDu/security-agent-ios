@@ -20,13 +20,14 @@ CASES = tuple(
     for check in (
         "public_ipv4_egress", "public_ipv6_egress", "system_dns",
         "private_route_only", "authenticated_handshake", "private_agent_reachable",
+        "no_outer_packetflow",
         "unsafe_inner_a", "unsafe_mixed_answers", "unsafe_mapped_aaaa",
         "empty_answer", "dns_error", "dns_timeout", "stop_preserves_public",
     )
 ) + (
     "nat64_synthesized_aaaa", "nat64_authenticated_udp",
     "nat64_no_outer_packetflow", "nat64_public_egress_dns",
-    "ddns_fresh_restart", "wifi_to_cellular", "cellular_to_wifi",
+    "ddns_fresh_restart", "ddns_unsafe_restart", "wifi_to_cellular", "cellular_to_wifi",
     "stale_callback_after_stop", "full_mode_refused",
 )
 TOP_KEYS = {
@@ -108,7 +109,9 @@ def load_report(path):
             raw = stream.read(MAX_BYTES + 1)
         require(len(raw) <= MAX_BYTES, "report exceeds size limit")
         return json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicate_keys)
-    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
+    except InvalidReport:
+        raise
+    except (OSError, UnicodeError, ValueError, RecursionError):
         raise InvalidReport("cannot read valid JSON report") from None
 
 
