@@ -73,6 +73,9 @@ final class BoringTunTransport {
                     throw AgentConfigurationError.unsafeUnderlayEndpoint
                 }
 
+                // Each explicit or previously authorized on-demand start
+                // performs fresh preflight; no previous transport pin is
+                // cached here. A ready connection retains its current pin.
                 // Resolve outer UDP before installing inner routes. Brackets
                 // are URLComponents formatting, not part of an IPv6 DNS name.
                 let lookupHost = host.first == "[" && host.last == "]"
