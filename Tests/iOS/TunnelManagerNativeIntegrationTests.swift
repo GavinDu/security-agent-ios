@@ -88,6 +88,63 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
         wait(for: [drained], timeout: 3)
     }
 
+    func testInitialPermissionDenialDoesNotPublishOrConnectAndRetryIsExplicit() throws {
+        let candidate = profile()
+        let fake = try FakeNativeVPN(nil)
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        fake.inventories[0]([], nil)
+        drainMain()
+        tunnel.save(candidate, connectAfterSave: true)
+        XCTAssertEqual(fake.saves.count, 1)
+        XCTAssertNotEqual(fake.journal.state, .clear)
+        XCTAssertNil(tunnel.profile)
+        fake.saves[0].1(FakeNativeVPN.Failure.denied)
+        awaitState("fresh inventory after denied initial save") { fake.inventories.count == 2 }
+        XCTAssertNil(fake.persisted)
+        XCTAssertNil(tunnel.profile)
+        XCTAssertTrue(fake.commits.isEmpty)
+        XCTAssertTrue(fake.reloads.isEmpty)
+        XCTAssertEqual(fake.starts, 0)
+        XCTAssertNotNil(tunnel.errorMessage)
+        fake.inventories[1]([], nil)
+        drainMain()
+        XCTAssertEqual(fake.journal.state, .clear)
+        tunnel.connect()
+        XCTAssertEqual(fake.starts, 0)
+        // Only the user's explicit retry may create a new native write.
+        tunnel.save(candidate, connectAfterSave: true)
+        XCTAssertEqual(fake.saves.count, 2)
+        fake.saves[1].1(nil)
+        awaitState("native reload on explicit retry") { fake.reloads.count == 1 }
+        XCTAssertNil(fake.persisted)
+        XCTAssertEqual(fake.starts, 0)
+        fake.reloads[0].1(nil)
+        awaitState("verified publication and explicit connect") { fake.starts == 1 }
+        XCTAssertEqual(fake.commits, [candidate])
+        XCTAssertEqual(tunnel.profile, candidate)
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
+    func testRelaunchRestoresActualNativeStatusAndObservesTransitionsWithoutWrite() throws {
+        let prior = profile()
+        let fake = try FakeNativeVPN(prior)
+        fake.state = .connected
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        XCTAssertEqual(tunnel.status, .invalid)
+        fake.inventories[0]([try fake.installed(prior)], nil)
+        awaitState("relaunch reads installed manager status") { tunnel.status == .connected }
+        XCTAssertEqual(tunnel.profile, prior)
+        fake.notify(.disconnecting)
+        awaitState("native status observer") { tunnel.status == .disconnecting }
+        fake.notify(.disconnected)
+        awaitState("native disconnected observer") { tunnel.status == .disconnected }
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertTrue(fake.commits.isEmpty)
+        XCTAssertEqual(fake.starts, 0)
+        XCTAssertEqual(fake.stops, 0)
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
     func testActiveLegacyRouteWaitsForActualDisconnectAndNeverReconnects() throws {
         let prior = profile(.full)
         let fake = try FakeNativeVPN(prior)
