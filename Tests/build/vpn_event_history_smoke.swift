@@ -47,7 +47,8 @@ struct VPNEventHistorySmoke {
             VPNEvent(id: UUID(), at: latest.addingTimeInterval(-1), event: "connected"),
             VPNEvent(id: UUID(), at: latest, event: "stopped")
         ]
-        precondition(VPNEventHistory.decode(try JSONEncoder().encode(dated)).map(\.event) == ["starting", "connected"])
+        let encodedDates = try JSONEncoder().encode(dated)
+        precondition(VPNEventHistory.decode(encodedDates).map(\.event) == ["starting", "connected"])
         for invalid in [Date(timeIntervalSince1970: .infinity), Date(timeIntervalSince1970: .nan), latest] {
             precondition(VPNEventHistory.appending("starting", to: bytes, at: invalid) == nil)
         }
