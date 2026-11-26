@@ -326,6 +326,18 @@ final class BoringTunTransport {
                         // Local UDP queue/packetFlow failures are never
                         // classified as unauthenticated remote rejections.
                         do { try self.process(action) } catch { self.fail(error); return }
+                        // Upstream Tunn::decapsulate requires empty-input
+                        // continuation after WriteToNetwork until Done.
+                        if case .sendToNetwork = action {
+                            do {
+                                try codec.drainQueuedPackets { datagram in
+                                    try self.process(.sendToNetwork(datagram))
+                                }
+                            } catch {
+                                self.fail(error)
+                                return
+                            }
+                        }
                     }
                     if codec.hasAuthenticatedHandshake && self.startCompletion != nil {
                         self.handshakeDeadline?.cancel()
