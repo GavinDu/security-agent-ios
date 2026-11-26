@@ -18,7 +18,10 @@ class RedactedVPNExportBoundaryTests(unittest.TestCase):
         self.assertNotIn("endpoint", EXPORT.lower().split("static func redactedtext", 1)[1])
     def test_ui_exports_only_on_user_share_and_not_on_background(self):
         section = UI.split('Section("Recent VPN events")', 1)[1].split('if let profile = tunnel.profile', 1)[0]
-        self.assertIn("let events = SharedDiagnostics.events()", section)
+        self.assertIn('Button("Refresh VPN events") { refreshEvents() }', section)
+        self.assertIn("events = SharedDiagnostics.events()", UI)
+        self.assertIn(".onAppear { refreshEvents() }", UI)
+        self.assertIn(".onChange(of: tunnel.status)", UI)
         self.assertIn("ShareLink(item: VPNEventExport.redactedText(from: events))", section)
         self.assertIn("if !events.isEmpty", section)
         self.assertNotIn("URLSession", section)

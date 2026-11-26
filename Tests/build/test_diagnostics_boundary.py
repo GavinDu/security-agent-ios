@@ -15,7 +15,7 @@ class DiagnosticsBoundaryTests(unittest.TestCase):
     def test_never_log_arbitrary_event_messages(self):
         source = (ROOT / "Shared/VPNEventHistory.swift").read_text()
         self.assertIn("allowedCodes.contains(code)", source)
-        self.assertIn("decoded.filter { allows($0.event) }", source)
+        self.assertIn("decoded.filter { allows($0.event) && allowsTimestamp($0.at) }", source)
         self.assertIn("history.suffix(maxRecords)", source)
         self.assertIn("encoded.count <= maxFileBytes", source)
 

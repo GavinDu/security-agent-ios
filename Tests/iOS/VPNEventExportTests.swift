@@ -21,6 +21,22 @@ final class VPNEventExportTests: XCTestCase {
         XCTAssertFalse(text.contains("stopped"))
     }
 
+    func testPersistedHistoryAndExportAgreeOnTimestampBounds() throws {
+        let earliest = Date(timeIntervalSince1970: 946_684_800)
+        let latest = Date(timeIntervalSince1970: 4_102_444_800)
+        let records = [
+            VPNEvent(id: UUID(), at: earliest.addingTimeInterval(-1), event: "stopped"),
+            VPNEvent(id: UUID(), at: earliest, event: "starting"),
+            VPNEvent(id: UUID(), at: latest.addingTimeInterval(-1), event: "connected"),
+            VPNEvent(id: UUID(), at: latest, event: "stop_failed")
+        ]
+        let decoded = VPNEventHistory.decode(try JSONEncoder().encode(records))
+        XCTAssertEqual(decoded.map(\.event), ["starting", "connected"])
+        XCTAssertEqual(VPNEventExport.redactedText(from: records), VPNEventExport.redactedText(from: decoded))
+        XCTAssertNil(VPNEventHistory.appending("starting", to: nil, at: latest))
+        XCTAssertNil(VPNEventHistory.appending("starting", to: nil, at: Date(timeIntervalSince1970: .nan)))
+    }
+
     func testExportIsBoundedEvenWithTamperedHistory() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let records = (0..<200).map { _ in VPNEvent(id: UUID(), at: now, event: "connected") }
