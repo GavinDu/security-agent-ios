@@ -45,6 +45,7 @@ CANDIDATES = (
     ("fix/epic-194-safe-preference-compensation", 204),
     ("fix/epic-194-prune-204", 206),
     ("fix/epic-194-interrupted-preference-recovery", 205),
+    ("test/epic-194-fake-native-manager", 207),
 )
 
 

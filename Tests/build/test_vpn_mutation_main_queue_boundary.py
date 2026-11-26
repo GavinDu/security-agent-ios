@@ -23,8 +23,8 @@ class VPNMutationMainQueueBoundaryTests(unittest.TestCase):
             return
         }"""
         self.assertIn(guard, body)
-        self.assertLess(body.index(guard), body.index("manager?.connection.stopVPNTunnel()"))
-        self.assertEqual(body.count("manager?.connection.stopVPNTunnel()"), 1)
+        self.assertLess(body.index(guard), body.index("nativeIO.stop(manager)"))
+        self.assertEqual(body.count("nativeIO.stop(manager)"), 1)
 
     def test_route_edit_marshals_before_profile_and_status_reads(self):
         body = self._body("func changeRoute(to mode: RouteMode) {", "func setOnDemand(_ enabled: Bool)")
@@ -34,7 +34,7 @@ class VPNMutationMainQueueBoundaryTests(unittest.TestCase):
         }"""
         self.assertIn(guard, body)
         self.assertLess(body.index(guard), body.index("guard var updated = profile"))
-        self.assertLess(body.index(guard), body.index("manager?.connection.status"))
+        self.assertLess(body.index(guard), body.index("nativeIO.status(manager)"))
         self.assertIn("RouteEditSafetyPolicy.permitsEdit(", body)
         self.assertIn("save(updated)", body)
 

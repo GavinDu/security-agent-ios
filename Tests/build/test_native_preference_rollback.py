@@ -31,20 +31,20 @@ class RollbackBoundaryTests(unittest.TestCase):
         self.assertIn("attempted.routeMode == .split", capture)
         reconcile = APP.split("private func reconcileFailedPreferenceWrite()", 1)[1].split("private func remediateLegacyFullTunnel()", 1)[0]
         self.assertLess(reconcile.index("pendingPreferenceRollback = nil"), reconcile.index("save(plan.prior)"))
-        self.assertIn("SharedProfileStore.load() == plan.prior", reconcile)
-        self.assertIn("manager.connection.status == .disconnected", reconcile)
+        self.assertIn("nativeIO.loadProfile() == plan.prior", reconcile)
+        self.assertIn("nativeIO.status(manager) == .disconnected", reconcile)
         self.assertIn("nativeMatches(manager, plan.attempted)", reconcile)
         self.assertNotIn("connectAfterSave: true", reconcile)
         self.assertIn("native_preference_rollback_smoke.swift", WORKFLOW)
 
     def test_partial_native_write_cannot_authorize_connect_or_chat(self):
         connect = APP.split("func connect()", 1)[1].split("func disconnect()", 1)[0]
-        self.assertLess(connect.index("SharedProfileStore.load() == profile"),
-                        connect.index("manager.connection.startVPNTunnel()"))
+        self.assertLess(connect.index("nativeIO.loadProfile() == profile"),
+                        connect.index("nativeIO.start(manager)"))
         self.assertLess(connect.index("nativeMatches(manager, profile)"),
-                        connect.index("manager.connection.startVPNTunnel()"))
+                        connect.index("nativeIO.start(manager)"))
         chat = APP.split("var canShowPrivateChat: Bool", 1)[1]
-        self.assertIn("SharedProfileStore.load() == profile", chat)
+        self.assertIn("nativeIO.loadProfile() == profile", chat)
         self.assertIn("nativeMatches(manager, profile)", chat)
 
 if __name__ == "__main__":

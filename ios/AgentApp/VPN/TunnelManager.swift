@@ -4,13 +4,14 @@ import SwiftUI
 
 final class TunnelManager: NSObject, ObservableObject {
     @Published private(set) var status: NEVPNStatus = .invalid
-    @Published private(set) var profile: ServerProfile? = SharedProfileStore.load()
+    @Published private(set) var profile: ServerProfile?
     @Published var errorMessage: String?
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
+    private let nativeIO: NativeVPNOperations
     private let profileSave = ProfileSaveSequencer()
     private var requestedManualRecovery: UUID?
-    private var preferenceJournal: PreferenceWriteJournal { SharedPreferenceWriteJournal.current }
+    private var preferenceJournal: PreferenceWriteJournal { nativeIO.journal() }
     var needsPreferenceRecovery: Bool {
         preferenceJournal.state != .clear && !profileSave.isBusy && !legacyOnDemandDisableInFlight
     }
@@ -46,7 +47,11 @@ final class TunnelManager: NSObject, ObservableObject {
     private var pendingRoute: PendingRoute?
     var isChangingRoute: Bool { routeStop.isPending }
 
-    override init() {
+    override convenience init() { self.init(nativeIO: NativeVPNOperations()) }
+
+    init(nativeIO: NativeVPNOperations) {
+        self.nativeIO = nativeIO
+        self.profile = nativeIO.loadProfile()
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -61,7 +66,7 @@ final class TunnelManager: NSObject, ObservableObject {
 
     @objc private func vpnStatusChanged(_ notification: Notification) {
         DispatchQueue.main.async {
-            self.status = self.manager?.connection.status ?? .invalid
+            self.status = self.nativeIO.status(self.manager)
             self.advanceRouteChange()
             self.remediateLegacyFullTunnel()
         }
@@ -85,7 +90,7 @@ final class TunnelManager: NSObject, ObservableObject {
         requestedManualRecovery = nil
         let loadToken = preferenceReloadGate.begin()
         nativeInventoryTrust.beginLoad()
-        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+        nativeIO.loadAll { [weak self] managers, error in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch self.preferenceReloadGate.disposition(
@@ -135,8 +140,8 @@ final class TunnelManager: NSObject, ObservableObject {
                 // A previous failed/ambiguous load is recovered only by this
                 // current-generation, successful native inventory read.
                 self.nativeInventoryTrust.didLoadUniqueInventory()
-                self.status = self.manager?.connection.status ?? .invalid
-                self.profile = SharedProfileStore.load()
+                self.status = self.nativeIO.status(self.manager)
+                self.profile = self.nativeIO.loadProfile()
                 if let manualRecovery {
                     self.finishManualPreferenceRecovery(manualRecovery)
                 }
@@ -221,7 +226,7 @@ final class TunnelManager: NSObject, ObservableObject {
         guard !startingPreferenceRollback, let manager, let prior = profile,
               NativePreferenceRollbackPolicy.canCapture(
                 priorVerified: nativeMatches(manager, prior),
-                persistedPrior: SharedProfileStore.load() == prior,
+                persistedPrior: nativeIO.loadProfile() == prior,
                 priorSplit: prior.routeMode == .split,
                 attemptedSplit: attempted.routeMode == .split,
                 priorOnDemand: prior.onDemand,
@@ -241,9 +246,9 @@ final class TunnelManager: NSObject, ObservableObject {
             return false
         }
         switch NativePreferenceRollbackPolicy.decide(
-            persistedPrior: SharedProfileStore.load() == plan.prior,
+            persistedPrior: nativeIO.loadProfile() == plan.prior,
             trustedInventory: nativeInventoryTrust.permitsMutation,
-            nativeDisconnected: manager.connection.status == .disconnected,
+            nativeDisconnected: nativeIO.status(manager) == .disconnected,
             nativeMatchesPrior: nativeMatches(manager, plan.prior),
             nativeMatchesAttempted: nativeMatches(manager, plan.attempted)
         ) {
@@ -272,7 +277,7 @@ final class TunnelManager: NSObject, ObservableObject {
         guard let manager else { return }
         // The explicit route transaction owns its stop request until it finishes.
         guard !routeStop.isPending else { return }
-        let status = manager.connection.status
+        let status = nativeIO.status(manager)
         let active = status == .connected || status == .connecting || status == .reasserting
         // A loaded public profile can be stale relative to native system
         // preferences. Only an exact v2 binding certifies a split route;
@@ -280,7 +285,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // App Group bytes. Do not assume a running old extension restarted.
         var verifiedRouteIsFull: Bool?
         if preferenceJournal.state == .clear,
-           let profile, SharedProfileStore.load() == profile,
+           let profile, nativeIO.loadProfile() == profile,
            let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
            native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
            native.serverAddress == profile.endpoint,
@@ -301,7 +306,7 @@ final class TunnelManager: NSObject, ObservableObject {
         } else if !legacyFullStopRequested || legacyStopManager !== manager {
             legacyFullStopRequested = true
             legacyStopManager = manager
-            manager.connection.stopVPNTunnel()
+            nativeIO.stop(manager)
         }
         guard action.blockNewConnection else { return }
         if errorMessage == nil {
@@ -335,12 +340,12 @@ final class TunnelManager: NSObject, ObservableObject {
         // Report a hung callback without reopening mutation trust. The OS
         // preference write cannot be cancelled, so a deadline is NOT proof
         // that it is safe to start a different write or connect.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        nativeIO.schedule(30) { [weak self] in
             guard let self, self.legacyDisableToken == disableToken else { return }
             self.errorMessage = "Legacy VPN auto-connect update has not completed. " +
                 "Do not reconnect; check iOS VPN Settings."
         }
-        manager.saveToPreferences { [weak self] error in
+        nativeIO.save(manager) { [weak self] error in
             DispatchQueue.main.async {
                 guard let self, self.legacyDisableToken == disableToken,
                       self.manager === manager else { return }
@@ -403,7 +408,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // Pairing and on-demand changes also enter this generic save method,
         // not just the route editor. Never change the system VPN profile while
         // an old Rust BoringTun session may still own its peer or routes.
-        let nativeStatus = manager?.connection.status ?? .invalid
+        let nativeStatus = nativeIO.status(manager)
         let nativeDisconnected = nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)
         let changesPeerOrRoutes = profile.map { old in
             old.publicKey != validated.publicKey ||
@@ -450,10 +455,11 @@ final class TunnelManager: NSObject, ObservableObject {
         selected.onDemandRules = validated.onDemand ? [NEOnDemandRuleConnect()] : []
         selected.isOnDemandEnabled = validated.onDemand
 
+        let io = nativeIO
         profileSave.run(
-            saveNative: { callback in selected.saveToPreferences(completionHandler: callback) },
+            saveNative: { callback in io.save(selected, callback) },
             reloadNative: { callback in
-                selected.loadFromPreferences { error in
+                io.reload(selected) { error in
                     guard error == nil else {
                         callback(error)
                         return
@@ -487,7 +493,7 @@ final class TunnelManager: NSObject, ObservableObject {
                     }
                 }
             },
-            commitPublicProfile: { try SharedProfileStore.save(validated) },
+            commitPublicProfile: { try io.commitProfile(validated) },
             nativeSettledAfterTimeout: { [weak self] in
                 // Never trust a load made before the late OS operation settles.
                 guard let self else { return }
@@ -505,7 +511,7 @@ final class TunnelManager: NSObject, ObservableObject {
                     self.nativeInventoryTrust.didCommitVerifiedWrite()
                     self.manager = selected
                     self.profile = validated
-                    self.status = selected.connection.status
+                    self.status = self.nativeIO.status(selected)
                     self.errorMessage = isCompensation
                         ? "VPN update failed; previous verified split settings restored. Connect manually when ready."
                         : nil
@@ -570,7 +576,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // fresh system metadata before any Rust engine or routes are created.
         // A matching digest alone is insufficient after a partial native save:
         // verify current public bytes, enabled and exact on-demand settings.
-        guard SharedProfileStore.load() == profile, nativeMatches(manager, profile) else {
+        guard nativeIO.loadProfile() == profile, nativeMatches(manager, profile) else {
             errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
             return
         }
@@ -584,7 +590,7 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
             return
         }
-        do { try manager.connection.startVPNTunnel() }
+        do { try nativeIO.start(manager) }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -594,7 +600,7 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         cancelRouteChange("Route change cancelled. Wait for the VPN to disconnect.")
-        manager?.connection.stopVPNTunnel()
+        if let manager { nativeIO.stop(manager) }
     }
 
     func changeRoute(to mode: RouteMode) {
@@ -617,14 +623,14 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         // On-demand must be disabled and verified first; otherwise the OS
         // may reconnect the old routes before this transaction can commit.
-        let nativeStatus = manager?.connection.status ?? .invalid
+        let nativeStatus = nativeIO.status(manager)
         let disconnected = nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)
         guard !(manager?.isOnDemandEnabled ?? false) else {
             errorMessage = "Turn off Connect on demand before changing routing mode."
             return
         }
         let original = updated
-        guard SharedProfileStore.load() == original else {
+        guard nativeIO.loadProfile() == original else {
             errorMessage = "Saved pairing changed. Reload preferences before changing routes."
             return
         }
@@ -654,9 +660,9 @@ final class TunnelManager: NSObject, ObservableObject {
         // An inherited recovery may have already requested the same stop.
         if nativeStatus != .disconnecting &&
             (!legacyFullStopRequested || legacyStopManager !== manager) {
-            manager.connection.stopVPNTunnel()
+            nativeIO.stop(manager)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        nativeIO.schedule(30) { [weak self] in
             guard let self, self.routeStop.cancel(token) else { return }
             self.pendingRoute = nil
             self.errorMessage = "VPN did not disconnect in time. Reload preferences and retry."
@@ -668,11 +674,11 @@ final class TunnelManager: NSObject, ObservableObject {
 
     private func advanceRouteChange() {
         guard let pending = pendingRoute else { return }
-        let nativeStatus = pending.manager.connection.status
+        let nativeStatus = nativeIO.status(pending.manager)
         let knownStatus = nativeStatus == .disconnected || nativeStatus == .disconnecting ||
             nativeStatus == .connected || nativeStatus == .connecting || nativeStatus == .reasserting
         let valid = manager === pending.manager && profile == pending.original &&
-            SharedProfileStore.load() == pending.original &&
+            nativeIO.loadProfile() == pending.original &&
             nativeInventoryTrust.permitsMutation && !pending.manager.isOnDemandEnabled &&
             !profileSave.isBusy && !legacyOnDemandDisableInFlight && knownStatus &&
             preferenceJournal.state == .clear &&
@@ -725,7 +731,7 @@ final class TunnelManager: NSObject, ObservableObject {
         if let profile, let native, let manager {
             isValidSplitProfile = profile.routeMode == .split &&
                 (try? profile.validated()) != nil &&
-                SharedProfileStore.load() == profile
+                nativeIO.loadProfile() == profile
             matchesNative =
                 nativeMatches(manager, profile) &&
                 native.providerBundleIdentifier == AgentConstants.tunnelBundleID &&
@@ -740,7 +746,7 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         return VPNPrivateChatAccessPolicy.permitsAccess(
             observedConnected: status == .connected,
-            nativeConnected: manager?.connection.status == .connected,
+            nativeConnected: nativeIO.status(manager) == .connected,
             trustedNativeInventory: nativeInventoryTrust.permitsMutation,
             verifiedSplitProfile: isValidSplitProfile,
             nativeProfileBound: matchesNative,

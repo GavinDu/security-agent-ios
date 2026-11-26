@@ -33,9 +33,9 @@ class NativeVPNManagerInventoryBoundaryTests(unittest.TestCase):
         for section in [save, connect]:
             self.assertIn("guard nativeInventoryTrust.permitsMutation else", section)
         self.assertLess(save.index("guard nativeInventoryTrust.permitsMutation"),
-                        save.index("selected.saveToPreferences"))
+                        save.index("io.save(selected"))
         self.assertLess(connect.index("guard nativeInventoryTrust.permitsMutation"),
-                        connect.index("manager.connection.startVPNTunnel()"))
+                        connect.index("nativeIO.start(manager)"))
 
     def test_selector_is_generic_and_checks_all_matches(self):
         self.assertIn("for value in values where predicate(value)", SELECTOR)

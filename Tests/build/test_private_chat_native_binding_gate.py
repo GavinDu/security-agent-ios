@@ -39,7 +39,7 @@ class VPNPrivateChatNativeBindingTests(unittest.TestCase):
             "profileDigest: try? profile.publicProfileDigest()",
             "VPNPrivateChatAccessPolicy.permitsAccess(",
             "observedConnected: status == .connected",
-            "nativeConnected: manager?.connection.status == .connected",
+            "nativeConnected: nativeIO.status(manager) == .connected",
             "trustedNativeInventory: nativeInventoryTrust.permitsMutation",
             "verifiedSplitProfile: isValidSplitProfile",
             "nativeProfileBound: matchesNative",

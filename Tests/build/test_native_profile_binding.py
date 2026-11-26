@@ -28,9 +28,9 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
             "func connect()", 1
         )[0]
         self.assertLess(saving.index("bindingDigest = try validated.publicProfileDigest()"),
-                        saving.index("selected.saveToPreferences"))
+                        saving.index("io.save(selected"))
         self.assertLess(saving.index("NativeProfileBindingPolicy.metadata(for: bindingDigest)"),
-                        saving.index("selected.saveToPreferences"))
+                        saving.index("io.save(selected"))
         self.assertNotIn('"privateKey"', saving)
         self.assertNotIn('"presharedKey"', saving)
 
@@ -39,11 +39,11 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
             "func disconnect()", 1
         )[0]
         self.assertLess(connection.index("NativeProfileBindingPolicy.allowsStart("),
-                        connection.index("manager.connection.startVPNTunnel()"))
+                        connection.index("nativeIO.start(manager)"))
         self.assertLess(connection.index("native.providerBundleIdentifier == AgentConstants.tunnelBundleID"),
-                        connection.index("manager.connection.startVPNTunnel()"))
+                        connection.index("nativeIO.start(manager)"))
         self.assertLess(connection.index("native.serverAddress == profile.endpoint"),
-                        connection.index("manager.connection.startVPNTunnel()"))
+                        connection.index("nativeIO.start(manager)"))
         self.assertIn("nativeProfileMismatch", connection)
 
     def test_extension_refuses_drift_before_engine_construction(self):

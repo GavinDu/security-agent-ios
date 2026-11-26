@@ -47,7 +47,7 @@ class FullTunnelSafetyTests(unittest.TestCase):
         # Local candidate mutation is not a native write. Full-mode denial
         # must precede candidate staging AND any native stop or persistence.
         for operation in ("updated.routeMode = mode", "save(updated)",
-                          "manager.connection.stopVPNTunnel()"):
+                          "nativeIO.stop(manager)"):
             self.assertLess(change.index("TunnelRouteSafetyPolicy.permitsStart(mode)"),
                             change.index(operation))
         self.assertLess(change.index("RouteEditSafetyPolicy.permitsEdit("),
