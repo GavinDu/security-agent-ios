@@ -42,6 +42,10 @@ CANDIDATES = (
     ("fix/ios-dns-failure-diagnostics-200", 201),
     ("feat/epic-194-route-stop-transaction", 202),
     ("fix/epic-194-prune-202", 203),
+    ("fix/epic-194-safe-preference-compensation", 204),
+    ("fix/epic-194-prune-204", 206),
+    ("fix/epic-194-interrupted-preference-recovery", 205),
+    ("test/epic-194-fake-native-manager", 207),
 )
 
 
