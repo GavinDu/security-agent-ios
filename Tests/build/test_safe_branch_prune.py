@@ -154,6 +154,8 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("test/ios-split-device-evidence-28", 198)',
             '("test/split-evidence-artifact-integrity-3", 199)',
             '("fix/ios-dns-failure-diagnostics-200", 201)',
+            '("feat/epic-194-route-stop-transaction", 202)',
+            '("fix/epic-194-prune-202", 203)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',

@@ -675,6 +675,7 @@ final class TunnelManager: NSObject, ObservableObject {
             SharedProfileStore.load() == pending.original &&
             nativeInventoryTrust.permitsMutation && !pending.manager.isOnDemandEnabled &&
             !profileSave.isBusy && !legacyOnDemandDisableInFlight && knownStatus &&
+            preferenceJournal.state == .clear &&
             TunnelRouteSafetyPolicy.permitsStart(pending.candidate.routeMode)
         switch routeStop.observe(pending.token, disconnected: nativeStatus == .disconnected,
                                  contextValid: valid) {
