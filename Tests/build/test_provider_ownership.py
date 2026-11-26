@@ -16,6 +16,19 @@ class ProviderOwnershipTests(unittest.TestCase):
         self.assertIn("self.finishStopWaiters()", src)
         self.assertNotIn("self?.engine = nil", src)
 
+    def test_provider_enforces_one_shot_and_rejects_obsolete_stop_callbacks(self):
+        src = (ROOT / "ios/PacketTunnel/PacketTunnelProvider.swift").read_text()
+        start, stop = src.split("override func stopTunnel", 1)
+        self.assertIn("PacketTunnelOneShot<Error?>(completionHandler)", start)
+        self.assertNotIn("completionHandler(", start)
+        self.assertIn("completion.call(nil)", start)
+        self.assertIn("completion.call(error)", start)
+        callback = stop.split("transport.stop {", 1)[1]
+        self.assertIn("guard self.engine === transport,", callback)
+        self.assertIn("self.lifecycle.finishStop() else { return }", callback)
+        self.assertLess(callback.index("self.lifecycle.finishStop() else { return }"),
+                        callback.index("self.finishStopWaiters()"))
+
     def test_pure_state_declares_all_four_phases(self):
         src = (ROOT / "Shared/PacketTunnelProviderState.swift").read_text()
         self.assertIn("case idle, starting, connected, stopping", src)
