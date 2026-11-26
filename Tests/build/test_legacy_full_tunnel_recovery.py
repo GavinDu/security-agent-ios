@@ -31,6 +31,16 @@ class LegacyFullRecoveryBoundaryTests(unittest.TestCase):
         self.assertIn("manager.isOnDemandEnabled = false", src)
         self.assertIn("manager.onDemandRules = []", src)
         self.assertIn("legacyOnDemandDisableAttempted = true", src)
+        self.assertIn("legacyStopManager !== manager", recovery)
+        self.assertIn("SharedProfileStore.load() == profile", recovery)
+        self.assertLess(recovery.index("nativeInventoryTrust.permitsMutation"),
+                        recovery.index("manager.isOnDemandEnabled = false"))
+        self.assertIn("self.legacyDisableToken == disableToken", recovery)
+        self.assertIn("Legacy VPN auto-connect update has not completed.", recovery)
+        self.assertIn("Legacy VPN auto-connect remains enabled.", recovery)
+        deadline = recovery.split("DispatchQueue.main.asyncAfter", 1)[1].split("manager.saveToPreferences", 1)[0]
+        self.assertNotIn("legacyOnDemandDisableInFlight = false", deadline)
+        self.assertNotIn("self.reload()", deadline)
         self.assertIn("Finish disabling legacy VPN auto-connect first.", src)
         self.assertIn("TunnelRouteSafetyPolicy.permitsStart(profile.routeMode)", src)
 
@@ -48,6 +58,12 @@ class LegacyFullRecoveryBoundaryTests(unittest.TestCase):
         src = (ROOT / "ios/AgentApp/VPN/VPNStatusView.swift").read_text()
         self.assertIn("This saved full-tunnel profile is blocked for safety.", src)
         self.assertIn(".disabled(profile.routeMode == .full)", src)
+        self.assertIn("System auto-connect", src)
+        manager = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
+        state = manager.split("var nativeAutoConnectDescription: String", 1)[1]
+        self.assertIn("nativeInventoryTrust.permitsMutation", state)
+        self.assertIn("!legacyOnDemandDisableInFlight", state)
+        self.assertIn("Connected — access blocked", state)
 
 if __name__ == "__main__":
     unittest.main()

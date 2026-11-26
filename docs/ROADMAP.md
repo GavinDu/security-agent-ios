@@ -15,8 +15,12 @@ must each be proven before claiming a working VPN.
    address allocation #20, authenticated PSK #21, rotation/revocation #22.
 4. [Agent chat #9](https://github.com/GavinDu/security-agent-ios/issues/9): WebView isolation #23, JS bridge #24,
    offline state #25 and voice #26.
-5. [Routing and Mac gateway #10](https://github.com/GavinDu/security-agent-ios/issues/10): E2E #3, Mac server #27, split/DNS #28,
-   full IPv4/IPv6 #29 and safe transitions #30.
+5. Routing and Mac gateway (historical #10, decomposed into exclusive epics):
+   - [A #191](https://github.com/GavinDu/security-agent-ios/issues/191): Mac gateway #27.
+   - [B #192](https://github.com/GavinDu/security-agent-ios/issues/192): split/DNS implementation; physical #28 deferred to E.
+   - [C #193](https://github.com/GavinDu/security-agent-ios/issues/193): full-route underlay #65 and egress #29.
+   - [D #194](https://github.com/GavinDu/security-agent-ios/issues/194): route transactions #30 and inherited-session recovery #72.
+   - [E #195](https://github.com/GavinDu/security-agent-ios/issues/195): integration #3 and deferred physical split/DNS #28.
 6. [Hardening and TestFlight #11](https://github.com/GavinDu/security-agent-ios/issues/11): review #5/#31, signing #32,
    accessibility #33, soak #34, Rust host SDK #63, completed Cargo inventory #64,
    UDP underlay route isolation #65 and fail-closed full-tunnel guard #71.

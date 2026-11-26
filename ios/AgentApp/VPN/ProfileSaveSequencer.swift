@@ -19,13 +19,14 @@ final class ProfileSaveSequencer {
         var errorDescription: String? {
             switch self {
             case .busy: return "A VPN configuration save is already in progress."
-            case .timedOut: return "VPN preferences did not finish updating; reload VPN settings before retrying."
+            case .timedOut: return "VPN preferences did not finish updating. Do not reconnect or retry until the native operation completes."
             }
         }
     }
 
-    private enum Stage { case idle, saving, loading }
+    private enum Stage { case idle, saving, loading, awaitingLateSave, awaitingLateReload }
     private var stage: Stage = .idle
+    private var nativeStepSubmitted = false
     // Main-queue-confined identity. A stale native callback must not be
     // accepted when a later transaction happens to be in the same stage.
     private var transactionEpoch: UInt64 = 0
@@ -58,11 +59,15 @@ final class ProfileSaveSequencer {
     }
 
     var isBusy: Bool { stage != .idle }
+    var isAwaitingNativeCompletion: Bool {
+        stage == .awaitingLateSave || stage == .awaitingLateReload
+    }
 
     func run(
         saveNative: @escaping NativeStep,
         reloadNative: @escaping NativeStep,
         commitPublicProfile: @escaping () throws -> Void,
+        nativeSettledAfterTimeout: @escaping () -> Void = {},
         completed: @escaping (Result<Void, Error>) -> Void
     ) {
         // UI normally calls on main, but an unexpected background caller
@@ -73,6 +78,7 @@ final class ProfileSaveSequencer {
                     saveNative: saveNative,
                     reloadNative: reloadNative,
                     commitPublicProfile: commitPublicProfile,
+                    nativeSettledAfterTimeout: nativeSettledAfterTimeout,
                     completed: completed
                 )
             }
@@ -83,12 +89,25 @@ final class ProfileSaveSequencer {
             return
         }
         stage = .saving
+        nativeStepSubmitted = false
         let epoch = advanceTransactionEpoch()
         let cancellation = scheduleDeadline(deadlineSeconds) { [weak self] in
             let expire = { [weak self] in
                 guard let self, self.stage != .idle,
                       self.transactionEpoch == epoch else { return }
-                self.finish(.failure(TransactionError.timedOut), completed: completed)
+                guard !self.isAwaitingNativeCompletion else { return }
+                // A timeout is a user-visible failure, NOT cancellation of
+                // the submitted OS operation. Keep mutation/reload blocked
+                // until its terminal callback; never commit a timed-out profile.
+                if self.nativeStepSubmitted {
+                    self.stage = self.stage == .saving ? .awaitingLateSave : .awaitingLateReload
+                    self.cancelDeadline?()
+                    self.cancelDeadline = nil
+                    completed(.failure(TransactionError.timedOut))
+                } else {
+                    // A synchronous injected deadline fired before submission.
+                    self.finish(.failure(TransactionError.timedOut), completed: completed)
+                }
             }
             if Thread.isMainThread {
                 expire()
@@ -103,10 +122,15 @@ final class ProfileSaveSequencer {
             return
         }
         cancelDeadline = cancellation
+        nativeStepSubmitted = true
         saveNative { [weak self] error in
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.stage == .saving,
-                      self.transactionEpoch == epoch else { return }
+                guard let self, self.transactionEpoch == epoch else { return }
+                if self.stage == .awaitingLateSave {
+                    self.releaseTimedOutOperation(nativeSettledAfterTimeout)
+                    return
+                }
+                guard self.stage == .saving else { return }
                 if let error {
                     self.finish(.failure(error), completed: completed)
                     return
@@ -115,8 +139,12 @@ final class ProfileSaveSequencer {
                 self.stage = .loading
                 reloadNative { [weak self] error in
                     DispatchQueue.main.async { [weak self] in
-                        guard let self, self.stage == .loading,
-                              self.transactionEpoch == epoch else { return }
+                        guard let self, self.transactionEpoch == epoch else { return }
+                        if self.stage == .awaitingLateReload {
+                            self.releaseTimedOutOperation(nativeSettledAfterTimeout)
+                            return
+                        }
+                        guard self.stage == .loading else { return }
                         if let error {
                             self.finish(.failure(error), completed: completed)
                             return
@@ -133,6 +161,15 @@ final class ProfileSaveSequencer {
         }
     }
 
+    private func releaseTimedOutOperation(_ settled: () -> Void) {
+        stage = .idle
+        nativeStepSubmitted = false
+        advanceTransactionEpoch()
+        // Reconcile via a fresh native inventory only after the operation
+        // settles. Never replay reload/commit or the public completion.
+        settled()
+    }
+
     private func finish(
         _ result: Result<Void, Error>,
         completed: (Result<Void, Error>) -> Void
@@ -140,6 +177,7 @@ final class ProfileSaveSequencer {
         cancelDeadline?()
         cancelDeadline = nil
         stage = .idle
+        nativeStepSubmitted = false
         // Invalidate before the client completion, which may immediately
         // start a new transaction on this same sequencer instance.
         advanceTransactionEpoch()
