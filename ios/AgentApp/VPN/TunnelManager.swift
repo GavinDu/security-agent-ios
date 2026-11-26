@@ -14,6 +14,10 @@ final class TunnelManager: NSObject, ObservableObject {
     var needsPreferenceRecovery: Bool {
         preferenceJournal.state != .clear && !profileSave.isBusy && !legacyOnDemandDisableInFlight
     }
+    var canRecoverInterruptedPreference: Bool {
+        if case .pending = preferenceJournal.state { return needsPreferenceRecovery }
+        return false
+    }
     private struct PendingPreferenceRollback {
         let prior: ServerProfile
         let attempted: ServerProfile

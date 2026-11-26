@@ -13,6 +13,10 @@ class PreferenceJournalBoundaryTests(unittest.TestCase):
         self.assertIn("if !self.profileSave.isAwaitingNativeCompletion", save)
         self.assertIn("finishPreferenceJournal(journalToken)", save)
         self.assertLess(EXT.index("SharedPreferenceWriteJournal.current.state == .clear"), EXT.index("let transport = BoringTunTransport"))
+        transport = (ROOT / "ios/PacketTunnel/BoringTunTransport.swift").read_text()
+        resolved = transport.split("private func startResolved(", 1)[1].split("private func armStartupDeadline", 1)[0]
+        self.assertLess(resolved.index("SharedPreferenceWriteJournal.current.state == .clear"), resolved.index("codec = try BoringTunCodec"))
+        self.assertEqual(resolved.count("SharedPreferenceWriteJournal.current.state == .clear"), 2)
     def test_relaunch_only_clears_after_explicit_request_and_empty_inventory(self):
         recovery = APP.split("private func finishManualPreferenceRecovery", 1)[1].split("private func finishPreferenceJournal", 1)[0]
         self.assertIn("nativeInventoryTrust.permitsMutation && manager == nil", recovery)

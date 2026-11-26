@@ -23,7 +23,12 @@ struct VPNStatusView: View {
                 if tunnel.needsPreferenceRecovery {
                     Text("A VPN update was interrupted. Remove the Security Agent VPN entry in iOS Settings, restart the device, then confirm recovery. No VPN will be connected automatically.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    Button("Recover interrupted VPN update") { confirmRecovery = true }
+                    if tunnel.canRecoverInterruptedPreference {
+                        Button("Recover interrupted VPN update") { confirmRecovery = true }
+                    } else {
+                        Text("Recovery marker is unavailable or damaged. Do not reconnect; check App Group signing or seek support before resetting the app.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 HStack {
                     Button("Connect") { tunnel.connect() }
