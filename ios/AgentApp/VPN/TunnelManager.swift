@@ -9,6 +9,11 @@ final class TunnelManager: NSObject, ObservableObject {
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
     private let profileSave = ProfileSaveSequencer()
+    private var requestedManualRecovery: UUID?
+    private var preferenceJournal: PreferenceWriteJournal { SharedPreferenceWriteJournal.current }
+    var needsPreferenceRecovery: Bool {
+        preferenceJournal.state != .clear && !profileSave.isBusy && !legacyOnDemandDisableInFlight
+    }
     private struct PendingPreferenceRollback {
         let prior: ServerProfile
         let attempted: ServerProfile
@@ -72,6 +77,8 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard !profileSave.isBusy && !legacyOnDemandDisableInFlight else { return }
         cancelRouteChange("VPN preferences are being reloaded. Choose the route again after verification.")
+        let manualRecovery = requestedManualRecovery
+        requestedManualRecovery = nil
         let loadToken = preferenceReloadGate.begin()
         nativeInventoryTrust.beginLoad()
         NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
@@ -126,9 +133,61 @@ final class TunnelManager: NSObject, ObservableObject {
                 self.nativeInventoryTrust.didLoadUniqueInventory()
                 self.status = self.manager?.connection.status ?? .invalid
                 self.profile = SharedProfileStore.load()
+                if let manualRecovery {
+                    self.finishManualPreferenceRecovery(manualRecovery)
+                }
+                if self.preferenceJournal.state != .clear {
+                    self.pendingPreferenceRollback = nil
+                    self.errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription
+                    self.remediateLegacyFullTunnel()
+                    return
+                }
                 if self.reconcileFailedPreferenceWrite() { return }
                 self.remediateLegacyFullTunnel()
             }
+        }
+    }
+
+    /// Explicit owner recovery: never remove native preferences ourselves.
+    /// The user must first restart iOS and remove the Security Agent VPN
+    /// entry in Settings. A fresh load must independently confirm no entry.
+    func requestManualPreferenceRecovery() {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in self?.requestManualPreferenceRecovery() }
+            return
+        }
+        guard !profileSave.isBusy, !legacyOnDemandDisableInFlight, !routeStop.isPending,
+              case .pending(let token) = preferenceJournal.state else {
+            errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription
+            return
+        }
+        requestedManualRecovery = token
+        reload()
+    }
+
+    private func finishManualPreferenceRecovery(_ token: UUID) {
+        guard PreferenceWriteJournal.permitsManualReset(
+            ownerConfirmedRestartAndRemoval: true,
+            freshUniqueEmptyInventory: nativeInventoryTrust.permitsMutation && manager == nil,
+            nativeOperationInFlight: profileSave.isBusy || legacyOnDemandDisableInFlight
+        ) else {
+            errorMessage = "Remove the Security Agent VPN entry in iOS Settings, restart the device and retry recovery."
+            return
+        }
+        do {
+            try preferenceJournal.finish(token)
+            pendingPreferenceRollback = nil
+            errorMessage = "Interrupted update cleared. Re-pair your Mac and connect manually."
+        } catch {
+            errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription
+        }
+    }
+
+    private func finishPreferenceJournal(_ token: UUID) -> Bool {
+        do { try preferenceJournal.finish(token); return true }
+        catch {
+            errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription
+            return false
         }
     }
 
@@ -216,7 +275,8 @@ final class TunnelManager: NSObject, ObservableObject {
         // absent or mismatched native metadata is untrusted like missing
         // App Group bytes. Do not assume a running old extension restarted.
         var verifiedRouteIsFull: Bool?
-        if let profile, SharedProfileStore.load() == profile,
+        if preferenceJournal.state == .clear,
+           let profile, SharedProfileStore.load() == profile,
            let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
            native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
            native.serverAddress == profile.endpoint,
@@ -254,7 +314,10 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard action.disableOnDemand, !legacyOnDemandDisableAttempted,
               !legacyOnDemandDisableInFlight, !profileSave.isBusy,
-              nativeInventoryTrust.permitsMutation else { return }
+              nativeInventoryTrust.permitsMutation, preferenceJournal.state == .clear else { return }
+        let journalToken: UUID
+        do { journalToken = try preferenceJournal.begin() }
+        catch { errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription; return }
         // A previous loadAll callback cannot overwrite the native manager
         // while we mutate on-demand preferences.
         preferenceReloadGate.invalidate()
@@ -279,6 +342,7 @@ final class TunnelManager: NSObject, ObservableObject {
                       self.manager === manager else { return }
                 self.legacyDisableToken = nil
                 self.legacyOnDemandDisableInFlight = false
+                _ = self.finishPreferenceJournal(journalToken)
                 if let error {
                     self.errorMessage = "Could not disable legacy VPN auto-connect: " +
                         error.localizedDescription
@@ -359,6 +423,9 @@ final class TunnelManager: NSObject, ObservableObject {
 
         let isCompensation = startingPreferenceRollback
         let rollbackPlan = capturePreferenceRollback(to: validated)
+        let journalToken: UUID
+        do { journalToken = try preferenceJournal.begin() }
+        catch { errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription; return }
 
         // Invalidate prior inventory trust and pending loadAll callbacks
         // before changing any native settings.
@@ -419,12 +486,18 @@ final class TunnelManager: NSObject, ObservableObject {
             commitPublicProfile: { try SharedProfileStore.save(validated) },
             nativeSettledAfterTimeout: { [weak self] in
                 // Never trust a load made before the late OS operation settles.
-                self?.reload()
+                guard let self else { return }
+                _ = self.finishPreferenceJournal(journalToken)
+                self.reload()
             },
             completed: { [weak self] result in
                 guard let self else { return }
                 switch result {
                 case .success:
+                    guard self.finishPreferenceJournal(journalToken) else {
+                        self.reload()
+                        return
+                    }
                     self.nativeInventoryTrust.didCommitVerifiedWrite()
                     self.manager = selected
                     self.profile = validated
@@ -442,6 +515,7 @@ final class TunnelManager: NSObject, ObservableObject {
                         ? "VPN recovery failed. Disconnect and re-pair before connecting."
                         : error.localizedDescription
                     if !self.profileSave.isAwaitingNativeCompletion {
+                        _ = self.finishPreferenceJournal(journalToken)
                         self.reload()
                     }
                 }
@@ -469,6 +543,10 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         guard !profileSave.isBusy else {
             errorMessage = "Finish saving the VPN configuration before connecting."
+            return
+        }
+        guard preferenceJournal.state == .clear else {
+            errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription
             return
         }
         guard let profile else {
@@ -528,7 +606,8 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         guard nativeInventoryTrust.permitsMutation, !routeStop.isPending,
-              !profileSave.isBusy, !legacyOnDemandDisableInFlight else {
+              !profileSave.isBusy, !legacyOnDemandDisableInFlight,
+              preferenceJournal.state == .clear else {
             errorMessage = "Finish or reload the current VPN configuration before changing routes."
             return
         }
@@ -660,7 +739,7 @@ final class TunnelManager: NSObject, ObservableObject {
             trustedNativeInventory: nativeInventoryTrust.permitsMutation,
             verifiedSplitProfile: isValidSplitProfile,
             nativeProfileBound: matchesNative,
-            noPreferenceWriteInFlight: !profileSave.isBusy && !legacyOnDemandDisableInFlight && !routeStop.isPending
+            noPreferenceWriteInFlight: !profileSave.isBusy && !legacyOnDemandDisableInFlight && !routeStop.isPending && preferenceJournal.state == .clear
         )
     }
 
@@ -668,7 +747,7 @@ final class TunnelManager: NSObject, ObservableObject {
     /// during legacy remediation. Never display an optimistic write as confirmed.
     var nativeAutoConnectDescription: String {
         guard nativeInventoryTrust.permitsMutation, !profileSave.isBusy,
-              !legacyOnDemandDisableInFlight else { return "Not verified" }
+              !legacyOnDemandDisableInFlight, preferenceJournal.state == .clear else { return "Not verified" }
         guard let manager else { return "Not configured" }
         return manager.isOnDemandEnabled ? "Enabled" : "Disabled"
     }

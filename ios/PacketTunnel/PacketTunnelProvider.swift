@@ -21,6 +21,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 return
             }
             SharedDiagnostics.record("starting")
+            guard SharedPreferenceWriteJournal.current.state == .clear else {
+                _ = self.lifecycle.finishStart(success: false)
+                SharedDiagnostics.record("start_failed")
+                completionHandler(AgentConfigurationError.preferenceRecoveryRequired)
+                return
+            }
             guard let profile = SharedProfileStore.load() else {
                 _ = self.lifecycle.finishStart(success: false)
                 SharedDiagnostics.record("start_failed")

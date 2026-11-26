@@ -258,6 +258,9 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/native-rollback-tests" \
             Shared/NativePreferenceRollbackPolicy.swift Tests/build/native_preference_rollback_smoke.swift
           "$RUNNER_TEMP/native-rollback-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/preference-journal-tests" \
+            Shared/PreferenceWriteJournal.swift Tests/build/preference_write_journal_smoke.swift
+          "$RUNNER_TEMP/preference-journal-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |

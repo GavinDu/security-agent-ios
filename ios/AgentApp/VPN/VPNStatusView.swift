@@ -3,6 +3,7 @@ import SwiftUI
 
 struct VPNStatusView: View {
     @ObservedObject var tunnel: TunnelManager
+    @State private var confirmRecovery = false
 
     var body: some View {
         Form {
@@ -19,10 +20,15 @@ struct VPNStatusView: View {
                 Button("Retry loading VPN preferences") { tunnel.reload() }
                     .font(.footnote)
                     .accessibilityHint("Checks saved system VPN entries after a permission or load failure.")
+                if tunnel.needsPreferenceRecovery {
+                    Text("A VPN update was interrupted. Remove the Security Agent VPN entry in iOS Settings, restart the device, then confirm recovery. No VPN will be connected automatically.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button("Recover interrupted VPN update") { confirmRecovery = true }
+                }
                 HStack {
                     Button("Connect") { tunnel.connect() }
                         .disabled(tunnel.profile == nil || tunnel.profile?.routeMode == .full ||
-                                  tunnel.status == .connected || tunnel.status == .connecting || tunnel.isChangingRoute)
+                                  tunnel.status == .connected || tunnel.status == .connecting || tunnel.isChangingRoute || tunnel.needsPreferenceRecovery)
                     Spacer()
                     Button("Disconnect") { tunnel.disconnect() }
                         .disabled(tunnel.status == .disconnected || tunnel.status == .invalid)
@@ -94,6 +100,10 @@ struct VPNStatusView: View {
             }
         }
         .navigationTitle("VPN settings")
+        .confirmationDialog("Have you removed the Security Agent VPN entry and restarted this device?", isPresented: $confirmRecovery, titleVisibility: .visible) {
+            Button("Confirm and check VPN settings", role: .destructive) { tunnel.requestManualPreferenceRecovery() }
+            Button("Cancel", role: .cancel) {}
+        }
         .alert("VPN error", isPresented: Binding(
             get: { tunnel.errorMessage != nil },
             set: { if !$0 { tunnel.errorMessage = nil } }

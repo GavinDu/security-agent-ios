@@ -32,6 +32,7 @@ enum AgentConfigurationError: LocalizedError {
     case invalidProfileData
     case nativeProfileMismatch
     case unverifiedFullTunnel
+    case preferenceRecoveryRequired
 
     var errorDescription: String? {
         switch self {
@@ -45,6 +46,7 @@ enum AgentConfigurationError: LocalizedError {
         case .missingAppGroup: return "App Group is unavailable; check signing capabilities."
         case .invalidProfileData: return "WireGuard public profile is invalid or too large. Re-pair with your Mac."
         case .nativeProfileMismatch: return "VPN preferences and paired profile do not match. Disconnect and re-save your Mac pairing in Security Agent before connecting."
+        case .preferenceRecoveryRequired: return "VPN preference recovery is required. Do not reconnect until the pending update is resolved."
         case .unverifiedFullTunnel: return "Full tunnel is disabled until encrypted UDP underlay routing and leak safety pass physical iPhone tests. Use split tunnel."
         }
     }
@@ -191,5 +193,14 @@ enum SharedProfileStore {
         ) else {
             throw AgentConfigurationError.invalidProfileData
         }
+    }
+}
+
+/// Shared location, accessed by app and PacketTunnel on iOS. Missing or
+/// unreadable App Group is blocked rather than treated as a clear journal.
+enum SharedPreferenceWriteJournal {
+    static var current: PreferenceWriteJournal {
+        PreferenceWriteJournal(directory: FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: AgentConstants.appGroup))
     }
 }
