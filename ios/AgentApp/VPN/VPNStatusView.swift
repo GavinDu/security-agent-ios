@@ -4,6 +4,7 @@ import SwiftUI
 struct VPNStatusView: View {
     @ObservedObject var tunnel: TunnelManager
     @State private var confirmRecovery = false
+    @State private var events: [VPNEvent] = []
 
     var body: some View {
         Form {
@@ -41,7 +42,8 @@ struct VPNStatusView: View {
             }
 
             Section("Recent VPN events") {
-                let events = SharedDiagnostics.events()
+                Button("Refresh VPN events") { refreshEvents() }
+                    .accessibilityHint("Read the latest redacted events from the packet tunnel.")
                 if events.isEmpty {
                     Text("No packet tunnel events yet").foregroundStyle(.secondary)
                 } else {
@@ -105,6 +107,8 @@ struct VPNStatusView: View {
             }
         }
         .navigationTitle("VPN settings")
+        .onAppear { refreshEvents() }
+        .onChange(of: tunnel.status) { _, _ in refreshEvents() }
         .confirmationDialog("Have you removed the Security Agent VPN entry and restarted this device?", isPresented: $confirmRecovery, titleVisibility: .visible) {
             Button("Confirm and check VPN settings", role: .destructive) { tunnel.requestManualPreferenceRecovery() }
             Button("Cancel", role: .cancel) {}
@@ -117,5 +121,9 @@ struct VPNStatusView: View {
         } message: {
             Text(tunnel.errorMessage ?? "")
         }
+    }
+
+    private func refreshEvents() {
+        events = SharedDiagnostics.events()
     }
 }

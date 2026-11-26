@@ -38,6 +38,20 @@ struct VPNEventHistorySmoke {
         precondition(VPNEventHistory.decode(Data(repeating: 0x41, count: VPNEventHistory.maxFileBytes + 1)).isEmpty)
         precondition(VPNEventHistory.decode(Data()).isEmpty)
 
+        // Tampered persisted timestamps must not reach either display or export.
+        let earliest = Date(timeIntervalSince1970: 946_684_800)
+        let latest = Date(timeIntervalSince1970: 4_102_444_800)
+        let dated = [
+            VPNEvent(id: UUID(), at: earliest.addingTimeInterval(-1), event: "stopped"),
+            VPNEvent(id: UUID(), at: earliest, event: "starting"),
+            VPNEvent(id: UUID(), at: latest.addingTimeInterval(-1), event: "connected"),
+            VPNEvent(id: UUID(), at: latest, event: "stopped")
+        ]
+        precondition(VPNEventHistory.decode(try JSONEncoder().encode(dated)).map(\.event) == ["starting", "connected"])
+        for invalid in [Date(timeIntervalSince1970: .infinity), Date(timeIntervalSince1970: .nan), latest] {
+            precondition(VPNEventHistory.appending("starting", to: bytes, at: invalid) == nil)
+        }
+
         let repaired = VPNEventHistory.appending("starting", to: Data("invalid".utf8), at: timestamp)
         precondition(repaired != nil)
         precondition(VPNEventHistory.decode(repaired!).map(\.event) == ["starting"])

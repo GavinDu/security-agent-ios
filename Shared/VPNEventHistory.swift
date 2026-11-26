@@ -12,6 +12,14 @@ struct VPNEvent: Codable, Identifiable, Equatable {
 enum VPNEventHistory {
     static let maxRecords = 100
     static let maxFileBytes = 32_768
+    private static let earliest = Date(timeIntervalSince1970: 946_684_800) // 2000-01-01 UTC
+    private static let latest = Date(timeIntervalSince1970: 4_102_444_800) // 2100-01-01 UTC
+
+    /// Apply the same bounded timestamp policy to persistence, UI and export.
+    static func allowsTimestamp(_ date: Date) -> Bool {
+        date.timeIntervalSince1970.isFinite && date >= earliest && date < latest
+    }
+
     private static let allowedCodes: Set<String> = [
         "starting", "connected", "start_failed", "stopped", "stop_failed",
         "dns_preflight_busy", "dns_preflight_timeout", "dns_preflight_empty",
@@ -28,7 +36,7 @@ enum VPNEventHistory {
             return []
         }
         // Even a modified shared file must never become a free-form text log.
-        return Array(decoded.filter { allows($0.event) }.suffix(maxRecords))
+        return Array(decoded.filter { allows($0.event) && allowsTimestamp($0.at) }.suffix(maxRecords))
     }
 
     static func appending(
@@ -37,7 +45,7 @@ enum VPNEventHistory {
         at timestamp: Date = Date(),
         id: UUID = UUID()
     ) -> Data? {
-        guard allows(code) else { return nil }
+        guard allows(code), allowsTimestamp(timestamp) else { return nil }
         var history = previous.map(decode) ?? []
         history.append(VPNEvent(id: id, at: timestamp, event: code))
         let bounded = Array(history.suffix(maxRecords))
