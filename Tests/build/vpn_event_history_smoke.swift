@@ -19,6 +19,13 @@ struct VPNEventHistorySmoke {
         precondition(rejected == nil)
         precondition(!VPNEventHistory.allows("something_unknown"))
         precondition(VPNEventHistory.allows("start_failed"))
+        for code in ["dns_preflight_busy", "dns_preflight_timeout", "dns_preflight_empty",
+                     "dns_preflight_failed", "unsafe_underlay_rejected"] {
+            let encoded = VPNEventHistory.appending(code, to: nil, at: timestamp)
+            precondition(encoded != nil)
+            precondition(VPNEventHistory.decode(encoded!).map(\.event) == [code])
+        }
+        precondition(!VPNEventHistory.allows("dns_preflight_failed: private.example"))
 
         let polluted = [
             VPNEvent(id: UUID(), at: timestamp, event: "connected"),

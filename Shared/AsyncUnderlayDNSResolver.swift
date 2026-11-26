@@ -15,6 +15,16 @@ enum UnderlayDNSResolutionError: Error, Equatable, LocalizedError {
     case noAddresses
     case lookupFailed
 
+    /// Finite evidence code; never derive diagnostics from error text.
+    var diagnosticEventCode: String {
+        switch self {
+        case .busy: return "dns_preflight_busy"
+        case .timedOut: return "dns_preflight_timeout"
+        case .noAddresses: return "dns_preflight_empty"
+        case .lookupFailed: return "dns_preflight_failed"
+        }
+    }
+
     /// Deliberately redacted: a DNS failure is not a Rust codec error,
     /// and exposing the private peer hostname or libc text is unnecessary.
     var errorDescription: String? {
