@@ -2,10 +2,18 @@ import Foundation
 
 /// Queue-confined generation for one authenticated NWConnection waiting
 /// episode. A canceled or prior episode's timer must never tear down a
-/// recovered or replacement Rust BoringTun tunnel.
+/// replacement Rust BoringTun tunnel. Socket readiness alone never proves
+/// fresh authentication on a previously interrupted path.
 struct WireGuardPathWaitGeneration {
     private(set) var current: UInt64 = 0
     private(set) var waiting = false
+
+    /// Suspend all old-session crypto and packet forwarding during this wait.
+    var permitsEngineIO: Bool { !waiting }
+
+    /// A ready socket after a post-authentication wait requires a fresh
+    /// OS-authorized tunnel start, not a resumed old Rust session.
+    var requiresFreshStartOnReady: Bool { waiting }
 
     mutating func beginWait() -> UInt64? {
         guard !waiting else { return nil }

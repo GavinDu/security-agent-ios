@@ -29,7 +29,8 @@ class WireGuardReceiveRearmBoundaryTests(unittest.TestCase):
 
     def test_ffi_error_and_path_watchdog_guards_are_preserved(self):
         self.assertIn("WireGuardDatagramFailurePolicy.disposition(for: reason)", TRANSPORT)
-        self.assertIn("case .ready:\n            cancelPathWaitDeadline()", TRANSPORT)
+        self.assertIn("guard !pathWait.requiresFreshStartOnReady else", TRANSPORT)
+        self.assertIn("fail(BoringTunError.networkPathRevalidationRequired)", TRANSPORT)
         self.assertIn("case .waiting:", TRANSPORT)
         self.assertIn("startPathWaitDeadlineIfNeeded()", TRANSPORT)
         self.assertIn("cancelPathWaitDeadline()\n        udp?.stateUpdateHandler", TRANSPORT)

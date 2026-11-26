@@ -232,6 +232,13 @@ final class BoringTunTransport {
         guard active else { return }
         switch state {
         case .ready:
+            // NWConnection readiness is not fresh Rust authentication.
+            // Never re-enable the old data plane or cancel the wait guard
+            // as a successful recovery. Tear down for a fresh authorized start.
+            guard !pathWait.requiresFreshStartOnReady else {
+                fail(BoringTunError.networkPathRevalidationRequired)
+                return
+            }
             cancelPathWaitDeadline()
             receiveDatagram()
             if tickTimer == nil {
@@ -242,6 +249,7 @@ final class BoringTunTransport {
                 let epoch = lifecycle.current
                 timer.setEventHandler { [weak self] in
                     guard let self, self.active, self.lifecycle.matches(epoch),
+                          self.pathWait.permitsEngineIO,
                           let codec = self.codec else { return }
                     do { try self.process(codec.tick()) }
                     catch { self.fail(error) }
@@ -272,10 +280,13 @@ final class BoringTunTransport {
 
     /// Bounded recovery only after a verified handshake completed. A fresh
     /// on-demand or manual restart re-resolves DDNS before any inner route.
-    /// This is not an automatic roam or full-tunnel underlay implementation.
+    /// Pause old-session I/O and expose reasserting while waiting. Ready or
+    /// timeout terminates this session; no transport-side retry is scheduled.
     private func startPathWaitDeadlineIfNeeded() {
         guard active, startCompletion == nil,
               let token = pathWait.beginWait() else { return }
+        // Private chat requires the actual native connected status.
+        provider?.reasserting = true
         let epoch = lifecycle.current
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + .seconds(30))
@@ -295,7 +306,7 @@ final class BoringTunTransport {
     }
 
     private func receiveDatagram() {
-        guard active, let udp, !receivingDatagram else { return }
+        guard active, pathWait.permitsEngineIO, let udp, !receivingDatagram else { return }
         receivingDatagram = true
         let epoch = lifecycle.current
         udp.receiveMessage { [weak self] packet, _, _, error in
@@ -303,6 +314,8 @@ final class BoringTunTransport {
                 guard let self, self.active,
                       self.lifecycle.matches(epoch) else { return }
                 self.receivingDatagram = false
+                // Discard late datagrams from the interrupted session.
+                guard self.pathWait.permitsEngineIO else { return }
                 if let error {
                     self.fail(error)
                     return
@@ -353,6 +366,8 @@ final class BoringTunTransport {
                     if codec.hasAuthenticatedHandshake && self.startCompletion != nil {
                         self.handshakeDeadline?.cancel()
                         self.handshakeDeadline = nil
+                        // Only a fresh authenticated startup clears reasserting.
+                        self.provider?.reasserting = false
                         self.finishStart(nil)
                         self.readPackets()
                     }
@@ -380,7 +395,7 @@ final class BoringTunTransport {
     }
 
     private func process(_ action: BoringTunAction) throws {
-        guard active else { throw BoringTunError.stopped }
+        guard active, pathWait.permitsEngineIO else { throw BoringTunError.stopped }
         switch action {
         case .done:
             break
@@ -450,7 +465,7 @@ final class BoringTunTransport {
     }
 
     private func readPackets() {
-        guard active, !readingPackets, let provider else { return }
+        guard active, pathWait.permitsEngineIO, !readingPackets, let provider else { return }
         readingPackets = true
         let epoch = lifecycle.current
         provider.packetFlow.readPackets { [weak self] packets, protocols in
@@ -458,6 +473,8 @@ final class BoringTunTransport {
                 guard let self, self.active,
                       self.lifecycle.matches(epoch) else { return }
                 self.readingPackets = false
+                // No old-session packets may be encapsulated while waiting.
+                guard self.pathWait.permitsEngineIO else { return }
                 // Apple's packetFlow callback must supply one AF per packet.
                 // Swift zip() silently truncates mismatched arrays; this is a
                 // local utun contract failure, not remote Rust authentication.

@@ -92,3 +92,7 @@ independently passed an inventory of resolved normal/build Cargo
 dependencies and declared license expressions against Cargo.lock.
 This does not replace the binary link-map or distribution NOTICE audit
 tracked in #55/#31.
+
+## Authenticated underlay interruption (Epic #7 / #16)
+
+An observed post-handshake NWConnection waiting event suspends old-session Rust/packet-flow I/O and marks the provider reasserting. The existing 30-second epoch-bound watchdog limits the wait. A subsequent ready event terminates the interrupted session rather than declaring it recovered: BoringTun 0.7.1's whole-second handshake age is not a fresh-session proof. Timeout likewise terminates the session. Existing OS-authorized on-demand or explicit user connect can start a new codec and fresh DNS preflight/handshake. There is no transport-side retry loop, no change to on-demand preferences, no full-tunnel enablement, and no guarantee of seamless handoff. Already submitted encrypted UDP sends cannot be recalled; path changes not reported as waiting are outside this policy. Signed physical Wi-Fi/cellular and OS status/on-demand behavior remain unverified.

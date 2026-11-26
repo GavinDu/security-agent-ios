@@ -7,7 +7,12 @@ final class WireGuardPathWaitGenerationTests: XCTestCase {
         let token = state.beginWait()!
         XCTAssertTrue(state.accepts(token))
         XCTAssertNil(state.beginWait())
-        state.invalidate() // NWConnection.ready or stop
+        XCTAssertFalse(state.permitsEngineIO)
+        XCTAssertTrue(state.requiresFreshStartOnReady)
+        XCTAssertNil(state.beginWait()) // repeated waiting cannot extend deadline
+        state.invalidate() // terminal teardown only after ready or timeout
+        XCTAssertTrue(state.permitsEngineIO)
+        XCTAssertFalse(state.requiresFreshStartOnReady)
         XCTAssertFalse(state.accepts(token))
         let next = state.beginWait()!
         XCTAssertNotEqual(token, next)

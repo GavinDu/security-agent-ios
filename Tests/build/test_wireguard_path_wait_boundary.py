@@ -9,9 +9,15 @@ CODEC = (ROOT / "ios/PacketTunnel/BoringTunCodec.swift").read_text()
 WF = (ROOT / ".github/workflows/validate.yml").read_text()
 
 class WireGuardPathWaitBoundaryTests(unittest.TestCase):
-    def test_ready_cancels_and_waiting_schedules_single_watchdog(self):
+    def test_ready_requires_fresh_start_and_waiting_schedules_single_watchdog(self):
         body = TRANSPORT.split("private func connectionChanged(", 1)[1].split("private func receiveDatagram", 1)[0]
-        self.assertIn("case .ready:\n            cancelPathWaitDeadline()", body)
+        self.assertIn("guard !pathWait.requiresFreshStartOnReady else", body)
+        self.assertLess(body.index("fail(BoringTunError.networkPathRevalidationRequired)"),
+                        body.index("cancelPathWaitDeadline()"))
+        self.assertLess(body.index("fail(BoringTunError.networkPathRevalidationRequired)"),
+                        body.index("receiveDatagram()"))
+        self.assertIn("provider?.reasserting = true", body)
+        self.assertIn("case .networkPathRevalidationRequired:", CODEC)
         self.assertIn("case .waiting:\n", body)
         self.assertIn("startPathWaitDeadlineIfNeeded()", body)
         self.assertIn("guard active, startCompletion == nil,", body)
@@ -21,6 +27,17 @@ class WireGuardPathWaitBoundaryTests(unittest.TestCase):
         self.assertIn("self.pathWait.accepts(token)", body)
         self.assertIn("self.fail(BoringTunError.networkPathTimedOut)", body)
         self.assertIn("case .networkPathTimedOut:", CODEC)
+
+    def test_old_session_io_is_suspended_during_wait(self):
+        for signature in ("private func receiveDatagram()", "private func readPackets()",
+                          "private func process("):
+            body = TRANSPORT.split(signature, 1)[1].split("\n    }", 1)[0]
+            self.assertIn("pathWait.permitsEngineIO", body)
+        self.assertGreaterEqual(TRANSPORT.count("guard self.pathWait.permitsEngineIO"), 2)
+        self.assertIn("self.pathWait.permitsEngineIO,\n                          let codec", TRANSPORT)
+        self.assertIn("self.provider?.reasserting = false\n                        self.finishStart(nil)", TRANSPORT)
+        self.assertIn("var permitsEngineIO: Bool { !waiting }", MODEL)
+        self.assertIn("var requiresFreshStartOnReady: Bool { waiting }", MODEL)
 
     def test_teardown_cancels_timer_before_socket_release(self):
         teardown = TRANSPORT.split("private func teardown()", 1)[1]
