@@ -9,6 +9,12 @@ final class TunnelManager: NSObject, ObservableObject {
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
     private let profileSave = ProfileSaveSequencer()
+    private struct PendingPreferenceRollback {
+        let prior: ServerProfile
+        let attempted: ServerProfile
+    }
+    private var pendingPreferenceRollback: PendingPreferenceRollback?
+    private var startingPreferenceRollback = false
     private var preferenceReloadGate = NativePreferenceReloadGate()
     // A failed native preference read must never reopen writes/connections.
     // Keep this state on main with NativePreferenceReloadGate generations.
@@ -80,6 +86,7 @@ final class TunnelManager: NSObject, ObservableObject {
                     // An old generation must not clear a newer in-flight load.
                     return
                 case .reportFailure:
+                    self.pendingPreferenceRollback = nil
                     self.nativeInventoryTrust.didFailLoad()
                     // Preserve the previously confirmed manager on OS errors,
                     // but forbid writing through it until a successful reload.
@@ -102,6 +109,7 @@ final class TunnelManager: NSObject, ObservableObject {
                 switch inventory {
                 case .duplicate:
                     // Never guess which system VPN profile is authoritative.
+                    self.pendingPreferenceRollback = nil
                     self.nativeInventoryTrust.didLoadDuplicateInventory()
                     self.manager = nil
                     self.status = .invalid
@@ -118,8 +126,77 @@ final class TunnelManager: NSObject, ObservableObject {
                 self.nativeInventoryTrust.didLoadUniqueInventory()
                 self.status = self.manager?.connection.status ?? .invalid
                 self.profile = SharedProfileStore.load()
+                if self.reconcileFailedPreferenceWrite() { return }
                 self.remediateLegacyFullTunnel()
             }
+        }
+    }
+
+    /// Only compare an app-owned, enabled, canonical native configuration.
+    /// The prior value is captured by value, not as a mutable NE protocol.
+    private func nativeMatches(_ manager: NETunnelProviderManager, _ profile: ServerProfile) -> Bool {
+        guard manager.localizedDescription == "Security Agent VPN",
+              let digest = try? profile.publicProfileDigest(),
+              let native = manager.protocolConfiguration as? NETunnelProviderProtocol else { return false }
+        return NativePreferenceCommitVerifier.matches(
+            NativePreferenceCommitSnapshot(
+                providerBundleIdentifier: native.providerBundleIdentifier,
+                serverAddress: native.serverAddress,
+                metadata: native.providerConfiguration,
+                isEnabled: manager.isEnabled,
+                isOnDemandEnabled: manager.isOnDemandEnabled,
+                onDemandRuleCount: manager.onDemandRules?.count ?? 0,
+                onDemandUsesConnectRule: manager.onDemandRules?.first is NEOnDemandRuleConnect
+            ), expectedBundleID: AgentConstants.tunnelBundleID,
+            expectedServerAddress: profile.endpoint,
+            expectedProfileDigest: digest,
+            expectedOnDemand: profile.onDemand
+        )
+    }
+
+    private func capturePreferenceRollback(to attempted: ServerProfile) -> PendingPreferenceRollback? {
+        guard !startingPreferenceRollback, let manager, let prior = profile,
+              NativePreferenceRollbackPolicy.canCapture(
+                priorVerified: nativeMatches(manager, prior),
+                persistedPrior: SharedProfileStore.load() == prior,
+                priorSplit: prior.routeMode == .split,
+                attemptedSplit: attempted.routeMode == .split,
+                priorOnDemand: prior.onDemand,
+                attemptedOnDemand: attempted.onDemand,
+                differentProfiles: prior != attempted
+              ) else { return nil }
+        return PendingPreferenceRollback(prior: prior, attempted: attempted)
+    }
+
+    /// Called only after a fresh, current-generation unique/empty inventory.
+    /// Consume the plan before any write so a failed repair cannot loop.
+    private func reconcileFailedPreferenceWrite() -> Bool {
+        guard let plan = pendingPreferenceRollback else { return false }
+        pendingPreferenceRollback = nil
+        guard let manager else {
+            errorMessage = "VPN update failed. No matching system profile was found; re-pair before connecting."
+            return false
+        }
+        switch NativePreferenceRollbackPolicy.decide(
+            persistedPrior: SharedProfileStore.load() == plan.prior,
+            trustedInventory: nativeInventoryTrust.permitsMutation,
+            nativeDisconnected: manager.connection.status == .disconnected,
+            nativeMatchesPrior: nativeMatches(manager, plan.prior),
+            nativeMatchesAttempted: nativeMatches(manager, plan.attempted)
+        ) {
+        case .unchanged:
+            errorMessage = "VPN update failed; the previous verified configuration is still installed."
+            return false
+        case .manualRepair:
+            errorMessage = "VPN update failed and the saved settings cannot be safely restored automatically. Disconnect and re-pair before connecting."
+            return false
+        case .restore:
+            startingPreferenceRollback = true
+            defer { startingPreferenceRollback = false }
+            // The same save/readback transaction verifies compensation; never
+            // auto-reconnect, restore full mode, or re-enable on-demand.
+            save(plan.prior)
+            return profileSave.isBusy
         }
     }
 
@@ -280,6 +357,9 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
 
+        let isCompensation = startingPreferenceRollback
+        let rollbackPlan = capturePreferenceRollback(to: validated)
+
         // Invalidate prior inventory trust and pending loadAll callbacks
         // before changing any native settings.
         preferenceReloadGate.invalidate()
@@ -349,13 +429,18 @@ final class TunnelManager: NSObject, ObservableObject {
                     self.manager = selected
                     self.profile = validated
                     self.status = selected.connection.status
-                    self.errorMessage = nil
+                    self.errorMessage = isCompensation
+                        ? "VPN update failed; previous verified split settings restored. Connect manually when ready."
+                        : nil
                     if connectAfterSave { self.connect() }
                 case .failure(let error):
-                    // No new public profile was committed on denial or reload
-                    // failure. Re-read the native manager; do not delete a
-                    // previous owner-configured VPN profile as 'rollback'.
-                    self.errorMessage = error.localizedDescription
+                    // A failure does not establish native or App Group state.
+                    // A single bounded compensation may be eligible only after
+                    // fresh inventory and exact public/native readback checks.
+                    self.pendingPreferenceRollback = rollbackPlan
+                    self.errorMessage = isCompensation
+                        ? "VPN recovery failed. Disconnect and re-pair before connecting."
+                        : error.localizedDescription
                     if !self.profileSave.isAwaitingNativeCompletion {
                         self.reload()
                     }
@@ -401,6 +486,12 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         // App-side early rejection; the extension independently validates
         // fresh system metadata before any Rust engine or routes are created.
+        // A matching digest alone is insufficient after a partial native save:
+        // verify current public bytes, enabled and exact on-demand settings.
+        guard SharedProfileStore.load() == profile, nativeMatches(manager, profile) else {
+            errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
+            return
+        }
         guard let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
               native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
               native.serverAddress == profile.endpoint,
@@ -547,10 +638,12 @@ final class TunnelManager: NSObject, ObservableObject {
         let native = manager?.protocolConfiguration as? NETunnelProviderProtocol
         let isValidSplitProfile: Bool
         let matchesNative: Bool
-        if let profile, let native {
+        if let profile, let native, let manager {
             isValidSplitProfile = profile.routeMode == .split &&
-                (try? profile.validated()) != nil
+                (try? profile.validated()) != nil &&
+                SharedProfileStore.load() == profile
             matchesNative =
+                nativeMatches(manager, profile) &&
                 native.providerBundleIdentifier == AgentConstants.tunnelBundleID &&
                 native.serverAddress == profile.endpoint &&
                 NativeProfileBindingPolicy.allowsStart(
