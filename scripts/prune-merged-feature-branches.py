@@ -46,6 +46,9 @@ CANDIDATES = (
     ("fix/epic-194-prune-204", 206),
     ("fix/epic-194-interrupted-preference-recovery", 205),
     ("test/epic-194-fake-native-manager", 207),
+    ("feature/vpn-lifecycle-diagnostics", 210),
+    ("feature/vpn-provider-completion-guard", 212),
+    ("feature/vpn-native-permission-tests", 213),
 )
 
 
