@@ -8,6 +8,7 @@ struct VPNStatusView: View {
         Form {
             Section("Connection") {
                 LabeledContent("Status", value: tunnel.statusDescription)
+                LabeledContent("System auto-connect", value: tunnel.nativeAutoConnectDescription)
                 if let profile = tunnel.profile {
                     LabeledContent("Server", value: profile.endpoint)
                     LabeledContent("Routing", value: profile.routeMode.title)
@@ -83,6 +84,10 @@ struct VPNStatusView: View {
                     ))
                     .disabled(profile.routeMode == .full)
                     .disabled(tunnel.isChangingRoute)
+                    if profile.routeMode == .full {
+                        Text("The saved flag may differ from System auto-connect above. Legacy recovery disables native auto-connect without re-enabling full tunnel.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     Text("Enable only after testing a manual connection on a physical iPhone.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

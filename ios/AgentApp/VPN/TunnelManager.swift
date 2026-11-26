@@ -17,6 +17,7 @@ final class TunnelManager: NSObject, ObservableObject {
     // preference write revoked verification without changing VPN status.
     @Published private var nativeInventoryTrust = NativeVPNInventoryTrust()
     private var legacyFullStopRequested = false
+    private weak var legacyStopManager: NETunnelProviderManager?
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
     private var legacyDisableToken: UUID?
@@ -138,7 +139,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // absent or mismatched native metadata is untrusted like missing
         // App Group bytes. Do not assume a running old extension restarted.
         var verifiedRouteIsFull: Bool?
-        if let profile,
+        if let profile, SharedProfileStore.load() == profile,
            let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
            native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
            native.serverAddress == profile.endpoint,
@@ -155,8 +156,10 @@ final class TunnelManager: NSObject, ObservableObject {
         )
         if !action.stopActiveSession {
             legacyFullStopRequested = false
-        } else if !legacyFullStopRequested {
+            legacyStopManager = nil
+        } else if !legacyFullStopRequested || legacyStopManager !== manager {
             legacyFullStopRequested = true
+            legacyStopManager = manager
             manager.connection.stopVPNTunnel()
         }
         guard action.blockNewConnection else { return }
@@ -173,7 +176,8 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         guard action.disableOnDemand, !legacyOnDemandDisableAttempted,
-              !legacyOnDemandDisableInFlight, !profileSave.isBusy else { return }
+              !legacyOnDemandDisableInFlight, !profileSave.isBusy,
+              nativeInventoryTrust.permitsMutation else { return }
         // A previous loadAll callback cannot overwrite the native manager
         // while we mutate on-demand preferences.
         preferenceReloadGate.invalidate()
@@ -474,7 +478,8 @@ final class TunnelManager: NSObject, ObservableObject {
                                     original: original, candidate: updated)
         // Mode selection is explicit consent to stop, never to reconnect.
         // An inherited recovery may have already requested the same stop.
-        if nativeStatus != .disconnecting && !legacyFullStopRequested {
+        if nativeStatus != .disconnecting &&
+            (!legacyFullStopRequested || legacyStopManager !== manager) {
             manager.connection.stopVPNTunnel()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
@@ -566,9 +571,18 @@ final class TunnelManager: NSObject, ObservableObject {
         )
     }
 
+    /// The saved App Group on-demand flag can differ from native settings
+    /// during legacy remediation. Never display an optimistic write as confirmed.
+    var nativeAutoConnectDescription: String {
+        guard nativeInventoryTrust.permitsMutation, !profileSave.isBusy,
+              !legacyOnDemandDisableInFlight else { return "Not verified" }
+        guard let manager else { return "Not configured" }
+        return manager.isOnDemandEnabled ? "Enabled" : "Disabled"
+    }
+
     var statusDescription: String {
         switch status {
-        case .connected: return "Connected"
+        case .connected: return canShowPrivateChat ? "Connected" : "Connected — access blocked"
         case .connecting: return "Connecting"
         case .reasserting: return "Reconnecting"
         case .disconnecting: return "Disconnecting"
