@@ -255,6 +255,9 @@ jobs:
             Shared/NativePreferenceCommitVerifier.swift \
             Tests/build/native_preference_commit_verifier_smoke.swift
           "$RUNNER_TEMP/native-commit-verifier-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/native-rollback-tests" \
+            Shared/NativePreferenceRollbackPolicy.swift Tests/build/native_preference_rollback_smoke.swift
+          "$RUNNER_TEMP/native-rollback-tests"
       - name: Validate VPN entitlements
         shell: bash
         run: |
