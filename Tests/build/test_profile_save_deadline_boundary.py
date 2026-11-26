@@ -21,7 +21,11 @@ class NativeVPNPreferenceDeadlineBoundaryTests(unittest.TestCase):
                         run.index("saveNative { [weak self]"))
         self.assertNotIn("scheduleDeadline(", run.split("reloadNative { [weak self]", 1)[1])
         self.assertIn("self.stage == .loading", SOURCE)
-        self.assertIn("guard let self, self.stage == .saving", SOURCE)
+        self.assertIn("guard self.stage == .saving", SOURCE)
+        self.assertIn("self.stage == .awaitingLateSave", SOURCE)
+        self.assertIn("self.stage == .awaitingLateReload", SOURCE)
+        self.assertIn("if !self.profileSave.isAwaitingNativeCompletion", APP)
+        self.assertIn("nativeSettledAfterTimeout:", APP)
         self.assertIn("DispatchQueue.main.async(execute: expire)", run)
 
     def test_finish_cancels_and_invalidates_before_client_completion(self):

@@ -59,6 +59,10 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.reload() }
             return
         }
+        if profileSave.isAwaitingNativeCompletion {
+            errorMessage = "VPN preferences are awaiting a native completion. Do not reconnect or retry yet."
+            return
+        }
         guard !profileSave.isBusy && !legacyOnDemandDisableInFlight else { return }
         cancelRouteChange("VPN preferences are being reloaded. Choose the route again after verification.")
         let loadToken = preferenceReloadGate.begin()
@@ -329,6 +333,10 @@ final class TunnelManager: NSObject, ObservableObject {
                 }
             },
             commitPublicProfile: { try SharedProfileStore.save(validated) },
+            nativeSettledAfterTimeout: { [weak self] in
+                // Never trust a load made before the late OS operation settles.
+                self?.reload()
+            },
             completed: { [weak self] result in
                 guard let self else { return }
                 switch result {
@@ -344,7 +352,9 @@ final class TunnelManager: NSObject, ObservableObject {
                     // failure. Re-read the native manager; do not delete a
                     // previous owner-configured VPN profile as 'rollback'.
                     self.errorMessage = error.localizedDescription
-                    self.reload()
+                    if !self.profileSave.isAwaitingNativeCompletion {
+                        self.reload()
+                    }
                 }
             }
         )

@@ -40,11 +40,13 @@ struct ProfileSaveTimeoutSmoke {
         var firstSave: ((Error?) -> Void)?
         var oldCompletions = 0
         var oldTimeout = false
+        var settled = 0
         var committed = 0
         sequencer.run(
             saveNative: { firstSave = $0 },
             reloadNative: { _ in preconditionFailure("Timed out save reloaded") },
             commitPublicProfile: { committed += 1 },
+            nativeSettledAfterTimeout: { settled += 1 },
             completed: { result in
                 oldCompletions += 1
                 if case .failure(let error) = result,
@@ -55,11 +57,28 @@ struct ProfileSaveTimeoutSmoke {
         precondition(sequencer.isBusy && clock.entries.count == 1)
         precondition(clock.entries[0].seconds == 30)
         clock.entries[0].fire()
-        precondition(!sequencer.isBusy && oldCompletions == 1 && oldTimeout)
+        precondition(sequencer.isBusy && sequencer.isAwaitingNativeCompletion && oldCompletions == 1 && oldTimeout)
         precondition(clock.entries[0].cancelled && committed == 0)
 
-        // After a timeout a subsequent user-initiated save can start.
-        // Old OS callback and old timer must never publish its profile.
+        // A retry is rejected until the original OS callback settles.
+        var rejected = false
+        sequencer.run(
+            saveNative: { _ in preconditionFailure("Unknown native write still pending") },
+            reloadNative: { _ in preconditionFailure("Unexpected reload") },
+            commitPublicProfile: { preconditionFailure("Unexpected commit") },
+            completed: { result in
+                if case .failure(let error) = result,
+                   let typed = error as? ProfileSaveSequencer.TransactionError,
+                   case .busy = typed { rejected = true }
+            }
+        )
+        precondition(rejected && settled == 0)
+        clock.entries[0].fire()
+        precondition(oldCompletions == 1)
+        firstSave?(nil)
+        pumpUntil { settled == 1 }
+        precondition(!sequencer.isBusy && committed == 0)
+        // Old OS callback and timer cannot hijack the next save.
         var secondSave: ((Error?) -> Void)?
         var secondReload: ((Error?) -> Void)?
         var secondDone = 0
@@ -96,10 +115,12 @@ struct ProfileSaveTimeoutSmoke {
         )
         var stalledReload: ((Error?) -> Void)?
         var timeoutDone = 0
+        var reloadSettled = 0
         reloadStall.run(
             saveNative: { $0(nil) },
             reloadNative: { stalledReload = $0 },
             commitPublicProfile: { preconditionFailure("Reload timed out; public profile committed") },
+            nativeSettledAfterTimeout: { reloadSettled += 1 },
             completed: { result in
                 guard case .failure(let error) = result,
                       let typed = error as? ProfileSaveSequencer.TransactionError,
@@ -111,12 +132,12 @@ struct ProfileSaveTimeoutSmoke {
         )
         pumpUntil { stalledReload != nil }
         clock2.entries[0].fire()
-        precondition(!reloadStall.isBusy && timeoutDone == 1)
+        precondition(reloadStall.isBusy && reloadStall.isAwaitingNativeCompletion && timeoutDone == 1)
         stalledReload?(nil)
         drained = false
         DispatchQueue.main.async { drained = true }
         pumpUntil { drained }
-        precondition(timeoutDone == 1 && clock2.entries[0].cancelled)
+        precondition(timeoutDone == 1 && clock2.entries[0].cancelled && reloadSettled == 1 && !reloadStall.isBusy)
 
         let clock3 = ManualPreferenceDeadline()
         let invalidConfig = ProfileSaveSequencer(
@@ -132,7 +153,15 @@ struct ProfileSaveTimeoutSmoke {
         precondition(clock3.entries[0].seconds == 30,
                      "Invalid injected deadline may not disable the watchdog")
         clock3.entries[0].fire()
-        precondition(!invalidConfig.isBusy)
+        precondition(invalidConfig.isBusy && invalidConfig.isAwaitingNativeCompletion)
+
+        let syncDeadline = ProfileSaveSequencer(scheduleDeadline: { _, fire in fire(); return {} })
+        var syncFailure = 0
+        syncDeadline.run(saveNative: { _ in preconditionFailure("Expired before submit") },
+                         reloadNative: { _ in preconditionFailure("No reload") },
+                         commitPublicProfile: { preconditionFailure("No commit") },
+                         completed: { _ in syncFailure += 1 })
+        precondition(syncFailure == 1 && !syncDeadline.isBusy)
         print("Native VPN preference timeout, stale epoch, reload failure and cancellation passed")
     }
 }

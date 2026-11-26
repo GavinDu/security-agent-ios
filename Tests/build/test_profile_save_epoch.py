@@ -18,8 +18,10 @@ class ProfileSaveEpochTests(unittest.TestCase):
             "saveNative { [weak self]", 1
         )[0]
         self.assertIn("self.transactionEpoch == epoch", deadline)
-        self.assertIn("guard let self, self.stage == .saving,", src)
-        self.assertIn("guard let self, self.stage == .loading,", src)
+        self.assertIn("guard self.stage == .saving", src)
+        self.assertIn("guard self.stage == .loading", src)
+        self.assertIn("self.stage == .awaitingLateSave", src)
+        self.assertIn("self.stage == .awaitingLateReload", src)
         # Completion is reentrant; invalidate before caller starts next save.
         finish = src[src.index("private func finish("):]
         self.assertLess(finish.index("advanceTransactionEpoch()"), finish.index("completed(result)"))
