@@ -111,6 +111,12 @@ final class BoringTunTransport {
     ) {
         guard active, lifecycle.matches(epoch), let provider else { return }
         do {
+            // DNS can complete after a preference mutation begins. Recheck
+            // the journal and persisted profile before Rust/route allocation.
+            guard SharedPreferenceWriteJournal.current.state == .clear,
+                  SharedProfileStore.load() == profile else {
+                throw AgentConfigurationError.preferenceRecoveryRequired
+            }
             guard let pinnedHost = ResolvedUnderlayCandidatePolicy.selectPinnedAddress(
                 addresses, includedIPv4CIDRs: RouteMode.split.allowedIPs
             ) else {
@@ -138,6 +144,11 @@ final class BoringTunTransport {
                           self.lifecycle.matches(epoch) else { return }
                     if let error {
                         self.fail(error)
+                        return
+                    }
+                    guard SharedPreferenceWriteJournal.current.state == .clear,
+                          SharedProfileStore.load() == profile else {
+                        self.fail(AgentConfigurationError.preferenceRecoveryRequired)
                         return
                     }
                     self.connect(host: destination, port: port)

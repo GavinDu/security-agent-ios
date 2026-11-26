@@ -15,7 +15,14 @@ class RollbackBoundaryTests(unittest.TestCase):
         reload = APP.split("func reload()", 1)[1].split("private func nativeMatches", 1)[0]
         self.assertLess(reload.index("didLoadUniqueInventory()"),
                         reload.index("reconcileFailedPreferenceWrite()"))
-        self.assertEqual(reload.count("self.pendingPreferenceRollback = nil"), 2)
+        # All unsafe inventory states must discard the compensation plan.
+        failure = reload.split("case .reportFailure:", 1)[1].split("case .publish:", 1)[0]
+        duplicate = reload.split("case .duplicate:", 1)[1].split("case .none:", 1)[0]
+        interrupted = reload.split("if self.preferenceJournal.state != .clear", 1)[1].split("if self.reconcileFailedPreferenceWrite()", 1)[0]
+        for invalid in (failure, duplicate, interrupted):
+            self.assertIn("self.pendingPreferenceRollback = nil", invalid)
+            self.assertIn("return", invalid)
+            self.assertNotIn("save(plan.prior)", invalid)
 
     def test_restore_consumes_plan_and_never_recurses_or_reconnects(self):
         capture = APP.split("private func capturePreferenceRollback", 1)[1].split("private func reconcileFailedPreferenceWrite", 1)[0]
