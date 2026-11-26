@@ -158,6 +158,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("fix/epic-194-prune-202", 203)',
             '("fix/epic-194-safe-preference-compensation", 204)',
             '("fix/epic-194-prune-204", 206)',
+            '("fix/epic-194-interrupted-preference-recovery", 205)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
