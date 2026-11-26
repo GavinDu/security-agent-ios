@@ -9,27 +9,25 @@ import OSLog
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let logger = Logger(subsystem: "com.gavindu.securityagent", category: "PacketTunnel")
     private let lifecycleQueue = DispatchQueue(label: "com.gavindu.securityagent.provider-lifecycle")
-    private var lifecycle = PacketTunnelProviderState()
-    private var engine: BoringTunTransport?
-    private var stopWaiters: [() -> Void] = []
+    private var ownership = PacketTunnelProviderOwnership<BoringTunTransport>()
 
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
         let completion = PacketTunnelOneShot<Error?>(completionHandler)
         lifecycleQueue.async {
-            guard self.lifecycle.beginStart() else {
+            guard self.ownership.beginStart(completion) else {
                 completion.call(BoringTunError.initializationFailed)
                 return
             }
             SharedDiagnostics.record("starting")
             guard SharedPreferenceWriteJournal.current.state == .clear else {
-                _ = self.lifecycle.finishStart(success: false)
+                self.ownership.failPreparation()
                 SharedDiagnostics.record("start_failed")
                 completion.call(AgentConfigurationError.preferenceRecoveryRequired)
                 return
             }
             guard let profile = SharedProfileStore.load() else {
-                _ = self.lifecycle.finishStart(success: false)
+                self.ownership.failPreparation()
                 SharedDiagnostics.record("start_failed")
                 completion.call(AgentConfigurationError.missingProfile)
                 return
@@ -44,13 +42,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     metadata: native.providerConfiguration,
                     profileDigest: try? profile.publicProfileDigest()
                   ) else {
-                _ = self.lifecycle.finishStart(success: false)
+                self.ownership.failPreparation()
                 SharedDiagnostics.record("start_failed")
                 completion.call(AgentConfigurationError.nativeProfileMismatch)
                 return
             }
             let transport = BoringTunTransport(provider: self)
-            self.engine = transport
+            self.ownership.installEngine(transport)
             transport.start(profile: profile) { [weak self] error in
                 guard let self else {
                     completion.call(BoringTunError.stopped)
@@ -58,8 +56,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 self.lifecycleQueue.async {
                     // An old callback must never clear the next engine.
-                    guard self.engine === transport,
-                          self.lifecycle.finishStart(success: error == nil) else {
+                    guard self.ownership.finishStart(for: transport, success: error == nil) else {
                         // Obsolete completion is not evidence of the current attempt.
                         completion.call(BoringTunError.stopped)
                         return
@@ -76,7 +73,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                             SharedDiagnostics.record("start_failed")
                         }
                         self.logger.error("BoringTun tunnel start failed")
-                        self.engine = nil
                         completion.call(error)
                     } else {
                         // Success means a verified WireGuard handshake,
@@ -93,14 +89,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
         lifecycleQueue.async {
-            self.stopWaiters.append(completionHandler)
-            guard self.lifecycle.beginStop() else {
+            guard self.ownership.beginStop(completionHandler) else {
                 // A second stop during teardown only queues its completion.
-                if self.lifecycle.phase == .idle { self.finishStopWaiters() }
+                if self.ownership.phase == .idle { self.finishStopWaiters() }
                 return
             }
-            guard let transport = self.engine else {
-                _ = self.lifecycle.finishStop()
+            guard let transport = self.ownership.engine else {
+                guard self.ownership.finishStop(for: nil) else { return }
                 self.finishStopWaiters()
                 return
             }
@@ -108,9 +103,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 self.lifecycleQueue.async {
                     // An obsolete or duplicated transport stop callback must
                     // never complete waiters for a newer engine's teardown.
-                    guard self.engine === transport,
-                          self.lifecycle.finishStop() else { return }
-                    self.engine = nil
+                    guard self.ownership.finishStop(for: transport) else { return }
                     self.finishStopWaiters()
                 }
             }
@@ -120,9 +113,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private func finishStopWaiters() {
         // The provider cannot release callbacks early; collect once and
         // invoke outside the mutable waiter array.
-        let waiters = stopWaiters
-        stopWaiters.removeAll()
+        let callbacks = ownership.takeStopCallbacks()
+        // Stop must also complete a still-pending start, even when a
+        // transport never delivers its start callback after teardown.
+        callbacks.start?.call(BoringTunError.stopped)
         SharedDiagnostics.record("stopped")
-        for completion in waiters { completion() }
+        for completion in callbacks.stops { completion() }
     }
 }

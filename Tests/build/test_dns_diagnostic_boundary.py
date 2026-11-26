@@ -10,8 +10,9 @@ class DNSDiagnosticBoundaryTests(unittest.TestCase):
         source = (ROOT / "ios/PacketTunnel/PacketTunnelProvider.swift").read_text()
         callback = source.split("transport.start(profile: profile)", 1)[1].split("override func stopTunnel", 1)[0]
         stale, current = callback.split("if let error {", 1)
-        self.assertIn("self.engine === transport", stale)
-        self.assertIn("self.lifecycle.finishStart(success: error == nil)", stale)
+        self.assertIn("self.ownership.finishStart(for: transport, success: error == nil)", stale)
+        model = (ROOT / "Shared/PacketTunnelProviderState.swift").read_text()
+        self.assertIn("guard engine === transport, lifecycle.finishStart(success: success)", model)
         self.assertNotIn("SharedDiagnostics.record", stale)
         self.assertIn("error as? UnderlayDNSResolutionError", current)
         self.assertIn("SharedDiagnostics.record(dns.diagnosticEventCode)", current)
