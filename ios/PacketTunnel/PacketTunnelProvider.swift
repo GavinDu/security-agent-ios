@@ -15,22 +15,23 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
+        let completion = PacketTunnelOneShot<Error?>(completionHandler)
         lifecycleQueue.async {
             guard self.lifecycle.beginStart() else {
-                completionHandler(BoringTunError.initializationFailed)
+                completion.call(BoringTunError.initializationFailed)
                 return
             }
             SharedDiagnostics.record("starting")
             guard SharedPreferenceWriteJournal.current.state == .clear else {
                 _ = self.lifecycle.finishStart(success: false)
                 SharedDiagnostics.record("start_failed")
-                completionHandler(AgentConfigurationError.preferenceRecoveryRequired)
+                completion.call(AgentConfigurationError.preferenceRecoveryRequired)
                 return
             }
             guard let profile = SharedProfileStore.load() else {
                 _ = self.lifecycle.finishStart(success: false)
                 SharedDiagnostics.record("start_failed")
-                completionHandler(AgentConfigurationError.missingProfile)
+                completion.call(AgentConfigurationError.missingProfile)
                 return
             }
             // Do not trust a stale App Group profile after a partial native
@@ -45,14 +46,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                   ) else {
                 _ = self.lifecycle.finishStart(success: false)
                 SharedDiagnostics.record("start_failed")
-                completionHandler(AgentConfigurationError.nativeProfileMismatch)
+                completion.call(AgentConfigurationError.nativeProfileMismatch)
                 return
             }
             let transport = BoringTunTransport(provider: self)
             self.engine = transport
             transport.start(profile: profile) { [weak self] error in
                 guard let self else {
-                    completionHandler(BoringTunError.stopped)
+                    completion.call(BoringTunError.stopped)
                     return
                 }
                 self.lifecycleQueue.async {
@@ -60,7 +61,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     guard self.engine === transport,
                           self.lifecycle.finishStart(success: error == nil) else {
                         // Obsolete completion is not evidence of the current attempt.
-                        completionHandler(BoringTunError.stopped)
+                        completion.call(BoringTunError.stopped)
                         return
                     }
                     if let error {
@@ -76,13 +77,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                         }
                         self.logger.error("BoringTun tunnel start failed")
                         self.engine = nil
-                        completionHandler(error)
+                        completion.call(error)
                     } else {
                         // Success means a verified WireGuard handshake,
                         // never merely an open UDP socket.
                         SharedDiagnostics.record("connected")
                         self.logger.info("Rust WireGuard peer handshake complete")
-                        completionHandler(nil)
+                        completion.call(nil)
                     }
                 }
             }
@@ -105,8 +106,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             transport.stop {
                 self.lifecycleQueue.async {
-                    if self.engine === transport { self.engine = nil }
-                    _ = self.lifecycle.finishStop()
+                    // An obsolete or duplicated transport stop callback must
+                    // never complete waiters for a newer engine's teardown.
+                    guard self.engine === transport,
+                          self.lifecycle.finishStop() else { return }
+                    self.engine = nil
                     self.finishStopWaiters()
                 }
             }

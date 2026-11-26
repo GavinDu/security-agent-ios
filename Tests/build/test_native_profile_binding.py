@@ -56,7 +56,10 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
                         starting.index("BoringTunTransport(provider: self)"))
         self.assertLess(starting.index("native.serverAddress == profile.endpoint"),
                         starting.index("BoringTunTransport(provider: self)"))
-        self.assertIn("completionHandler(AgentConfigurationError.nativeProfileMismatch)", starting)
+        self.assertIn("PacketTunnelOneShot<Error?>(completionHandler)", starting)
+        self.assertIn("completion.call(AgentConfigurationError.nativeProfileMismatch)", starting)
+        self.assertLess(starting.index("completion.call(AgentConfigurationError.nativeProfileMismatch)"),
+                        starting.index("BoringTunTransport(provider: self)"))
         self.assertIn("self.lifecycle.finishStart(success: false)", starting)
         self.assertNotIn("BoringTunCodec(", starting)
 

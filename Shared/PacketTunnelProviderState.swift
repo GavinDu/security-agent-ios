@@ -34,3 +34,24 @@ struct PacketTunnelProviderState {
         return true
     }
 }
+
+/// Independent provider-to-OS completion boundary. A transport callback may
+/// be obsolete, duplicated or delivered concurrently with provider release.
+/// Consume the callback before invoking it and never hold the lock across
+/// user code (which may reenter the provider).
+final class PacketTunnelOneShot<Value> {
+    private let lock = NSLock()
+    private var completion: ((Value) -> Void)?
+
+    init(_ completion: @escaping (Value) -> Void) {
+        self.completion = completion
+    }
+
+    func call(_ value: Value) {
+        lock.lock()
+        let callback = completion
+        completion = nil
+        lock.unlock()
+        callback?(value)
+    }
+}
