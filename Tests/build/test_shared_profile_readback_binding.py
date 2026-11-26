@@ -25,7 +25,7 @@ class SharedProfileReadbackBindingTests(unittest.TestCase):
         )
         self.assertIn("throw AgentConfigurationError.invalidProfileData", saving)
         self.assertIn("case .failure(let error):", MANAGER)
-        self.assertIn("commitPublicProfile: { try SharedProfileStore.save(validated) }", MANAGER)
+        self.assertIn("commitPublicProfile: { try io.commitProfile(validated) }", MANAGER)
 
     def test_policy_is_bounded_public_data_only_and_tests_are_mandatory(self):
         self.assertIn("SharedProfileDataPolicy.accepts(expected)", POLICY)

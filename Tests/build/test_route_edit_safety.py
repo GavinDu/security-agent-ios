@@ -17,12 +17,12 @@ class RouteEditBoundaryTests(unittest.TestCase):
         self.assertLess(section.index("RouteEditSafetyPolicy.permitsEdit("),
                         section.index("save(updated)"))
         self.assertLess(section.index("pendingRoute = PendingRoute("),
-                        section.index("manager.connection.stopVPNTunnel()"))
+                        section.index("nativeIO.stop(manager)"))
         self.assertIn("routeStop.cancel(token)", section)
         self.assertIn("manager === pending.manager", section)
         self.assertIn("profile == pending.original", section)
-        self.assertIn("SharedProfileStore.load() == pending.original", section)
-        self.assertIn("SharedProfileStore.load() == original", section)
+        self.assertIn("nativeIO.loadProfile() == pending.original", section)
+        self.assertIn("nativeIO.loadProfile() == original", section)
         self.assertIn("let nativeDisconnected = nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)", src)
         self.assertIn("disconnected: nativeStatus == .disconnected", section)
         self.assertLess(section.index("case .commit:"), section.index("save(pending.candidate)"))
@@ -33,7 +33,7 @@ class RouteEditBoundaryTests(unittest.TestCase):
 
     def test_denied_legacy_disable_also_refreshes_native_manager(self):
         src = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
-        start = src.index("manager.saveToPreferences { [weak self] error in")
+        start = src.index("nativeIO.save(manager) { [weak self] error in")
         stop = src.index("\n    func save(", start)
         callback = src[start:stop]
         self.assertIn("self.reload()", callback)

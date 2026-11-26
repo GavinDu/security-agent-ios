@@ -29,18 +29,18 @@ class NativeInventoryTrustBoundaryTests(unittest.TestCase):
         for block in (save, connect):
             self.assertIn("guard nativeInventoryTrust.permitsMutation else", block)
         self.assertLess(save.index("nativeInventoryTrust.beginWrite()"),
-                        save.index("selected.saveToPreferences"))
+                        save.index("io.save(selected"))
         self.assertLess(save.index("nativeInventoryTrust.didCommitVerifiedWrite()"),
                         save.index("if connectAfterSave { self.connect() }"))
         self.assertLess(connect.index("nativeInventoryTrust.permitsMutation"),
-                        connect.index("manager.connection.startVPNTunnel()"))
+                        connect.index("nativeIO.start(manager)"))
 
     def test_legacy_mutation_invalidates_trust_and_reloads(self):
         legacy = SOURCE.split("private func remediateLegacyFullTunnel()", 1)[1].split(
             "func save(_ candidate:", 1
         )[0]
         self.assertLess(legacy.index("nativeInventoryTrust.beginWrite()"),
-                        legacy.index("manager.saveToPreferences"))
+                        legacy.index("nativeIO.save(manager)"))
         self.assertIn("self.reload()", legacy)
         self.assertIn("Retry loading VPN preferences", VIEW)
 

@@ -27,18 +27,18 @@ class LegacyFullRecoveryBoundaryTests(unittest.TestCase):
         )
         self.assertIn("verifiedRouteIsFull == nil", recovery)
         self.assertIn("Security Agent VPN pairing data is missing or invalid.", src)
-        self.assertIn("manager.connection.stopVPNTunnel()", src)
+        self.assertIn("nativeIO.stop(manager)", src)
         self.assertIn("manager.isOnDemandEnabled = false", src)
         self.assertIn("manager.onDemandRules = []", src)
         self.assertIn("legacyOnDemandDisableAttempted = true", src)
         self.assertIn("legacyStopManager !== manager", recovery)
-        self.assertIn("SharedProfileStore.load() == profile", recovery)
+        self.assertIn("nativeIO.loadProfile() == profile", recovery)
         self.assertLess(recovery.index("nativeInventoryTrust.permitsMutation"),
                         recovery.index("manager.isOnDemandEnabled = false"))
         self.assertIn("self.legacyDisableToken == disableToken", recovery)
         self.assertIn("Legacy VPN auto-connect update has not completed.", recovery)
         self.assertIn("Legacy VPN auto-connect remains enabled.", recovery)
-        deadline = recovery.split("DispatchQueue.main.asyncAfter", 1)[1].split("manager.saveToPreferences", 1)[0]
+        deadline = recovery.split("nativeIO.schedule", 1)[1].split("nativeIO.save(manager)", 1)[0]
         self.assertNotIn("legacyOnDemandDisableInFlight = false", deadline)
         self.assertNotIn("self.reload()", deadline)
         self.assertIn("Finish disabling legacy VPN auto-connect first.", src)

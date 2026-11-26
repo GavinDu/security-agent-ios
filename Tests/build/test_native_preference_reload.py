@@ -38,12 +38,12 @@ class NativePreferenceReloadBoundaryTests(unittest.TestCase):
         self.assertLess(saving.index("if !Thread.isMainThread"),
                         saving.index("preferenceReloadGate.invalidate()"))
         self.assertLess(saving.index("preferenceReloadGate.invalidate()"),
-                        saving.index("selected.saveToPreferences"))
+                        saving.index("io.save(selected"))
         legacy = SOURCE.split("    private func remediateLegacyFullTunnel()", 1)[1].split(
             "    func save(_ candidate:", 1
         )[0]
         self.assertLess(legacy.index("preferenceReloadGate.invalidate()"),
-                        legacy.index("manager.saveToPreferences"))
+                        legacy.index("nativeIO.save(manager)"))
 
     def test_gate_rejects_stale_and_inflight_callbacks(self):
         self.assertIn("token == generation", GATE)

@@ -23,7 +23,7 @@ class ProfileSaveSafetyBoundaryTests(unittest.TestCase):
         self.assertLess(save.index("ProfileSaveSafetyPolicy.permitsSave("),
                         save.index("selected.protocolConfiguration = configuration"))
         self.assertIn("nativeInventoryTrust.permitsMutation", save)
-        self.assertIn("manager?.connection.status", save)
+        self.assertIn("nativeIO.status(manager)", save)
         self.assertIn("manager?.isOnDemandEnabled", save)
         self.assertIn("old.publicKey != validated.publicKey", save)
         self.assertIn("old.endpoint != validated.endpoint", save)
