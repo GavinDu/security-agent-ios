@@ -19,6 +19,16 @@ final class TunnelManager: NSObject, ObservableObject {
     private var legacyFullStopRequested = false
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
+    private var legacyDisableToken: UUID?
+    @Published private var routeStop = RouteStopTransaction()
+    private struct PendingRoute {
+        let token: UUID
+        let manager: NETunnelProviderManager
+        let original: ServerProfile
+        let candidate: ServerProfile
+    }
+    private var pendingRoute: PendingRoute?
+    var isChangingRoute: Bool { routeStop.isPending }
 
     override init() {
         super.init()
@@ -36,6 +46,7 @@ final class TunnelManager: NSObject, ObservableObject {
     @objc private func vpnStatusChanged(_ notification: Notification) {
         DispatchQueue.main.async {
             self.status = self.manager?.connection.status ?? .invalid
+            self.advanceRouteChange()
             self.remediateLegacyFullTunnel()
         }
     }
@@ -49,6 +60,7 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         guard !profileSave.isBusy && !legacyOnDemandDisableInFlight else { return }
+        cancelRouteChange("VPN preferences are being reloaded. Choose the route again after verification.")
         let loadToken = preferenceReloadGate.begin()
         nativeInventoryTrust.beginLoad()
         NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
@@ -113,6 +125,8 @@ final class TunnelManager: NSObject, ObservableObject {
         // A missing/unreadable App Group profile cannot certify a safe split
         // route; do not leave a potentially old active tunnel running.
         guard let manager else { return }
+        // The explicit route transaction owns its stop request until it finishes.
+        guard !routeStop.isPending else { return }
         let status = manager.connection.status
         let active = status == .connected || status == .connecting || status == .reasserting
         // A loaded public profile can be stale relative to native system
@@ -158,11 +172,15 @@ final class TunnelManager: NSObject, ObservableObject {
         nativeInventoryTrust.beginWrite()
         legacyOnDemandDisableAttempted = true
         legacyOnDemandDisableInFlight = true
+        let disableToken = UUID()
+        legacyDisableToken = disableToken
         manager.isOnDemandEnabled = false
         manager.onDemandRules = []
         manager.saveToPreferences { [weak self] error in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.legacyDisableToken == disableToken,
+                      self.manager === manager else { return }
+                self.legacyDisableToken = nil
                 self.legacyOnDemandDisableInFlight = false
                 if let error {
                     self.errorMessage = "Could not disable legacy VPN auto-connect: " +
@@ -184,6 +202,10 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 self?.save(candidate, connectAfterSave: connectAfterSave)
             }
+            return
+        }
+        guard !routeStop.isPending else {
+            errorMessage = "Wait for the route change to finish."
             return
         }
         guard !legacyOnDemandDisableInFlight else {
@@ -326,6 +348,10 @@ final class TunnelManager: NSObject, ObservableObject {
                 "preferences, or remove duplicate Security Agent entries in iOS Settings."
             return
         }
+        guard !routeStop.isPending else {
+            errorMessage = "Wait for the route change to finish."
+            return
+        }
         guard !legacyOnDemandDisableInFlight else {
             errorMessage = "Finish disabling legacy VPN auto-connect first."
             return
@@ -368,6 +394,7 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.disconnect() }
             return
         }
+        cancelRouteChange("Route change cancelled. The VPN will remain disconnected.")
         manager?.connection.stopVPNTunnel()
     }
 
@@ -383,25 +410,85 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
             return
         }
-        // Stop is asynchronous: do not save route preferences until native
-        // NetworkExtension confirms the old session is disconnected. Never
-        // let OS on-demand reconnect the old route during preference changes.
+        guard nativeInventoryTrust.permitsMutation, !routeStop.isPending,
+              !profileSave.isBusy, !legacyOnDemandDisableInFlight else {
+            errorMessage = "Finish or reload the current VPN configuration before changing routes."
+            return
+        }
+        // On-demand must be disabled and verified first; otherwise the OS
+        // may reconnect the old routes before this transaction can commit.
         let nativeStatus = manager?.connection.status ?? .invalid
-        let disconnected = nativeStatus == .disconnected || nativeStatus == .invalid
-        guard RouteEditSafetyPolicy.permitsEdit(
+        let disconnected = nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)
+        guard !(manager?.isOnDemandEnabled ?? false) else {
+            errorMessage = "Turn off Connect on demand before changing routing mode."
+            return
+        }
+        let original = updated
+        updated.routeMode = mode
+        updated.onDemand = false
+        do { updated = try updated.validated() }
+        catch { errorMessage = error.localizedDescription; return }
+
+        if RouteEditSafetyPolicy.permitsEdit(
             nativeDisconnected: disconnected,
             nativeOnDemandEnabled: manager?.isOnDemandEnabled ?? false,
             saveInFlight: profileSave.isBusy || legacyOnDemandDisableInFlight
-        ) else {
-            errorMessage = "Turn off Connect on demand, disconnect the VPN, " +
-                "and wait for Disconnected before changing routing mode."
+        ) {
+            save(updated)
             return
         }
-        updated.routeMode = mode
-        // Recovering from an old full-route profile must never silently
-        // recreate its on-demand connection policy during this save.
-        updated.onDemand = false
-        save(updated)
+        guard let manager,
+              nativeStatus == .connected || nativeStatus == .connecting ||
+              nativeStatus == .reasserting || nativeStatus == .disconnecting,
+              let token = routeStop.begin() else {
+            errorMessage = "VPN state is unavailable. Reload preferences before changing routes."
+            return
+        }
+        pendingRoute = PendingRoute(token: token, manager: manager,
+                                    original: original, candidate: updated)
+        // Mode selection is explicit consent to stop, never to reconnect.
+        // An inherited recovery may have already requested the same stop.
+        if nativeStatus != .disconnecting && !legacyFullStopRequested {
+            manager.connection.stopVPNTunnel()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self, self.routeStop.cancel(token) else { return }
+            self.pendingRoute = nil
+            self.errorMessage = "VPN did not disconnect in time. Reload preferences and retry."
+            self.remediateLegacyFullTunnel()
+        }
+        // Also sample immediately: a stop can complete before a notification.
+        advanceRouteChange()
+    }
+
+    private func advanceRouteChange() {
+        guard let pending = pendingRoute else { return }
+        let nativeStatus = pending.manager.connection.status
+        let knownStatus = nativeStatus == .disconnected || nativeStatus == .disconnecting ||
+            nativeStatus == .connected || nativeStatus == .connecting || nativeStatus == .reasserting
+        let valid = manager === pending.manager && profile == pending.original &&
+            nativeInventoryTrust.permitsMutation && !pending.manager.isOnDemandEnabled &&
+            !profileSave.isBusy && !legacyOnDemandDisableInFlight && knownStatus &&
+            TunnelRouteSafetyPolicy.permitsStart(pending.candidate.routeMode)
+        switch routeStop.observe(pending.token, disconnected: nativeStatus == .disconnected,
+                                 contextValid: valid) {
+        case .ignored, .waiting:
+            return
+        case .cancelled:
+            pendingRoute = nil
+            errorMessage = "VPN state changed before the route could be saved. Reload preferences and retry."
+        case .commit:
+            pendingRoute = nil
+            // save() repeats native state and inventory checks, then verifies
+            // readback before publishing. Never reconnect implicitly.
+            save(pending.candidate)
+        }
+    }
+
+    private func cancelRouteChange(_ message: String) {
+        guard let pending = pendingRoute, routeStop.cancel(pending.token) else { return }
+        pendingRoute = nil
+        errorMessage = message
     }
 
     func setOnDemand(_ enabled: Bool) {
@@ -448,7 +535,7 @@ final class TunnelManager: NSObject, ObservableObject {
             trustedNativeInventory: nativeInventoryTrust.permitsMutation,
             verifiedSplitProfile: isValidSplitProfile,
             nativeProfileBound: matchesNative,
-            noPreferenceWriteInFlight: !profileSave.isBusy && !legacyOnDemandDisableInFlight
+            noPreferenceWriteInFlight: !profileSave.isBusy && !legacyOnDemandDisableInFlight && !routeStop.isPending
         )
     }
 

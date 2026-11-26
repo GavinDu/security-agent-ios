@@ -5,19 +5,26 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 class RouteEditBoundaryTests(unittest.TestCase):
-    def test_change_route_guards_before_mutation_and_never_auto_disconnects(self):
+    def test_change_route_waits_for_native_acknowledgement_before_save(self):
         src = (ROOT / "ios/AgentApp/VPN/TunnelManager.swift").read_text()
         start = src.index("func changeRoute(to mode: RouteMode)")
         stop = src.index("func setOnDemand(", start)
         section = src[start:stop]
-        self.assertIn("nativeStatus == .disconnected || nativeStatus == .invalid", section)
+        self.assertIn("nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)", section)
         self.assertIn("manager?.isOnDemandEnabled ?? false", section)
         self.assertIn("legacyOnDemandDisableInFlight", section)
         self.assertIn("RouteEditSafetyPolicy.permitsEdit(", section)
-        self.assertLess(
-            section.index("RouteEditSafetyPolicy.permitsEdit("),
-            section.index("updated.routeMode = mode")
-        )
+        self.assertLess(section.index("RouteEditSafetyPolicy.permitsEdit("),
+                        section.index("save(updated)"))
+        self.assertLess(section.index("pendingRoute = PendingRoute("),
+                        section.index("manager.connection.stopVPNTunnel()"))
+        self.assertIn("routeStop.cancel(token)", section)
+        self.assertIn("manager === pending.manager", section)
+        self.assertIn("profile == pending.original", section)
+        self.assertIn("disconnected: nativeStatus == .disconnected", section)
+        self.assertLess(section.index("case .commit:"), section.index("save(pending.candidate)"))
+        self.assertNotIn("connectAfterSave: true", section)
+        self.assertIn("self.advanceRouteChange()", src)
         self.assertIn("updated.onDemand = false", section)
         self.assertNotIn("disconnect()", section)
 
@@ -28,6 +35,8 @@ class RouteEditBoundaryTests(unittest.TestCase):
         callback = src[start:stop]
         self.assertIn("self.reload()", callback)
         self.assertIn("if let error", callback)
+        self.assertIn("self.legacyDisableToken == disableToken", callback)
+        self.assertIn("self.manager === manager", callback)
         self.assertLess(callback.index("if let error"), callback.index("self.reload()"))
 
 if __name__ == "__main__":

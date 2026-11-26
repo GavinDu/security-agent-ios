@@ -21,7 +21,7 @@ struct VPNStatusView: View {
                 HStack {
                     Button("Connect") { tunnel.connect() }
                         .disabled(tunnel.profile == nil || tunnel.profile?.routeMode == .full ||
-                                  tunnel.status == .connected || tunnel.status == .connecting)
+                                  tunnel.status == .connected || tunnel.status == .connecting || tunnel.isChangingRoute)
                     Spacer()
                     Button("Disconnect") { tunnel.disconnect() }
                         .disabled(tunnel.status == .disconnected || tunnel.status == .invalid)
@@ -61,6 +61,10 @@ struct VPNStatusView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .disabled(tunnel.isChangingRoute)
+                    if tunnel.isChangingRoute {
+                        ProgressView("Waiting for VPN to disconnect…")
+                    }
                     Text("Full tunnel is disabled pending physical-device verification of encrypted UDP routing and IPv4/IPv6 leak safety.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -69,7 +73,7 @@ struct VPNStatusView: View {
                          : "This saved full-tunnel profile is blocked for safety. Disconnect and switch to split tunnel before connecting.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text("For route changes: turn off Connect on demand, disconnect, wait for Disconnected, then choose the new mode and connect manually.")
+                    Text("For route changes: turn off Connect on demand, then choose the new mode. The VPN will disconnect before saving. Connect manually afterward.")
                         .font(.footnote)
                 }
                 Section("Reliability") {
@@ -78,6 +82,7 @@ struct VPNStatusView: View {
                         set: { tunnel.setOnDemand($0) }
                     ))
                     .disabled(profile.routeMode == .full)
+                    .disabled(tunnel.isChangingRoute)
                     Text("Enable only after testing a manual connection on a physical iPhone.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
