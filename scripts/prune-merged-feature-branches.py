@@ -49,6 +49,7 @@ CANDIDATES = (
     ("feature/vpn-lifecycle-diagnostics", 210),
     ("feature/vpn-provider-completion-guard", 212),
     ("feature/vpn-native-permission-tests", 213),
+    ("feature/vpn-authenticated-path-recovery", 214),
 )
 
 
