@@ -164,6 +164,10 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         // Single attempt per app lifecycle. A denied preference write is
         // surfaced to the user; never retry indefinitely in a VPN callback.
+        if action.disableOnDemand && legacyOnDemandDisableAttempted && !legacyOnDemandDisableInFlight {
+            errorMessage = "Legacy VPN auto-connect remains enabled. Disable it in iOS Settings, then reload."
+            return
+        }
         guard action.disableOnDemand, !legacyOnDemandDisableAttempted,
               !legacyOnDemandDisableInFlight, !profileSave.isBusy else { return }
         // A previous loadAll callback cannot overwrite the native manager
@@ -176,6 +180,14 @@ final class TunnelManager: NSObject, ObservableObject {
         legacyDisableToken = disableToken
         manager.isOnDemandEnabled = false
         manager.onDemandRules = []
+        // Report a hung callback without reopening mutation trust. The OS
+        // preference write cannot be cancelled, so a deadline is NOT proof
+        // that it is safe to start a different write or connect.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self, self.legacyDisableToken == disableToken else { return }
+            self.errorMessage = "Legacy VPN auto-connect update has not completed. " +
+                "Do not reconnect; check iOS VPN Settings."
+        }
         manager.saveToPreferences { [weak self] error in
             DispatchQueue.main.async {
                 guard let self, self.legacyDisableToken == disableToken,
@@ -239,7 +251,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // not just the route editor. Never change the system VPN profile while
         // an old Rust BoringTun session may still own its peer or routes.
         let nativeStatus = manager?.connection.status ?? .invalid
-        let nativeDisconnected = nativeStatus == .disconnected || nativeStatus == .invalid
+        let nativeDisconnected = nativeStatus == .disconnected || (manager == nil && nativeStatus == .invalid)
         let changesPeerOrRoutes = profile.map { old in
             old.publicKey != validated.publicKey ||
             old.endpoint != validated.endpoint ||
@@ -394,7 +406,7 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.disconnect() }
             return
         }
-        cancelRouteChange("Route change cancelled. The VPN will remain disconnected.")
+        cancelRouteChange("Route change cancelled. Wait for the VPN to disconnect.")
         manager?.connection.stopVPNTunnel()
     }
 
@@ -424,6 +436,10 @@ final class TunnelManager: NSObject, ObservableObject {
             return
         }
         let original = updated
+        guard SharedProfileStore.load() == original else {
+            errorMessage = "Saved pairing changed. Reload preferences before changing routes."
+            return
+        }
         updated.routeMode = mode
         updated.onDemand = false
         do { updated = try updated.validated() }
@@ -467,6 +483,7 @@ final class TunnelManager: NSObject, ObservableObject {
         let knownStatus = nativeStatus == .disconnected || nativeStatus == .disconnecting ||
             nativeStatus == .connected || nativeStatus == .connecting || nativeStatus == .reasserting
         let valid = manager === pending.manager && profile == pending.original &&
+            SharedProfileStore.load() == pending.original &&
             nativeInventoryTrust.permitsMutation && !pending.manager.isOnDemandEnabled &&
             !profileSave.isBusy && !legacyOnDemandDisableInFlight && knownStatus &&
             TunnelRouteSafetyPolicy.permitsStart(pending.candidate.routeMode)
