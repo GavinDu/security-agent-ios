@@ -486,6 +486,12 @@ final class TunnelManager: NSObject, ObservableObject {
         }
         // App-side early rejection; the extension independently validates
         // fresh system metadata before any Rust engine or routes are created.
+        // A matching digest alone is insufficient after a partial native save:
+        // verify current public bytes, enabled and exact on-demand settings.
+        guard SharedProfileStore.load() == profile, nativeMatches(manager, profile) else {
+            errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
+            return
+        }
         guard let native = manager.protocolConfiguration as? NETunnelProviderProtocol,
               native.providerBundleIdentifier == AgentConstants.tunnelBundleID,
               native.serverAddress == profile.endpoint,
@@ -632,10 +638,12 @@ final class TunnelManager: NSObject, ObservableObject {
         let native = manager?.protocolConfiguration as? NETunnelProviderProtocol
         let isValidSplitProfile: Bool
         let matchesNative: Bool
-        if let profile, let native {
+        if let profile, let native, let manager {
             isValidSplitProfile = profile.routeMode == .split &&
-                (try? profile.validated()) != nil
+                (try? profile.validated()) != nil &&
+                SharedProfileStore.load() == profile
             matchesNative =
+                nativeMatches(manager, profile) &&
                 native.providerBundleIdentifier == AgentConstants.tunnelBundleID &&
                 native.serverAddress == profile.endpoint &&
                 NativeProfileBindingPolicy.allowsStart(

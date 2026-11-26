@@ -30,5 +30,15 @@ class RollbackBoundaryTests(unittest.TestCase):
         self.assertNotIn("connectAfterSave: true", reconcile)
         self.assertIn("native_preference_rollback_smoke.swift", WORKFLOW)
 
+    def test_partial_native_write_cannot_authorize_connect_or_chat(self):
+        connect = APP.split("func connect()", 1)[1].split("func disconnect()", 1)[0]
+        self.assertLess(connect.index("SharedProfileStore.load() == profile"),
+                        connect.index("manager.connection.startVPNTunnel()"))
+        self.assertLess(connect.index("nativeMatches(manager, profile)"),
+                        connect.index("manager.connection.startVPNTunnel()"))
+        chat = APP.split("var canShowPrivateChat: Bool", 1)[1]
+        self.assertIn("SharedProfileStore.load() == profile", chat)
+        self.assertIn("nativeMatches(manager, profile)", chat)
+
 if __name__ == "__main__":
     unittest.main()
