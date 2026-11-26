@@ -24,7 +24,11 @@ class NativeVPNOperationsBoundaryTests(unittest.TestCase):
                      "testLegacyOnDemandDenialAndDuplicateCallbackDoNotRetry",
                      "testRouteDeadlineCannotCommitOnLateDisconnect",
                      "testFailedReadbackCompensatesOnceWithoutReconnect",
-                     "testRestartMarkerBlocksUntilExplicitRecoveryAndEmptyInventory"):
+                     "testRestartMarkerBlocksUntilExplicitRecoveryAndEmptyInventory",
+                     "testLegacyConnectingReassertingAndInactiveStates",
+                     "testRapidRouteSelectionsAndOfflineReassertionDoNotOverlapWrites",
+                     "testDuplicateInventoryAndStaleLoadCannotAuthorizeLegacyMutation",
+                     "testLegacyOnDemandSuccessRequiresFreshReadbackBeforeMigration"):
             self.assertIn(name, NATIVE)
 
 if __name__ == "__main__":

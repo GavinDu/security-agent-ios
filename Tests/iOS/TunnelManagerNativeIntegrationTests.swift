@@ -229,4 +229,104 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
         XCTAssertEqual(fake.starts, 0)
         XCTAssertTrue(fake.saves.isEmpty)
     }
+
+    func testLegacyConnectingReassertingAndInactiveStates() throws {
+        for status in [NEVPNStatus.connecting, .reasserting, .disconnected] {
+            let prior = profile(.full)
+            let fake = try FakeNativeVPN(prior)
+            fake.state = status
+            let tunnel = TunnelManager(nativeIO: fake.operations())
+            fake.inventories[0]([try fake.installed(prior)], nil)
+            awaitState("legacy inventory published") { tunnel.status == status }
+            XCTAssertEqual(fake.stops, status == .disconnected ? 0 : 1)
+            XCTAssertFalse(tunnel.canShowPrivateChat)
+            tunnel.connect()
+            XCTAssertEqual(fake.starts, 0)
+            XCTAssertTrue(fake.saves.isEmpty)
+        }
+    }
+
+    func testRapidRouteSelectionsAndOfflineReassertionDoNotOverlapWrites() throws {
+        let prior = profile(.full)
+        let fake = try FakeNativeVPN(prior)
+        fake.state = .reasserting
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        fake.inventories[0]([try fake.installed(prior)], nil)
+        awaitState("legacy reassertion stopped") { fake.stops == 1 }
+        tunnel.changeRoute(to: .split)
+        for _ in 0..<10 {
+            tunnel.changeRoute(to: .split)
+            tunnel.changeRoute(to: .full)
+        }
+        XCTAssertTrue(tunnel.isChangingRoute)
+        XCTAssertEqual(fake.stops, 1)
+        XCTAssertEqual(fake.deadlines.count, 1)
+        fake.notify(.reasserting)
+        drainMain()
+        XCTAssertTrue(fake.saves.isEmpty)
+        fake.notify(.disconnected)
+        awaitState("one native save") { fake.saves.count == 1 }
+        tunnel.changeRoute(to: .split)
+        fake.notify(.disconnected)
+        drainMain()
+        XCTAssertEqual(fake.saves.count, 1)
+        XCTAssertEqual(fake.persisted, prior)
+        fake.saves[0].1(nil)
+        awaitState("one readback") { fake.reloads.count == 1 }
+        fake.reloads[0].1(nil)
+        awaitState("one split commit") { fake.commits.count == 1 }
+        XCTAssertEqual(tunnel.profile?.routeMode, .split)
+        XCTAssertEqual(fake.starts, 0)
+    }
+
+    func testDuplicateInventoryAndStaleLoadCannotAuthorizeLegacyMutation() throws {
+        let prior = profile(.full, onDemand: true)
+        let fake = try FakeNativeVPN(prior)
+        fake.state = .connected
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        let stale = fake.inventories[0]
+        tunnel.reload()
+        XCTAssertEqual(fake.inventories.count, 2)
+        fake.inventories[1]([try fake.installed(prior), try fake.installed(prior)], nil)
+        drainMain()
+        stale([try fake.installed(prior)], nil)
+        drainMain()
+        XCTAssertEqual(tunnel.status, .invalid)
+        XCTAssertEqual(fake.stops, 0)
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertFalse(tunnel.canShowPrivateChat)
+        tunnel.connect()
+        XCTAssertEqual(fake.starts, 0)
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
+    func testLegacyOnDemandSuccessRequiresFreshReadbackBeforeMigration() throws {
+        let prior = profile(.full, onDemand: true)
+        let fake = try FakeNativeVPN(prior)
+        fake.state = .connecting
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        fake.inventories[0]([try fake.installed(prior)], nil)
+        awaitState("legacy disable submitted") { fake.saves.count == 1 }
+        tunnel.changeRoute(to: .split)
+        XCTAssertFalse(tunnel.isChangingRoute)
+        XCTAssertEqual(fake.saves.count, 1)
+        fake.saves[0].1(nil)
+        awaitState("legacy disable fresh inventory") { fake.inventories.count == 2 }
+        let reloaded = try fake.installed(prior)
+        reloaded.isOnDemandEnabled = false
+        reloaded.onDemandRules = []
+        fake.state = .disconnected
+        fake.inventories[1]([reloaded], nil)
+        awaitState("native on-demand confirmed disabled") { tunnel.nativeAutoConnectDescription == "Disabled" }
+        tunnel.changeRoute(to: .split)
+        XCTAssertEqual(fake.saves.count, 2)
+        fake.saves[1].1(nil)
+        awaitState("split readback") { fake.reloads.count == 1 }
+        fake.reloads[0].1(nil)
+        awaitState("split profile committed") { tunnel.profile?.routeMode == .split }
+        XCTAssertEqual(fake.commits.count, 1)
+        XCTAssertEqual(fake.starts, 0)
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
 }
