@@ -60,7 +60,7 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
         self.assertIn("completion.call(AgentConfigurationError.nativeProfileMismatch)", starting)
         self.assertLess(starting.index("completion.call(AgentConfigurationError.nativeProfileMismatch)"),
                         starting.index("BoringTunTransport(provider: self)"))
-        self.assertIn("self.lifecycle.finishStart(success: false)", starting)
+        self.assertIn("self.ownership.failPreparation()", starting)
         self.assertNotIn("BoringTunCodec(", starting)
 
     def test_policy_is_exact_and_fail_closed(self):
