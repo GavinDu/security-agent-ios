@@ -111,6 +111,11 @@ jobs:
             Shared/MacPeerAddressAllocationPolicy.swift \
             Tests/build/mac_peer_address_allocation_smoke.swift
           "$RUNNER_TEMP/mac-peer-allocation-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-inventory-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift Shared/MacPeerPublicInventory.swift \
+            Tests/build/mac_peer_public_inventory_smoke.swift
+          "$RUNNER_TEMP/mac-peer-inventory-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
