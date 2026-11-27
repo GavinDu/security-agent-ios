@@ -97,5 +97,51 @@ struct MacPeerAddressAllocationSmoke {
         precondition(removed == .committed)
         print("Mac peer address collision-free reservation policy passed")
         print("Mac peer roster serialization and readback transaction policy passed")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        precondition(MacPeerRosterCoordinator(journal: journal) == nil)
+        try! journal.bootstrap(observed: [])
+        let writer = MacPeerRosterCoordinator(journal: journal)!
+        let otherWriter = MacPeerRosterCoordinator(journal: journal)!
+        let original = await writer.snapshot()
+        let proposal = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        precondition(proposal != nil)
+        let conflict = await otherWriter.prepare(.enroll(publicKey: key(2)), expected: original)
+        precondition(conflict == nil)
+        let reopened = MacPeerRosterCoordinator(journal: journal)!
+        let recovered = await reopened.pendingPlan()
+        precondition(recovered == proposal)
+        let unfenced = await reopened.resolve(id: proposal!.id, observed: [])
+        precondition(unfenced == .unverified)
+        let settled = await reopened.resolve(id: proposal!.id, observed: proposal!.after,
+                                             terminalWriteFenced: true)
+        precondition(settled == .committed)
+        let verified = try! journal.load()
+        precondition(verified.current.peers == proposal!.after && verified.pending == nil)
+        precondition(verified.current.revision == original.revision + 1)
+        let wrongServerJournal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(43))
+        precondition(MacPeerRosterCoordinator(journal: wrongServerJournal) == nil)
+        let nextWriter = MacPeerRosterCoordinator(journal: journal)!
+        let latestSnapshot = await nextWriter.snapshot()
+        let selfPeer = await nextWriter.prepare(.enroll(publicKey: key(42)), expected: latestSnapshot)
+        precondition(selfPeer == nil)
+        let nextPlan = await nextWriter.prepare(.revoke(proposal!.after[0]), expected: latestSnapshot)
+        precondition(nextPlan != nil)
+        let file = directory.appendingPathComponent("peer-roster-v1.json")
+        let pendingBytes = try! Data(contentsOf: file)
+        try! Data("invalid".utf8).write(to: file)
+        let failed = await nextWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        precondition(failed == .unverified)
+        try! pendingBytes.write(to: file)
+        let refusedAfterRepair = await nextWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        precondition(refusedAfterRepair == .unverified)
+        let recoveredWriter = MacPeerRosterCoordinator(journal: journal)!
+        let completed = await recoveredWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        precondition(completed == .committed)
+        print("Durable peer roster journal restart and fenced readback passed")
     }
 }
