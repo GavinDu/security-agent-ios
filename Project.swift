@@ -79,7 +79,8 @@ let project = Project(
             bundleId: "com.gavindu.securityagent.macos",
             deploymentTargets: .macOS("14.0"),
             infoPlist: .extendingDefault(with: [
-                "CFBundleDisplayName": "Security Agent Mac"
+                "CFBundleDisplayName": "Security Agent Mac",
+                "NSCameraUsageDescription": "Scan the iPhone public pairing QR code when requested."
             ]),
             sources: ["macos/AgentMac/**/*.swift", "Shared/**/*.swift"],
             settings: .settings(base: signing)

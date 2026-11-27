@@ -11,6 +11,18 @@ final class IPhonePairingImportPolicyTests: XCTestCase {
         XCTAssertEqual(IPhonePairingImportPolicy.validatedPublicKey(key), key)
     }
 
+    func testCameraRequiresExactlyOneValidPublicQR() {
+        let valid = #"{"kind":"iphone","publicKey":""# + key + #"","version":1}"#
+        XCTAssertEqual(IPhonePairingImportPolicy.cameraPublicKey(from: [valid]), key)
+        XCTAssertNil(IPhonePairingImportPolicy.cameraPublicKey(from: []))
+        XCTAssertNil(IPhonePairingImportPolicy.cameraPublicKey(from: [valid, valid]))
+        XCTAssertNil(IPhonePairingImportPolicy.cameraPublicKey(from: [valid, "bad"]))
+        XCTAssertNil(IPhonePairingImportPolicy.cameraPublicKey(from: ["bad"]))
+        XCTAssertNil(IPhonePairingImportPolicy.cameraPublicKey(
+            from: [valid.replacingOccurrences(of: "iphone", with: "mac")]
+        ))
+    }
+
     func testWrongVersionTypeExtraEndpointAndTruncatedKeyRejected() throws {
         let valid = #"{"kind":"iphone","publicKey":""# + key + #"","version":1}"#
         XCTAssertNil(IPhonePairingImportPolicy.decodePublicKey(

@@ -14,6 +14,20 @@ class MacPairingImportBoundaryTests(unittest.TestCase):
         self.assertIn(".disabled(validatedIPhoneKey == nil)", MAC)
         self.assertNotIn("JSONDecoder().decode(", MAC)
         self.assertNotIn("error.localizedDescription", MAC)
+    def test_camera_uses_validated_public_key_and_has_cancel_fallback(self):
+        camera = (ROOT / "macos/AgentMac/MacPairingCameraView.swift").read_text()
+        project = (ROOT / "Project.swift").read_text()
+        self.assertIn("NSCameraUsageDescription", project)
+        self.assertIn("MacPairingCameraView", MAC)
+        self.assertIn("cameraScan?.id == scan.id", MAC)
+        self.assertIn("IPhonePairingImportPolicy.cameraPublicKey(from: [text])", camera)
+        self.assertIn("observations.count == 1", camera)
+        self.assertIn("guard !Task.isCancelled", camera)
+        self.assertIn(".onDisappear { capture.stop() }", camera)
+        self.assertIn("Cancel / use paste instead", camera)
+        self.assertNotIn("UserDefaults", camera)
+        self.assertNotIn("print(", camera)
+
     def test_validator_is_strict_and_bounded(self):
         self.assertIn("maxPayloadBytes = 4_096", POLICY)
         self.assertIn("bytes.count <= maxPayloadBytes", POLICY)
