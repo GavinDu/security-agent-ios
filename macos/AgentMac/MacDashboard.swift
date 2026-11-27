@@ -79,7 +79,7 @@ struct MacDashboard: View {
                         NSPasteboard.general.setString(peerStanza, forType: .string)
                     }
                     .disabled(validatedIPhoneKey == nil)
-                    Text("Add the peer stanza to the Mac's actual WireGuard server config and activate it. This UI does not run sudo.")
+                    Text("Single-device preview only: every current iPhone uses 10.8.0.2. An administrator must verify both addresses are unassigned or already belong to this exact key before applying the stanza. Do not add another phone at this address. This UI does not run sudo.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if let validationMessage {

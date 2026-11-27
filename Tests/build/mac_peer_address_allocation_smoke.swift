@@ -2,7 +2,7 @@ import Foundation
 
 @main
 struct MacPeerAddressAllocationSmoke {
-    static func main() {
+    static func main() async {
         func key(_ n: UInt8) -> String {
             Data(repeating: n, count: 32).base64EncodedString()
         }
@@ -57,6 +57,45 @@ struct MacPeerAddressAllocationSmoke {
         precondition(MacPeerAddressAllocationPolicy.nextReservation(
             publicKey: key(1), existing: gap
         )?.slot == 133)
+        let coordinator = MacPeerRosterCoordinator(peers: [])!
+        let initial = await coordinator.snapshot()
+        let k1 = key(1)
+        let k2 = key(2)
+        async let p1 = coordinator.prepare(.enroll(publicKey: k1), expected: initial)
+        async let p2 = coordinator.prepare(.enroll(publicKey: k2), expected: initial)
+        let results = await [p1, p2]
+        let plans = results.compactMap { $0 }
+        precondition(plans.count == 1)
+        let first = plans[0]
+        let uncertain = await coordinator.resolve(id: first.id, observed: [
+            MacPeerAddressReservation(publicKey: key(9), slot: 2)
+        ])
+        precondition(uncertain == .unverified)
+        let refused = await coordinator.prepare(.enroll(publicKey: key(3)), expected: initial)
+        precondition(refused == nil)
+        let commit = await coordinator.resolve(id: first.id, observed: first.after)
+        precondition(commit == .committed)
+        let latest = await coordinator.snapshot()
+        let stale = await coordinator.prepare(.enroll(publicKey: key(3)), expected: initial)
+        precondition(stale == nil)
+        let second = await coordinator.prepare(.enroll(publicKey: key(3)), expected: latest)
+        precondition(second?.after.last?.slot == 3)
+        let rollback = await coordinator.resolve(id: second!.id, observed: latest.peers)
+        precondition(rollback == .rolledBack)
+        let next = await coordinator.snapshot()
+        precondition(next.revision == latest.revision + 1 && next.peers == latest.peers)
+        let exact = first.after[0]
+        let wrong = await coordinator.prepare(.revoke(
+            MacPeerAddressReservation(publicKey: exact.publicKey, slot: 3)
+        ), expected: next)
+        precondition(wrong == nil)
+        let revoke = await coordinator.prepare(.revoke(exact), expected: next)
+        precondition(revoke?.after.isEmpty == true)
+        let replay = await coordinator.resolve(id: first.id, observed: [])
+        precondition(replay == .stale)
+        let removed = await coordinator.resolve(id: revoke!.id, observed: [])
+        precondition(removed == .committed)
         print("Mac peer address collision-free reservation policy passed")
+        print("Mac peer roster serialization and readback transaction policy passed")
     }
 }
