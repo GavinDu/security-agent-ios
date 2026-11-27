@@ -52,6 +52,7 @@ CANDIDATES = (
     ("feature/vpn-authenticated-path-recovery", 214),
     ("feature/vpn-provider-lifecycle-harness", 216),
     ("feature/vpn-on-demand-opt-out", 219),
+    ("feature/macos-pairing-camera", 220),
 )
 
 
