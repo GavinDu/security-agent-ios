@@ -58,9 +58,9 @@ enum MacPeerAddressAllocationPolicy {
 }
 
 
-/// Public-only transaction state. No authorization, disk persistence or
-/// privileged daemon calls occur here. The eventual daemon must supply
-/// complete authoritative readback and a durable journal before use (#20).
+/// Public-only transaction values. No authorization or privileged daemon
+/// calls occur here. The eventual daemon must supply complete authoritative
+/// readback and use the persistent coordinator before live use (#20).
 struct MacPeerRosterSnapshot: Codable, Equatable, Sendable {
     let epoch: UUID
     let revision: UInt64
@@ -115,7 +115,7 @@ actor MacPeerRosterCoordinator {
         var proposed = current.peers
         switch mutation {
         case .enroll(let key):
-            guard let reservation = MacPeerAddressAllocationPolicy.nextReservation(
+            guard key != journal?.serverPublicKey, let reservation = MacPeerAddressAllocationPolicy.nextReservation(
                 publicKey: key, existing: proposed
             ) else { return nil }
             proposed.append(reservation)
@@ -206,11 +206,13 @@ struct MacPeerRosterRecord: Codable, Equatable, Sendable {
     fileprivate var isValid: Bool {
         guard version == 1,
               IPhonePairingImportPolicy.validatedPublicKey(serverPublicKey) != nil,
+              !current.peers.contains(where: { $0.publicKey == serverPublicKey }),
               MacPeerRosterCoordinator.canonicalRoster(current.peers) == current.peers else {
             return false
         }
         guard let pending else { return true }
         guard pending.before == current, current.revision < UInt64.max,
+              !pending.after.contains(where: { $0.publicKey == serverPublicKey }),
               MacPeerRosterCoordinator.canonicalRoster(pending.after) == pending.after else {
             return false
         }
@@ -313,10 +315,16 @@ struct MacPeerRosterJournal: Sendable {
         let attrs = try FileManager.default.attributesOfItem(atPath: directory.path)
         guard directory.isFileURL, attrs[.type] as? FileAttributeType == .typeDirectory,
               let permissions = (attrs[.posixPermissions] as? NSNumber)?.intValue,
-              permissions & 0o077 == 0 else { throw JournalError.unavailable }
+              let owner = (attrs[.ownerAccountID] as? NSNumber)?.uint32Value,
+              owner == UInt32(geteuid()), permissions & 0o777 == 0o700 else { throw JournalError.unavailable }
         let fd = open(lockFile.path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, mode_t(0o600))
         guard fd >= 0 else { throw JournalError.io }
         defer { _ = close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0,
+              info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              info.st_uid == geteuid(), info.st_nlink == 1,
+              info.st_mode & mode_t(0o777) == mode_t(0o600) else { throw JournalError.unavailable }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw JournalError.conflict }
         return try operation()
     }

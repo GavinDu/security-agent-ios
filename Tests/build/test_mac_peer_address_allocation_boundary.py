@@ -49,6 +49,10 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         self.assertIn("testDurableRosterRestartAndFencedRecovery", NATIVE)
         self.assertIn("testDurableRosterRejectsMissingOrOversizedRecordAndUnsafeDirectory", NATIVE)
         self.assertIn("Durable peer roster journal restart and fenced readback passed", SWIFT)
+        self.assertIn("owner == UInt32(geteuid())", POLICY)
+        self.assertIn("info.st_nlink == 1", POLICY)
+        self.assertIn("testDurableRosterWriteFailureBlocksAndDoesNotBootstrap", NATIVE)
+        self.assertIn("testDurableRosterRejectsUnknownFieldsAndWrongLockMode", NATIVE)
         self.assertNotIn("MacPeerRosterJournal", MAC)
 
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):

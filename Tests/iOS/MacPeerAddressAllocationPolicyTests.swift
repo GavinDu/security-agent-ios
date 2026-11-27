@@ -195,4 +195,57 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         try FileManager.default.removeItem(at: file)
         XCTAssertNil(MacPeerRosterCoordinator(journal: journal))
     }
+
+    func testDurableRosterWriteFailureBlocksAndDoesNotBootstrap() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = key(42)
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: server)
+        XCTAssertThrowsError(try journal.bootstrap(observed: [
+            MacPeerAddressReservation(publicKey: server, slot: 2)
+        ]))
+        try journal.bootstrap(observed: [])
+        let writer = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
+        let original = await writer.snapshot()
+        let selfPeer = await writer.prepare(.enroll(publicKey: server), expected: original)
+        XCTAssertNil(selfPeer)
+        let candidate = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        let plan = try XCTUnwrap(candidate)
+        let file = directory.appendingPathComponent("peer-roster-v1.json")
+        let pendingBytes = try Data(contentsOf: file)
+        try Data("invalid".utf8).write(to: file)
+        let failed = await writer.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        XCTAssertEqual(failed, .unverified)
+        let stillPending = await writer.pendingPlan()
+        XCTAssertEqual(stillPending, plan)
+        // Even after the file is externally repaired, a writer that saw an
+        // ambiguous IO failure cannot clear its in-memory blocked state.
+        try pendingBytes.write(to: file)
+        let refused = await writer.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        XCTAssertEqual(refused, .unverified)
+        let reopened = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
+        let resolved = await reopened.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        XCTAssertEqual(resolved, .committed)
+    }
+
+    func testDurableRosterRejectsUnknownFieldsAndWrongLockMode() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let file = directory.appendingPathComponent("peer-roster-v1.json")
+        let original = try Data(contentsOf: file)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        object["unexpected"] = true
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: file)
+        XCTAssertNil(MacPeerRosterCoordinator(journal: journal))
+        try original.write(to: file)
+        let lock = directory.appendingPathComponent("peer-roster-v1.lock")
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: lock.path)
+        XCTAssertNil(MacPeerRosterCoordinator(journal: journal))
+    }
 }
