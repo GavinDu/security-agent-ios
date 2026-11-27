@@ -131,6 +131,10 @@ jobs:
             Shared/BoringTunKeyInputPolicy.swift \
             Tests/build/boringtun_key_input_smoke.swift
           "$RUNNER_TEMP/boringtun-key-input-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/peer-psk-binding-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift Shared/PeerPSKBindingPolicy.swift \
+            Tests/build/peer_psk_binding_smoke.swift
+          "$RUNNER_TEMP/peer-psk-binding-tests"
           # Rust WIREGUARD_DONE is op 0, size 0: catch malformed local C
           # result envelopes in the same production Swift policy as iOS.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/boringtun-ffi-done-tests" \
