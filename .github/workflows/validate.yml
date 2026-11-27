@@ -111,6 +111,11 @@ jobs:
             Shared/MacPeerAddressAllocationPolicy.swift \
             Tests/build/mac_peer_address_allocation_smoke.swift
           "$RUNNER_TEMP/mac-peer-allocation-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-inventory-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift Shared/MacPeerPublicInventory.swift \
+            Tests/build/mac_peer_public_inventory_smoke.swift
+          "$RUNNER_TEMP/mac-peer-inventory-tests"
           # Reject oversized/malformed Mac companion iPhone public-only QR paste.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/iphone-pairing-import-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
@@ -231,6 +236,11 @@ jobs:
           swiftc -swift-version 5 -o "$RUNNER_TEMP/immutable-identity-tests" \
             Shared/ImmutableIdentityInstaller.swift Tests/build/immutable_identity_installer_smoke.swift
           "$RUNNER_TEMP/immutable-identity-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/identity-rotation-stage-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift Shared/WireGuardPrivateIdentityPolicy.swift \
+            Shared/ImmutableIdentityInstaller.swift Shared/IdentityRotationStagePolicy.swift \
+            Tests/build/identity_rotation_stage_smoke.swift
+          "$RUNNER_TEMP/identity-rotation-stage-tests"
           # Reject an all-zero private identity on direct Keychain reads,
           # before returning to pairing or calling Rust BoringTun FFI.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/stored-identity-tests" \
