@@ -33,6 +33,17 @@ struct IdentityRotationStageSmoke {
                 derivePublicKey: derive, insertIfAbsent: { _ in preconditionFailure("same identity inserted") })
             preconditionFailure("same identity accepted")
         } catch IdentityRotationStagePolicy.StageError.invalidRecord {}
+        stored = nil
+        var current = key(3)
+        do {
+            _ = try IdentityRotationStagePolicy.stage(binding: binding, readActivePublicKey: { current },
+                readStage: { stored }, generateCandidate: { Data(repeating: 7, count: 32) },
+                derivePublicKey: derive, insertIfAbsent: { bytes in
+                    stored = bytes; current = key(11); return .inserted
+                })
+            preconditionFailure("stale active key received a receipt")
+        } catch IdentityRotationStagePolicy.StageError.activeChanged {}
+        precondition(stored != nil)
         print("Identity rotation insert-only staging and binding policy passed")
     }
 }

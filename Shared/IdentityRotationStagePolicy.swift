@@ -22,7 +22,7 @@ enum IdentityRotationStagePolicy {
         let candidatePrivateKey: Data
     }
 
-    enum StageError: Error { case invalidBinding, invalidRecord, conflict, missingWinner, activeChanged }
+    enum StageError: Error, Equatable { case invalidBinding, invalidRecord, conflict, missingWinner, activeChanged }
     private static let maxBytes = 2048
 
     /// A single insert-only staging slot prevents multiple orphan candidates.

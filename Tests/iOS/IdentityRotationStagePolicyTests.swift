@@ -66,4 +66,45 @@ final class IdentityRotationStagePolicyTests: XCTestCase {
             generateCandidate: { Data(repeating: 7, count: 32) },
             derivePublicKey: derive, insertIfAbsent: { _ in .inserted }))
     }
+
+    func testActiveChangeAfterInsertRetainsCandidateAndBlocksReceipt() throws {
+        let active = try derive(Data(repeating: 3, count: 32))
+        let replacement = try derive(Data(repeating: 11, count: 32))
+        let binding = IdentityRotationStagePolicy.Binding(transactionID: UUID(),
+            serverPublicKey: key(42), activePublicKey: active)
+        var stored: Data?
+        var current = active
+        XCTAssertThrowsError(try IdentityRotationStagePolicy.stage(binding: binding,
+            readActivePublicKey: { current }, readStage: { stored },
+            generateCandidate: { Data(repeating: 7, count: 32) }, derivePublicKey: derive,
+            insertIfAbsent: { bytes in stored = bytes; current = replacement; return .inserted })) {
+                XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .activeChanged)
+            }
+        XCTAssertNotNil(stored)
+        XCTAssertThrowsError(try IdentityRotationStagePolicy.stage(binding: binding,
+            readActivePublicKey: { current }, readStage: { stored },
+            generateCandidate: { XCTFail("generated after active change"); return Data() },
+            derivePublicKey: derive, insertIfAbsent: { _ in XCTFail("overwrote stage"); return .inserted }))
+    }
+
+    func testDerivedPublicKeyMustMatchStoredSecretAndUnknownFieldsRejected() throws {
+        let active = try derive(Data(repeating: 3, count: 32))
+        let binding = IdentityRotationStagePolicy.Binding(transactionID: UUID(),
+            serverPublicKey: key(42), activePublicKey: active)
+        var stored: Data?
+        func stage() throws -> IdentityRotationStagePolicy.Receipt {
+            try IdentityRotationStagePolicy.stage(binding: binding, readActivePublicKey: { active },
+                readStage: { stored }, generateCandidate: { Data(repeating: 7, count: 32) },
+                derivePublicKey: derive, insertIfAbsent: { stored = $0; return .inserted })
+        }
+        _ = try stage()
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(stored)) as? [String: Any])
+        object["candidatePrivateKey"] = Data(repeating: 11, count: 32).base64EncodedString()
+        stored = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        XCTAssertThrowsError(try stage())
+        object["candidatePrivateKey"] = Data(repeating: 7, count: 32).base64EncodedString()
+        object["unexpected"] = true
+        stored = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        XCTAssertThrowsError(try stage())
+    }
 }
