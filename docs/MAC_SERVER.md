@@ -57,3 +57,23 @@ out-of-band fingerprint confirmation on iPhone.
   this document. Track server and routing tests in #27–#30 and #54/#65.
 
 Upstream Rust CLI reference: https://github.com/cloudflare/boringtun
+
+
+## Multi-device enrollment implementation boundary (#20)
+
+The shared Swift roster coordinator serializes proposed public peer changes
+within one process. It checks an exact epoch/revision/roster snapshot, allocates
+a unique slot, revokes only the exact key/slot pair, and holds a pending
+transaction until complete authoritative readback matches the proposed or
+original roster. The daemon must fence all asynchronous writes before providing terminal
+readback; an earlier snapshot is not rollback evidence. Ambiguous readback
+blocks further changes. Rollback advances
+the revision; stale callbacks cannot settle another plan.
+
+This is not a daemon, durable roster, authenticated enrollment protocol,
+or live peer installer. It is intentionally not wired into the Mac copy
+button or PacketTunnel. The app remains single-device at .2. Before enabling
+multiple devices, #20 must integrate a durable journal, authenticated Mac
+authorization, actual Rust daemon apply/readback, and client-address binding
+in the versioned iOS profile. Restart must recover pending operations from
+authoritative state, not construct an empty roster.

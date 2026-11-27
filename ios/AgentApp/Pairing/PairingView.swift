@@ -23,7 +23,7 @@ struct PairingView: View {
                 } else {
                     ProgressView("Preparing secure identity…")
                 }
-                Text("On the Mac Mini, register the displayed public key as a peer at 10.8.0.2/32.")
+                Text("Single-device pairing only: ask the Mac administrator to verify 10.8.0.2/32 is available or already assigned to this exact public key before registering it. Do not replace another phone’s peer.")
                     .foregroundStyle(.secondary)
             }
 

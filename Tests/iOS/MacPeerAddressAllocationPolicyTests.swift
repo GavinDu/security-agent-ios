@@ -59,4 +59,77 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
             publicKey: key(1), existing: full
         ))
     }
+
+    func testConcurrentEnrollmentAndReadback() async throws {
+        let coordinator = try XCTUnwrap(MacPeerRosterCoordinator(peers: []))
+        let initial = await coordinator.snapshot()
+        let firstKey = key(1)
+        let secondKey = key(2)
+        async let a = coordinator.prepare(.enroll(publicKey: firstKey), expected: initial)
+        async let b = coordinator.prepare(.enroll(publicKey: secondKey), expected: initial)
+        let results = await [a, b]
+        XCTAssertEqual(results.compactMap { $0 }.count, 1)
+        let first = try XCTUnwrap(results.compactMap { $0 }.first)
+        XCTAssertEqual(first.after.first?.slot, 2)
+        let unknown = await coordinator.resolve(id: first.id, observed: [
+            MacPeerAddressReservation(publicKey: key(9), slot: 2)
+        ])
+        XCTAssertEqual(unknown, .unverified)
+        let blocked = await coordinator.prepare(.enroll(publicKey: key(3)), expected: initial)
+        XCTAssertNil(blocked)
+        let committed = await coordinator.resolve(id: first.id, observed: first.after)
+        XCTAssertEqual(committed, .committed)
+        let stale = await coordinator.prepare(.enroll(publicKey: key(3)), expected: initial)
+        XCTAssertNil(stale)
+        let latest = await coordinator.snapshot()
+        let second = await coordinator.prepare(.enroll(publicKey: key(3)), expected: latest)
+        XCTAssertEqual(second?.after.last?.slot, 3)
+        let replay = await coordinator.resolve(id: first.id, observed: first.after)
+        XCTAssertEqual(replay, .stale)
+    }
+
+    func testExactRevokeAndRollbackInvalidateSnapshot() async throws {
+        let one = MacPeerAddressReservation(publicKey: key(1), slot: 2)
+        let two = MacPeerAddressReservation(publicKey: key(2), slot: 3)
+        let coordinator = try XCTUnwrap(MacPeerRosterCoordinator(peers: [two, one]))
+        let before = await coordinator.snapshot()
+        XCTAssertEqual(before.peers, [one, two])
+        let wrong = await coordinator.prepare(.revoke(
+            MacPeerAddressReservation(publicKey: one.publicKey, slot: two.slot)
+        ), expected: before)
+        XCTAssertNil(wrong)
+        let candidate = await coordinator.prepare(.revoke(one), expected: before)
+        let plan = try XCTUnwrap(candidate)
+        XCTAssertEqual(plan.after, [two])
+        let rollback = await coordinator.resolve(id: plan.id, observed: [two, one])
+        XCTAssertEqual(rollback, .rolledBack)
+        let after = await coordinator.snapshot()
+        XCTAssertEqual(after.peers, before.peers)
+        XCTAssertEqual(after.revision, before.revision + 1)
+        let stale = await coordinator.prepare(.revoke(one), expected: before)
+        XCTAssertNil(stale)
+        let retry = await coordinator.prepare(.revoke(one), expected: after)
+        let valid = try XCTUnwrap(retry)
+        let committed = await coordinator.resolve(id: valid.id, observed: [two])
+        XCTAssertEqual(committed, .committed)
+        let remaining = await coordinator.snapshot()
+        XCTAssertEqual(remaining.peers, [two])
+    }
+
+    func testCorruptRosterOverflowAndDifferentEpoch() async throws {
+        let one = MacPeerAddressReservation(publicKey: key(1), slot: 2)
+        XCTAssertNil(MacPeerRosterCoordinator(peers: [one, one]))
+        XCTAssertNil(MacPeerRosterCoordinator(peers: [
+            MacPeerAddressReservation(publicKey: key(1), slot: 1)
+        ]))
+        let saturated = try XCTUnwrap(MacPeerRosterCoordinator(peers: [], revision: UInt64.max))
+        let s = await saturated.snapshot()
+        let overflow = await saturated.prepare(.enroll(publicKey: key(2)), expected: s)
+        XCTAssertNil(overflow)
+        let first = try XCTUnwrap(MacPeerRosterCoordinator(peers: []))
+        let restarted = try XCTUnwrap(MacPeerRosterCoordinator(peers: []))
+        let old = await first.snapshot()
+        let invalid = await restarted.prepare(.enroll(publicKey: key(2)), expected: old)
+        XCTAssertNil(invalid)
+    }
 }

@@ -53,6 +53,7 @@ CANDIDATES = (
     ("feature/vpn-provider-lifecycle-harness", 216),
     ("feature/vpn-on-demand-opt-out", 219),
     ("feature/macos-pairing-camera", 220),
+    ("feature/peer-roster-transaction", 223),
 )
 
 
