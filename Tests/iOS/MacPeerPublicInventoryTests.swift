@@ -22,6 +22,7 @@ final class MacPeerPublicInventoryTests: XCTestCase {
             MacPeerAddressReservation(publicKey: b, slot: 3)])
         XCTAssertEqual(result?.serverPublicKey, key(42))
         XCTAssertEqual(decode("", "")?.peers, [])
+        XCTAssertNil(decode("\n", "\n"))
     }
 
     func testIncompleteOrInconsistentReadbackRejected() {

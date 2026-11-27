@@ -15,6 +15,7 @@ struct MacPeerPublicInventorySmoke {
         let second = b + "\tfd86:ea04:1111::3/128 10.8.0.3/32\n"
         precondition(parse(b + "\n" + a + "\n", second + row)?.peers.map(\.slot) == [2, 3])
         precondition(parse("", "")?.peers.isEmpty == true)
+        precondition(parse("\n", "\n") == nil)
         precondition(parse(a + "\n", row, key(43) + "\n") == nil)
         precondition(parse(a + "\n" + b + "\n", row) == nil)
         precondition(parse(a + "\n" + b + "\n", row + row) == nil)

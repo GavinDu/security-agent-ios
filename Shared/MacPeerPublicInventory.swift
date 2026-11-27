@@ -62,7 +62,7 @@ enum MacPeerPublicInventory {
     private static func lines(_ data: Data) -> [String]? {
         guard data.count <= maxBytes else { return nil }
         if data.isEmpty { return [] }
-        guard data.last == 10,
+        guard data.count > 1, data.last == 10,
               data.allSatisfy({ $0 == 9 || $0 == 10 || (32...126).contains($0) }),
               let text = String(data: data, encoding: .utf8) else { return nil }
         let rows = text.dropLast().split(separator: "\n", omittingEmptySubsequences: false)
