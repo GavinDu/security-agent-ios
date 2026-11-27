@@ -70,10 +70,33 @@ readback; an earlier snapshot is not rollback evidence. Ambiguous readback
 blocks further changes. Rollback advances
 the revision; stale callbacks cannot settle another plan.
 
-This is not a daemon, durable roster, authenticated enrollment protocol,
-or live peer installer. It is intentionally not wired into the Mac copy
+This is not a daemon, authenticated enrollment protocol, or live peer installer. It is intentionally not wired into the Mac copy
 button or PacketTunnel. The app remains single-device at .2. Before enabling
-multiple devices, #20 must integrate a durable journal, authenticated Mac
+multiple devices, #20 must integrate the persistent journal with authenticated Mac
 authorization, actual Rust daemon apply/readback, and client-address binding
 in the versioned iOS profile. Restart must recover pending operations from
 authoritative state, not construct an empty roster.
+
+
+### Persistent public roster journal
+
+The next #20 slice implements a versioned canonical public roster record
+with current epoch/revision and pending before/after plan, scoped to a Mac
+public key. The daemon must explicitly bootstrap from a complete verified
+roster in a daemon-owned private local 0700 directory; automatic restart only opens an
+existing validated record. All cooperating writers use the persistent lock
+inode and compare-and-swap on the exact record. Prepare persists before
+returning a plan, and settlement persists before clearing pending state.
+A failed write blocks that actor; restart must re-open and reconcile. File
+and directory sync are required before acknowledging the write. Unknown,
+oversized, noncanonical, wrong-server or inconsistent data fails closed.
+The record contains only public keys, address slots, and transaction metadata.
+A server key cannot be enrolled as its own client peer. The lock must be an
+owner-controlled, single-link 0600 regular file; never unlink it during use.
+
+This is restart recovery infrastructure, not authenticated enrollment or
+actual daemon integration. The owner must protect the directory and lock
+inode, supply a complete terminal fenced readback, and never treat a
+caller Boolean as proof of a real Rust daemon fence. Real power-loss,
+permissions, multi-process and hardware acceptance remain outstanding.
+The current UI/PacketTunnel still cannot activate a second client slot.

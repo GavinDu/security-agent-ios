@@ -36,6 +36,25 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         self.assertNotIn("MacPeerRosterCoordinator", MAC)
         self.assertIn("Single-device preview", MAC)
 
+    def test_durable_roster_blocks_unfenced_recovery_and_stale_writes(self):
+        for token in ["MacPeerRosterJournal", "persistenceBlocked = true",
+                      "guard persist(next: current, pending: plan)",
+                      "guard persist(next: next, pending: nil)",
+                      "journal == nil || terminalWriteFenced",
+                      "flock(fd, LOCK_EX | LOCK_NB)", "guard try read() == expected",
+                      "options: .withoutOverwriting", "options: .atomic",
+                      "try sync(file)", "try sync(directory)", "O_NOFOLLOW",
+                      "try encode(record) == bytes"]:
+            self.assertIn(token, POLICY)
+        self.assertIn("testDurableRosterRestartAndFencedRecovery", NATIVE)
+        self.assertIn("testDurableRosterRejectsMissingOrOversizedRecordAndUnsafeDirectory", NATIVE)
+        self.assertIn("Durable peer roster journal restart and fenced readback passed", SWIFT)
+        self.assertIn("owner == UInt32(geteuid())", POLICY)
+        self.assertIn("info.st_nlink == 1", POLICY)
+        self.assertIn("testDurableRosterWriteFailureBlocksAndDoesNotBootstrap", NATIVE)
+        self.assertIn("testDurableRosterRejectsUnknownFieldsAndWrongLockMode", NATIVE)
+        self.assertNotIn("MacPeerRosterJournal", MAC)
+
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):
         self.assertIn("This UI does not run sudo", MAC)
         self.assertIn("Shared/MacPeerAddressAllocationPolicy.swift", WF)
