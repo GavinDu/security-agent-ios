@@ -165,6 +165,7 @@ class SafeBranchPruneWiringTests(unittest.TestCase):
             '("feature/vpn-native-permission-tests", 213)',
             '("feature/vpn-authenticated-path-recovery", 214)',
             '("feature/vpn-provider-lifecycle-harness", 216)',
+            '("feature/vpn-on-demand-opt-out", 219)',
             'if current is None or current["object"]["sha"] != expected_main:',
             "if not safe_to_delete(",
             'method="DELETE"',
