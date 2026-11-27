@@ -123,8 +123,8 @@ struct MacPeerAddressAllocationSmoke {
         let verified = try! journal.load()
         precondition(verified.current.peers == proposal!.after && verified.pending == nil)
         precondition(verified.current.revision == original.revision + 1)
-        let wrong = MacPeerRosterJournal(directory: directory, serverPublicKey: key(43))
-        precondition(MacPeerRosterCoordinator(journal: wrong) == nil)
+        let wrongServerJournal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(43))
+        precondition(MacPeerRosterCoordinator(journal: wrongServerJournal) == nil)
         let nextWriter = MacPeerRosterCoordinator(journal: journal)!
         let latestSnapshot = await nextWriter.snapshot()
         let selfPeer = await nextWriter.prepare(.enroll(publicKey: key(42)), expected: latestSnapshot)
