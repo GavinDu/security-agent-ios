@@ -100,3 +100,16 @@ inode, supply a complete terminal fenced readback, and never treat a
 caller Boolean as proof of a real Rust daemon fence. Real power-loss,
 permissions, multi-process and hardware acceptance remain outstanding.
 The current UI/PacketTunnel still cannot activate a second client slot.
+
+### Fresh public inventory gate
+
+A persistent coordinator now refuses every prepare unless a structurally validated
+same-server inventory exactly matches the current journal roster under the daemon
+owner's terminal write fence. Raw roster arrays cannot settle a persistent plan;
+settlement requires the public inventory parser's snapshot, the exact transaction
+ID and same server. A fresh read is required for each mutation, not a cached
+startup-ready flag. The parser and a caller-supplied fence flag do not prove actual
+process ownership, freshness or exclusivity. The future privileged Rust daemon
+owner must hold the exclusive mutation fence across capture, prepare, apply and
+settlement, and prevent alternate writers. No live daemon or extra iPhone slot is
+activated by this change.

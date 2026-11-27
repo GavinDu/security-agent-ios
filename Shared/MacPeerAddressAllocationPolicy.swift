@@ -107,10 +107,21 @@ actor MacPeerRosterCoordinator {
 
     func snapshot() -> MacPeerRosterSnapshot { current }
 
+    /// Persistent mutation requires a fresh complete observation from the
+    /// same server, captured under the daemon owner's exclusive write fence.
+    /// A parsed snapshot and Boolean alone do not establish provenance;
+    /// the future authenticated owner must enforce that external contract.
     func prepare(_ mutation: MacPeerRosterMutation,
-                 expected: MacPeerRosterSnapshot) -> MacPeerRosterPlan? {
+                 expected: MacPeerRosterSnapshot,
+                 readback: MacPeerPublicInventory.Snapshot? = nil,
+                 terminalWriteFenced: Bool = false) -> MacPeerRosterPlan? {
         guard !persistenceBlocked, pending == nil, current == expected, current.revision < UInt64.max else {
             return nil
+        }
+        if let journal {
+            guard terminalWriteFenced, let readback,
+                  readback.serverPublicKey == journal.serverPublicKey,
+                  readback.peers == current.peers else { return nil }
         }
         var proposed = current.peers
         switch mutation {
@@ -134,10 +145,27 @@ actor MacPeerRosterCoordinator {
     /// AFTER fencing the operation against any further asynchronous writes.
     /// A pre-completion readback is not proof of rollback. A stale ID or
     /// divergent roster never releases a reservation.
-    func resolve(id: UUID, observed: [MacPeerAddressReservation],
-                 terminalWriteFenced: Bool = false) -> MacPeerRosterResolution {
+    /// Raw observations are permitted only for the in-memory policy fixture.
+    func resolve(id: UUID, observed: [MacPeerAddressReservation]) -> MacPeerRosterResolution {
+        guard pending?.id == id else { return .stale }
+        guard journal == nil else { return .unverified }
+        return resolveValidated(id: id, observed: observed)
+    }
+
+    /// Persistent settlement requires same-server, terminal-fenced public
+    /// readback. Caller must keep the exclusive daemon fence across readback
+    /// and settlement and never infer fencing from process exit alone.
+    func resolve(id: UUID, readback: MacPeerPublicInventory.Snapshot,
+                 terminalWriteFenced: Bool) -> MacPeerRosterResolution {
+        guard pending?.id == id else { return .stale }
+        guard let journal, terminalWriteFenced,
+              readback.serverPublicKey == journal.serverPublicKey else { return .unverified }
+        return resolveValidated(id: id, observed: readback.peers)
+    }
+
+    private func resolveValidated(id: UUID, observed: [MacPeerAddressReservation]) -> MacPeerRosterResolution {
         guard let plan = pending, plan.id == id else { return .stale }
-        guard !persistenceBlocked, journal == nil || terminalWriteFenced else { return .unverified }
+        guard !persistenceBlocked else { return .unverified }
         guard let canonical = Self.canonicalRoster(observed) else { return .unverified }
         let result: MacPeerRosterResolution
         if canonical == plan.after {

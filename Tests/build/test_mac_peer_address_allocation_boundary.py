@@ -40,12 +40,15 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         for token in ["MacPeerRosterJournal", "persistenceBlocked = true",
                       "guard persist(next: current, pending: plan)",
                       "guard persist(next: next, pending: nil)",
-                      "journal == nil || terminalWriteFenced",
+                      "readback.serverPublicKey == journal.serverPublicKey",
+                      "readback.peers == current.peers", "guard journal == nil else",
                       "flock(fd, LOCK_EX | LOCK_NB)", "guard try read() == expected",
                       "options: .withoutOverwriting", "options: .atomic",
                       "try sync(file)", "try sync(directory)", "O_NOFOLLOW",
                       "try encode(record) == bytes"]:
             self.assertIn(token, POLICY)
+        self.assertIn("testPersistentMutationRequiresSameServerFencedInventoryOnEveryPrepareAndSettlement", NATIVE)
+        self.assertIn("Persistent peer roster fresh same-server inventory gate passed", SWIFT)
         self.assertIn("testDurableRosterRestartAndFencedRecovery", NATIVE)
         self.assertIn("testDurableRosterRejectsMissingOrOversizedRecordAndUnsafeDirectory", NATIVE)
         self.assertIn("Durable peer roster journal restart and fenced readback passed", SWIFT)
