@@ -77,3 +77,25 @@ multiple devices, #20 must integrate a durable journal, authenticated Mac
 authorization, actual Rust daemon apply/readback, and client-address binding
 in the versioned iOS profile. Restart must recover pending operations from
 authoritative state, not construct an empty roster.
+
+
+### Persistent public roster journal
+
+The next #20 slice implements a versioned canonical public roster record
+with current epoch/revision and pending before/after plan, scoped to a Mac
+public key. The daemon must explicitly bootstrap from a complete verified
+roster in a private local 0700 directory; automatic restart only opens an
+existing validated record. All cooperating writers use the persistent lock
+inode and compare-and-swap on the exact record. Prepare persists before
+returning a plan, and settlement persists before clearing pending state.
+A failed write blocks that actor; restart must re-open and reconcile. File
+and directory sync are required before acknowledging the write. Unknown,
+oversized, noncanonical, wrong-server or inconsistent data fails closed.
+The record contains public keys and slots only.
+
+This is restart recovery infrastructure, not authenticated enrollment or
+actual daemon integration. The owner must protect the directory and lock
+inode, supply a complete terminal fenced readback, and never treat a
+caller Boolean as proof of a real Rust daemon fence. Real power-loss,
+permissions, multi-process and hardware acceptance remain outstanding.
+The current UI/PacketTunnel still cannot activate a second client slot.

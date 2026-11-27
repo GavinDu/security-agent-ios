@@ -97,5 +97,34 @@ struct MacPeerAddressAllocationSmoke {
         precondition(removed == .committed)
         print("Mac peer address collision-free reservation policy passed")
         print("Mac peer roster serialization and readback transaction policy passed")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        precondition(MacPeerRosterCoordinator(journal: journal) == nil)
+        try! journal.bootstrap(observed: [])
+        let writer = MacPeerRosterCoordinator(journal: journal)!
+        let otherWriter = MacPeerRosterCoordinator(journal: journal)!
+        let original = await writer.snapshot()
+        let proposal = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        precondition(proposal != nil)
+        let conflict = await otherWriter.prepare(.enroll(publicKey: key(2)), expected: original)
+        precondition(conflict == nil)
+        let reopened = MacPeerRosterCoordinator(journal: journal)!
+        let recovered = await reopened.pendingPlan()
+        precondition(recovered == proposal)
+        let unfenced = await reopened.resolve(id: proposal!.id, observed: [])
+        precondition(unfenced == .unverified)
+        let settled = await reopened.resolve(id: proposal!.id, observed: proposal!.after,
+                                             terminalWriteFenced: true)
+        precondition(settled == .committed)
+        let verified = try! journal.load()
+        precondition(verified.current.peers == proposal!.after && verified.pending == nil)
+        precondition(verified.current.revision == original.revision + 1)
+        let wrong = MacPeerRosterJournal(directory: directory, serverPublicKey: key(43))
+        precondition(MacPeerRosterCoordinator(journal: wrong) == nil)
+        print("Durable peer roster journal restart and fenced readback passed")
     }
 }
