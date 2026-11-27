@@ -37,7 +37,7 @@ struct VPNStatusView: View {
                                   tunnel.status == .connected || tunnel.status == .connecting || tunnel.isChangingRoute || tunnel.needsPreferenceRecovery)
                     Spacer()
                     Button("Disconnect") { tunnel.disconnect() }
-                        .disabled(tunnel.status == .disconnected || tunnel.status == .invalid)
+                        .disabled(tunnel.status == .disconnected || tunnel.status == .invalid || tunnel.explicitOptOutInFlight)
                 }
             }
 
@@ -96,7 +96,12 @@ struct VPNStatusView: View {
                         set: { tunnel.setOnDemand($0) }
                     ))
                     .disabled(profile.routeMode == .full)
-                    .disabled(tunnel.isChangingRoute)
+                    .disabled(tunnel.isChangingRoute || tunnel.explicitOptOutInFlight || tunnel.needsPreferenceRecovery)
+                    if tunnel.explicitOptOutInFlight {
+                        ProgressView("Verifying system auto-connect is disabled…")
+                    }
+                    Text("Turning off Connect on demand also disconnects the VPN after the system confirms the change. Connect manually afterward.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     if profile.routeMode == .full {
                         Text("The saved flag may differ from System auto-connect above. Legacy recovery disables native auto-connect without re-enabling full tunnel.")
                             .font(.footnote).foregroundStyle(.secondary)

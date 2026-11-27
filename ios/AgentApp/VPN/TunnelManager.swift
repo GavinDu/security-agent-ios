@@ -36,6 +36,7 @@ final class TunnelManager: NSObject, ObservableObject {
     private weak var legacyStopManager: NETunnelProviderManager?
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
+    @Published private(set) var explicitOptOutInFlight = false
     private var legacyDisableToken: UUID?
     @Published private var routeStop = RouteStopTransaction()
     private struct PendingRoute {
@@ -277,6 +278,10 @@ final class TunnelManager: NSObject, ObservableObject {
         guard let manager else { return }
         // The explicit route transaction owns its stop request until it finishes.
         guard !routeStop.isPending else { return }
+        // A known split session may remain active during the explicit disable
+        // transaction. Chat and new starts are blocked by trust/journal.
+        // Do not trigger legacy stop/disable while its native write is pending.
+        guard !explicitOptOutInFlight else { return }
         let status = nativeIO.status(manager)
         let active = status == .connected || status == .connecting || status == .reasserting
         // A loaded public profile can be stale relative to native system
@@ -715,8 +720,115 @@ final class TunnelManager: NSObject, ObservableObject {
             remediateLegacyFullTunnel()
             return
         }
+        if !enabled && updated.onDemand {
+            disableVerifiedOnDemand()
+            return
+        }
+        guard updated.onDemand != enabled else { return }
         updated.onDemand = enabled
         save(updated)
+    }
+
+    /// Narrow explicit opt-out, not a relaxation of the generic save policy.
+    /// Never edit the running peer, routes or secret material. Stop only
+    /// after native disable/readback and public commit, unless a failed
+    /// transaction requires fail-closed containment.
+    private func disableVerifiedOnDemand() {
+        guard nativeInventoryTrust.permitsMutation, !routeStop.isPending,
+              !profileSave.isBusy, !legacyOnDemandDisableInFlight,
+              !explicitOptOutInFlight, preferenceJournal.state == .clear,
+              let manager, let prior = profile, prior.onDemand,
+              prior.routeMode == .split, (try? prior.validated()) == prior,
+              nativeIO.loadProfile() == prior, nativeMatches(manager, prior),
+              let native = manager.protocolConfiguration as? NETunnelProviderProtocol else {
+            errorMessage = "Cannot verify the installed VPN for auto-connect opt-out. Reload preferences before retrying."
+            return
+        }
+        let currentStatus = nativeIO.status(manager)
+        guard [.disconnected, .connecting, .connected, .reasserting, .disconnecting].contains(currentStatus) else {
+            errorMessage = "VPN status is unavailable. Reload preferences before retrying."
+            return
+        }
+        var candidate = prior
+        candidate.onDemand = false
+        guard let digest = try? candidate.publicProfileDigest() else {
+            errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
+            return
+        }
+        let journalToken: UUID
+        do { journalToken = try preferenceJournal.begin() }
+        catch { errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription; return }
+
+        explicitOptOutInFlight = true
+        preferenceReloadGate.invalidate()
+        nativeInventoryTrust.beginWrite()
+        // Update only the public binding and on-demand settings; retain the
+        // exact native protocol, peer, bundle, and enabled state.
+        native.providerConfiguration = NativeProfileBindingPolicy.metadata(for: digest)
+        manager.protocolConfiguration = native
+        manager.isOnDemandEnabled = false
+        manager.onDemandRules = []
+        let io = nativeIO
+        profileSave.run(
+            saveNative: { callback in io.save(manager, callback) },
+            reloadNative: { [weak self] callback in
+                io.reload(manager) { error in
+                    DispatchQueue.main.async { [weak self] in
+                        if let error { callback(error); return }
+                        guard let self, self.manager === manager,
+                              self.preferenceJournal.state == .pending(journalToken),
+                              io.loadProfile() == prior,
+                              self.nativeMatches(manager, candidate) else {
+                            callback(AgentConfigurationError.nativeProfileMismatch)
+                            return
+                        }
+                        callback(nil)
+                    }
+                }
+            },
+            commitPublicProfile: { [weak self] in
+                guard let self, self.manager === manager,
+                      self.preferenceJournal.state == .pending(journalToken),
+                      io.loadProfile() == prior,
+                      self.nativeMatches(manager, candidate) else {
+                    throw AgentConfigurationError.nativeProfileMismatch
+                }
+                try io.commitProfile(candidate)
+            },
+            nativeSettledAfterTimeout: { [weak self] in
+                // A late callback cannot prove the requested opt-out. Retain
+                // the durable marker and never replay the write or enable.
+                self?.reload()
+            },
+            completed: { [weak self] result in
+                guard let self else { return }
+                self.explicitOptOutInFlight = false
+                switch result {
+                case .success:
+                    guard self.finishPreferenceJournal(journalToken) else {
+                        self.remediateLegacyFullTunnel()
+                        self.reload()
+                        return
+                    }
+                    self.nativeInventoryTrust.didCommitVerifiedWrite()
+                    self.profile = candidate
+                    self.status = self.nativeIO.status(manager)
+                    self.errorMessage = nil
+                    // The explicit opt-out also requests disconnect, but
+                    // only after system auto-connect is verified disabled.
+                    if [.connected, .connecting, .reasserting].contains(self.status) {
+                        self.nativeIO.stop(manager)
+                    }
+                case .failure:
+                    // No compensation may restore on-demand=true. A failed
+                    // or timed-out native result is not proof of unchanged
+                    // preferences. Keep the marker across process restart.
+                    self.errorMessage = "Could not verify that VPN auto-connect is disabled. Do not reconnect; check iOS VPN Settings and recover the interrupted update."
+                    self.remediateLegacyFullTunnel()
+                    if !self.profileSave.isAwaitingNativeCompletion { self.reload() }
+                }
+            }
+        )
     }
 
     /// The UI must never construct VPN-private WebKit based solely on the

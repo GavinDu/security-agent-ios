@@ -88,6 +88,149 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
         wait(for: [drained], timeout: 3)
     }
 
+
+    func testOnDemandDefaultsOffAndExplicitEnableWaitsForNativeReadback() throws {
+        let prior = profile()
+        XCTAssertFalse(prior.onDemand)
+        let fake = try FakeNativeVPN(prior)
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        let installed = try fake.installed(prior)
+        fake.inventories[0]([installed], nil)
+        awaitState("initial inventory") { tunnel.status == .disconnected }
+        XCTAssertFalse(installed.isOnDemandEnabled)
+        XCTAssertTrue(installed.onDemandRules?.isEmpty ?? true)
+        tunnel.setOnDemand(true)
+        XCTAssertEqual(fake.saves.count, 1)
+        XCTAssertTrue(installed.isOnDemandEnabled)
+        XCTAssertEqual(installed.onDemandRules?.count, 1)
+        XCTAssertTrue(installed.onDemandRules?.first is NEOnDemandRuleConnect)
+        XCTAssertEqual(tunnel.profile, prior)
+        XCTAssertEqual(fake.starts, 0)
+        fake.saves[0].1(nil)
+        awaitState("enable readback") { fake.reloads.count == 1 }
+        XCTAssertTrue(fake.commits.isEmpty)
+        fake.reloads[0].1(nil)
+        awaitState("enable committed") { tunnel.profile?.onDemand == true }
+        XCTAssertEqual(fake.starts, 0)
+        XCTAssertEqual(fake.stops, 0)
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
+    func testActiveOptOutPreservesPeerAndWaitsForVerifiedDisableBeforeStop() throws {
+        for status in [NEVPNStatus.connected, .connecting, .reasserting, .disconnected, .disconnecting] {
+            let prior = profile(onDemand: true)
+            var candidate = prior
+            candidate.onDemand = false
+            let fake = try FakeNativeVPN(prior)
+            fake.state = status
+            let tunnel = TunnelManager(nativeIO: fake.operations())
+            let installed = try fake.installed(prior)
+            fake.inventories[0]([installed], nil)
+            awaitState("known split inventory") { tunnel.status == status }
+            tunnel.setOnDemand(false)
+            XCTAssertTrue(tunnel.explicitOptOutInFlight)
+            XCTAssertEqual(fake.saves.count, 1)
+            XCTAssertFalse(installed.isOnDemandEnabled)
+            XCTAssertTrue(installed.onDemandRules?.isEmpty ?? true)
+            XCTAssertEqual((installed.protocolConfiguration as? NETunnelProviderProtocol)?.serverAddress, prior.endpoint)
+            XCTAssertTrue(NativeProfileBindingPolicy.allowsStart(
+                metadata: (installed.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
+                profileDigest: try candidate.publicProfileDigest()))
+            XCTAssertNotEqual(fake.journal.state, .clear)
+            XCTAssertEqual(tunnel.profile, prior)
+            XCTAssertFalse(tunnel.canShowPrivateChat)
+            XCTAssertEqual(fake.stops, 0)
+            tunnel.setOnDemand(false)
+            tunnel.setOnDemand(true)
+            tunnel.connect()
+            tunnel.save(profile(endpoint: "198.51.100.10:51820"))
+            fake.notify(status)
+            drainMain()
+            XCTAssertEqual(fake.saves.count, 1)
+            XCTAssertEqual(fake.stops, 0)
+            XCTAssertEqual(fake.starts, 0)
+            fake.saves[0].1(nil)
+            awaitState("disable readback") { fake.reloads.count == 1 }
+            XCTAssertTrue(fake.commits.isEmpty)
+            XCTAssertEqual(fake.stops, 0)
+            fake.reloads[0].1(nil)
+            awaitState("disable committed") { tunnel.profile == candidate }
+            XCTAssertFalse(tunnel.explicitOptOutInFlight)
+            XCTAssertEqual(fake.commits, [candidate])
+            XCTAssertEqual(fake.journal.state, .clear)
+            XCTAssertEqual(fake.stops, [.connected, .connecting, .reasserting].contains(status) ? 1 : 0)
+            XCTAssertEqual(fake.starts, 0)
+            fake.saves[0].1(nil)
+            fake.reloads[0].1(nil)
+            drainMain()
+            XCTAssertEqual(fake.commits, [candidate])
+            XCTAssertEqual(fake.saves.count, 1)
+        }
+    }
+
+    func testActiveEnableAndUntrustedOptOutDoNotMutatePreferences() throws {
+        let prior = profile()
+        let fake = try FakeNativeVPN(prior)
+        fake.state = .connected
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        fake.inventories[0]([try fake.installed(prior)], nil)
+        awaitState("connected") { tunnel.status == .connected }
+        tunnel.setOnDemand(true)
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertEqual(fake.persisted, prior)
+        XCTAssertNotNil(tunnel.errorMessage)
+
+        let enabled = profile(onDemand: true)
+        let stale = try FakeNativeVPN(enabled)
+        stale.state = .disconnected
+        let other = TunnelManager(nativeIO: stale.operations())
+        let native = try stale.installed(enabled)
+        stale.inventories[0]([native], nil)
+        awaitState("known inventory") { other.status == .disconnected }
+        stale.persisted = profile(onDemand: true, endpoint: "198.51.100.10:51820")
+        other.setOnDemand(false)
+        XCTAssertTrue(stale.saves.isEmpty)
+        XCTAssertTrue(native.isOnDemandEnabled)
+        XCTAssertEqual(stale.journal.state, .clear)
+    }
+
+    func testOptOutDenialOrReadbackMismatchNeverPublishesOrReenables() throws {
+        for denySave in [true, false] {
+            let prior = profile(onDemand: true)
+            let fake = try FakeNativeVPN(prior)
+            fake.state = .connected
+            let tunnel = TunnelManager(nativeIO: fake.operations())
+            let installed = try fake.installed(prior)
+            fake.inventories[0]([installed], nil)
+            awaitState("connected") { tunnel.status == .connected }
+            tunnel.setOnDemand(false)
+            XCTAssertEqual(fake.saves.count, 1)
+            if denySave {
+                fake.saves[0].1(FakeNativeVPN.Failure.denied)
+            } else {
+                fake.saves[0].1(nil)
+                awaitState("disable readback") { fake.reloads.count == 1 }
+                installed.isOnDemandEnabled = true // OS readback disagrees
+                fake.reloads[0].1(nil)
+            }
+            awaitState("fresh inventory after failure") { fake.inventories.count == 2 }
+            XCTAssertFalse(tunnel.explicitOptOutInFlight)
+            XCTAssertNotEqual(fake.journal.state, .clear)
+            XCTAssertEqual(fake.persisted, prior)
+            XCTAssertTrue(fake.commits.isEmpty)
+            XCTAssertFalse(tunnel.canShowPrivateChat)
+            XCTAssertEqual(fake.stops, 1)
+            fake.inventories[1]([try fake.installed(prior)], nil)
+            drainMain()
+            tunnel.setOnDemand(false)
+            tunnel.connect()
+            XCTAssertEqual(fake.saves.count, 1)
+            XCTAssertEqual(fake.starts, 0)
+            XCTAssertNotEqual(fake.journal.state, .clear)
+            XCTAssertTrue(tunnel.needsPreferenceRecovery)
+        }
+    }
+
     func testInitialPermissionDenialDoesNotPublishOrConnectAndRetryIsExplicit() throws {
         let candidate = profile()
         let fake = try FakeNativeVPN(nil)
