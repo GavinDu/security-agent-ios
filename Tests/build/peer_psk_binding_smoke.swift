@@ -32,6 +32,11 @@ struct PeerPSKBindingSmoke {
                 preconditionFailure("invalid bound PSK accepted")
             } catch PeerPSKBindingPolicy.SelectionError.invalidRecord {}
         }
+        do {
+            _ = try PeerPSKBindingPolicy.select(serverPublicKey: server, clientPublicKey: client,
+                                               legacyPresent: false, boundRecord: bound + Data([10]))
+            preconditionFailure("noncanonical PSK accepted")
+        } catch PeerPSKBindingPolicy.SelectionError.invalidRecord {}
         print("Peer-bound PSK selection and legacy fail-closed policy passed")
     }
 }

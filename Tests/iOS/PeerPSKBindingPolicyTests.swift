@@ -13,6 +13,24 @@ final class PeerPSKBindingPolicyTests: XCTestCase {
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
+    func testCanonicalSecretContainingSlash() throws {
+        struct Fixture: Encodable {
+            let version = 1
+            let serverPublicKey: String
+            let clientPublicKey: String
+            let presharedKey: Data
+        }
+        let server = key(42), client = key(7), secret = Data(repeating: 255, count: 32)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let bound = try encoder.encode(Fixture(serverPublicKey: server,
+            clientPublicKey: client, presharedKey: secret))
+        XCTAssertEqual(try PeerPSKBindingPolicy.select(serverPublicKey: server,
+            clientPublicKey: client, legacyPresent: false, boundRecord: bound), secret)
+        XCTAssertThrowsError(try PeerPSKBindingPolicy.select(serverPublicKey: server,
+            clientPublicKey: client, legacyPresent: false, boundRecord: bound + Data([10])))
+    }
+
     func testAbsentAndExactBoundPSK() throws {
         let server = key(42), client = key(7), secret = Data(repeating: 8, count: 32)
         XCTAssertNil(try PeerPSKBindingPolicy.select(serverPublicKey: server,
