@@ -9,6 +9,11 @@ struct MacDashboard: View {
     @State private var iphonePublicKey = ""
     @State private var iphonePairingText = ""
     @State private var validationMessage: String?
+    @State private var cameraScan: CameraScan?
+
+    private struct CameraScan: Identifiable {
+        let id = UUID()
+    }
 
     private var profile: ServerProfile? {
         try? ServerProfile(publicKey: publicKey, endpoint: endpoint).validated()
@@ -42,6 +47,12 @@ struct MacDashboard: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("iPhone peer registration") {
+                    Button("Scan iPhone pairing QR with camera") {
+                        iphonePublicKey = ""
+                        iphonePairingText = ""
+                        validationMessage = nil
+                        cameraScan = CameraScan()
+                    }
                     TextField("Paste iPhone pairing QR JSON", text: $iphonePairingText)
                         .textFieldStyle(.roundedBorder)
                     Button("Import iPhone pairing payload") {
@@ -53,8 +64,10 @@ struct MacDashboard: View {
                         } else {
                             // Do not reflect untrusted QR JSON, endpoints or
                             // arbitrary decoder errors into diagnostics.
+                            iphonePublicKey = ""
                             validationMessage = "Invalid iPhone QR: expected version 1 and a canonical 32-byte public key."
                         }
+                        iphonePairingText = ""
                     }
                     TextField("iPhone public key", text: $iphonePublicKey)
                         .textFieldStyle(.roundedBorder)
@@ -109,6 +122,17 @@ struct MacDashboard: View {
             }
         }
         .padding(25)
+        .sheet(item: $cameraScan) { scan in
+            MacPairingCameraView { key in
+                guard cameraScan?.id == scan.id else { return }
+                iphonePublicKey = key
+                validationMessage = nil
+                cameraScan = nil
+            } onCancel: {
+                guard cameraScan?.id == scan.id else { return }
+                cameraScan = nil
+            }
+        }
     }
 }
 

@@ -25,6 +25,12 @@ enum IPhonePairingImportPolicy {
         return value
     }
 
+    /// A camera frame must contain exactly one QR; never guess between peers.
+    static func cameraPublicKey(from codes: [String]) -> String? {
+        guard codes.count == 1 else { return nil }
+        return decodePublicKey(from: codes[0])
+    }
+
     static func decodePublicKey(from text: String) -> String? {
         // Reject oversized pasted JSON before allocating Data or parsing.
         guard !text.isEmpty, text.utf8.count <= maxPayloadBytes else {
