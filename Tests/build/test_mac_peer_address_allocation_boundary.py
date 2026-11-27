@@ -22,6 +22,20 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         self.assertLess(POLICY.index("slots.insert(reservation.slot).inserted"),
                         POLICY.index("for number in Int(firstClient)"))
 
+    def test_roster_transactions_are_isolated_and_not_live_provisioning(self):
+        for token in ["actor MacPeerRosterCoordinator", "pending == nil",
+                      "current == expected", "current.revision < UInt64.max",
+                      "proposed.firstIndex(of: exactPeer)", "plan.id == id",
+                      "canonical == plan.after", "canonical == plan.before.peers",
+                      "revision: current.revision + 1"]:
+            self.assertIn(token, POLICY)
+        self.assertIn("testConcurrentEnrollmentAndReadback", NATIVE)
+        self.assertIn("testExactRevokeAndRollbackInvalidateSnapshot", NATIVE)
+        self.assertIn("testCorruptRosterOverflowAndDifferentEpoch", NATIVE)
+        self.assertIn("Mac peer roster serialization and readback transaction policy passed", SWIFT)
+        self.assertNotIn("MacPeerRosterCoordinator", MAC)
+        self.assertIn("Single-device preview", MAC)
+
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):
         self.assertIn("This UI does not run sudo", MAC)
         self.assertIn("Shared/MacPeerAddressAllocationPolicy.swift", WF)

@@ -65,7 +65,9 @@ The shared Swift roster coordinator serializes proposed public peer changes
 within one process. It checks an exact epoch/revision/roster snapshot, allocates
 a unique slot, revokes only the exact key/slot pair, and holds a pending
 transaction until complete authoritative readback matches the proposed or
-original roster. Ambiguous readback blocks further changes. Rollback advances
+original roster. The daemon must fence all asynchronous writes before providing terminal
+readback; an earlier snapshot is not rollback evidence. Ambiguous readback
+blocks further changes. Rollback advances
 the revision; stale callbacks cannot settle another plan.
 
 This is not a daemon, durable roster, authenticated enrollment protocol,

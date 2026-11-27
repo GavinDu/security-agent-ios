@@ -5,7 +5,7 @@ import Foundation
 /// The current iOS PacketTunnel still uses a fixed .2 address; callers MUST
 /// not activate second-peer reservations before implementing dynamic iOS
 /// network settings and authenticated Mac roster transactions (#20).
-struct MacPeerAddressReservation: Equatable {
+struct MacPeerAddressReservation: Equatable, Sendable {
     let publicKey: String
     let slot: UInt8
 
@@ -56,21 +56,21 @@ enum MacPeerAddressAllocationPolicy {
 /// Public-only transaction state. No authorization, disk persistence or
 /// privileged daemon calls occur here. The eventual daemon must supply
 /// complete authoritative readback and a durable journal before use (#20).
-struct MacPeerRosterSnapshot: Equatable {
+struct MacPeerRosterSnapshot: Equatable, Sendable {
     let epoch: UUID
     let revision: UInt64
     let peers: [MacPeerAddressReservation]
 }
-enum MacPeerRosterMutation {
+enum MacPeerRosterMutation: Sendable {
     case enroll(publicKey: String)
     case revoke(MacPeerAddressReservation)
 }
-struct MacPeerRosterPlan {
+struct MacPeerRosterPlan: Sendable {
     let id: UUID
     let before: MacPeerRosterSnapshot
     let after: [MacPeerAddressReservation]
 }
-enum MacPeerRosterResolution: Equatable {
+enum MacPeerRosterResolution: Equatable, Sendable {
     case committed, rolledBack, unverified, stale
 }
 
@@ -109,8 +109,10 @@ actor MacPeerRosterCoordinator {
         return plan
     }
 
-    /// Caller must establish provenance of a complete daemon observation.
-    /// A stale ID or a partial/divergent roster never releases a reservation.
+    /// Caller must establish provenance of a complete daemon observation
+    /// AFTER fencing the operation against any further asynchronous writes.
+    /// A pre-completion readback is not proof of rollback. A stale ID or
+    /// divergent roster never releases a reservation.
     func resolve(id: UUID, observed: [MacPeerAddressReservation]) -> MacPeerRosterResolution {
         guard let plan = pending, plan.id == id else { return .stale }
         guard let canonical = Self.canonicalRoster(observed) else { return .unverified }
