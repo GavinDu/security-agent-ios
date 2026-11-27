@@ -143,6 +143,7 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
             tunnel.setOnDemand(false)
             tunnel.setOnDemand(true)
             tunnel.connect()
+            tunnel.disconnect()
             tunnel.save(profile(endpoint: "198.51.100.10:51820"))
             fake.notify(status)
             drainMain()
@@ -226,6 +227,56 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
             tunnel.connect()
             XCTAssertEqual(fake.saves.count, 1)
             XCTAssertEqual(fake.starts, 0)
+            XCTAssertNotEqual(fake.journal.state, .clear)
+            XCTAssertTrue(tunnel.needsPreferenceRecovery)
+        }
+    }
+
+
+    func testOptOutTimeoutLateSaveAndReloadNeverCommitOrRetry() throws {
+        for timeOutDuringReload in [false, true] {
+            let prior = profile(onDemand: true)
+            let fake = try FakeNativeVPN(prior)
+            fake.state = .reasserting
+            var expire: (() -> Void)?
+            let sequencer = ProfileSaveSequencer(scheduleDeadline: { _, handler in
+                expire = handler
+                return {}
+            })
+            let tunnel = TunnelManager(nativeIO: fake.operations(), profileSave: sequencer)
+            fake.inventories[0]([try fake.installed(prior)], nil)
+            awaitState("reasserting") { tunnel.status == .reasserting }
+            tunnel.setOnDemand(false)
+            XCTAssertEqual(fake.saves.count, 1)
+            if timeOutDuringReload {
+                fake.saves[0].1(nil)
+                awaitState("native readback pending") { fake.reloads.count == 1 }
+            }
+            XCTAssertNotNil(expire)
+            expire?()
+            XCTAssertFalse(tunnel.explicitOptOutInFlight)
+            XCTAssertTrue(sequencer.isAwaitingNativeCompletion)
+            XCTAssertNotEqual(fake.journal.state, .clear)
+            XCTAssertEqual(fake.stops, 1)
+            tunnel.setOnDemand(false)
+            tunnel.connect()
+            tunnel.reload()
+            XCTAssertEqual(fake.inventories.count, 1)
+            XCTAssertEqual(fake.saves.count, 1)
+            XCTAssertEqual(fake.starts, 0)
+            if timeOutDuringReload {
+                fake.reloads[0].1(nil)
+            } else {
+                fake.saves[0].1(nil)
+            }
+            awaitState("late callback releases only native wait") { fake.inventories.count == 2 }
+            XCTAssertFalse(sequencer.isBusy)
+            fake.inventories[1]([try fake.installed(prior)], nil)
+            drainMain()
+            XCTAssertEqual(fake.reloads.count, timeOutDuringReload ? 1 : 0)
+            XCTAssertEqual(fake.commits.count, 0)
+            XCTAssertEqual(fake.persisted, prior)
+            XCTAssertEqual(fake.saves.count, 1)
             XCTAssertNotEqual(fake.journal.state, .clear)
             XCTAssertTrue(tunnel.needsPreferenceRecovery)
         }

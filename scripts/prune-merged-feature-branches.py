@@ -51,6 +51,7 @@ CANDIDATES = (
     ("feature/vpn-native-permission-tests", 213),
     ("feature/vpn-authenticated-path-recovery", 214),
     ("feature/vpn-provider-lifecycle-harness", 216),
+    ("feature/vpn-on-demand-opt-out", 219),
 )
 
 

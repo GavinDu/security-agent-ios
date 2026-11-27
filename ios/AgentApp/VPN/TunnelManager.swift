@@ -9,7 +9,7 @@ final class TunnelManager: NSObject, ObservableObject {
     @Published var showSettings = false
     private var manager: NETunnelProviderManager?
     private let nativeIO: NativeVPNOperations
-    private let profileSave = ProfileSaveSequencer()
+    private let profileSave: ProfileSaveSequencer
     private var requestedManualRecovery: UUID?
     private var preferenceJournal: PreferenceWriteJournal { nativeIO.journal() }
     var needsPreferenceRecovery: Bool {
@@ -37,6 +37,7 @@ final class TunnelManager: NSObject, ObservableObject {
     private var legacyOnDemandDisableAttempted = false
     private var legacyOnDemandDisableInFlight = false
     @Published private(set) var explicitOptOutInFlight = false
+    private var explicitOptOutPrior: ServerProfile?
     private var legacyDisableToken: UUID?
     @Published private var routeStop = RouteStopTransaction()
     private struct PendingRoute {
@@ -50,8 +51,9 @@ final class TunnelManager: NSObject, ObservableObject {
 
     override convenience init() { self.init(nativeIO: NativeVPNOperations()) }
 
-    init(nativeIO: NativeVPNOperations) {
+    init(nativeIO: NativeVPNOperations, profileSave: ProfileSaveSequencer = ProfileSaveSequencer()) {
         self.nativeIO = nativeIO
+        self.profileSave = profileSave
         self.profile = nativeIO.loadProfile()
         super.init()
         NotificationCenter.default.addObserver(
@@ -281,7 +283,8 @@ final class TunnelManager: NSObject, ObservableObject {
         // A known split session may remain active during the explicit disable
         // transaction. Chat and new starts are blocked by trust/journal.
         // Do not trigger legacy stop/disable while its native write is pending.
-        guard !explicitOptOutInFlight else { return }
+        if explicitOptOutInFlight, let prior = explicitOptOutPrior,
+           profile == prior, nativeIO.loadProfile() == prior { return }
         let status = nativeIO.status(manager)
         let active = status == .connected || status == .connecting || status == .reasserting
         // A loaded public profile can be stale relative to native system
@@ -604,6 +607,10 @@ final class TunnelManager: NSObject, ObservableObject {
             DispatchQueue.main.async { [weak self] in self?.disconnect() }
             return
         }
+        guard !explicitOptOutInFlight else {
+            errorMessage = "Wait for system auto-connect to be disabled before disconnecting."
+            return
+        }
         cancelRouteChange("Route change cancelled. Wait for the VPN to disconnect.")
         if let manager { nativeIO.stop(manager) }
     }
@@ -759,6 +766,7 @@ final class TunnelManager: NSObject, ObservableObject {
         do { journalToken = try preferenceJournal.begin() }
         catch { errorMessage = AgentConfigurationError.preferenceRecoveryRequired.localizedDescription; return }
 
+        explicitOptOutPrior = prior
         explicitOptOutInFlight = true
         preferenceReloadGate.invalidate()
         nativeInventoryTrust.beginWrite()
@@ -802,6 +810,7 @@ final class TunnelManager: NSObject, ObservableObject {
             },
             completed: { [weak self] result in
                 guard let self else { return }
+                self.explicitOptOutPrior = nil
                 self.explicitOptOutInFlight = false
                 switch result {
                 case .success:

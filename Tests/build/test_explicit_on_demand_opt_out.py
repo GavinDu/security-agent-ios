@@ -25,14 +25,17 @@ class ExplicitOnDemandOptOutTests(unittest.TestCase):
         failure = body.split("case .failure:", 1)[1]
         self.assertNotIn("finishPreferenceJournal", failure)
         self.assertIn("self.remediateLegacyFullTunnel()", failure)
-        self.assertIn("guard !explicitOptOutInFlight else { return }", APP)
+        self.assertIn("if explicitOptOutInFlight, let prior = explicitOptOutPrior,", APP)
+        self.assertIn("profile == prior, nativeIO.loadProfile() == prior", APP)
+        self.assertIn("guard !explicitOptOutInFlight else {", APP)
         self.assertIn("Turning off Connect on demand also disconnects", VIEW)
 
     def test_actual_manager_regressions(self):
         for name in ("testOnDemandDefaultsOffAndExplicitEnableWaitsForNativeReadback",
                      "testActiveOptOutPreservesPeerAndWaitsForVerifiedDisableBeforeStop",
                      "testActiveEnableAndUntrustedOptOutDoNotMutatePreferences",
-                     "testOptOutDenialOrReadbackMismatchNeverPublishesOrReenables"):
+                     "testOptOutDenialOrReadbackMismatchNeverPublishesOrReenables",
+                     "testOptOutTimeoutLateSaveAndReloadNeverCommitOrRetry"):
             self.assertIn(name, NATIVE)
 
 if __name__ == "__main__":
