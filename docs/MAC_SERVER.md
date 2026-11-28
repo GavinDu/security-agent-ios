@@ -192,3 +192,12 @@ cannot reconstruct pre-upgrade receipts (no live enrollment was enabled).
 This local trusted journal is not channel authentication, anti-rollback storage,
 client-side receipt consumption, or a real daemon fence. No UI or native profile
 activation is enabled.
+
+### Bounded Rust local request ingress (#27)
+
+The Rust policy crate now reads one owned Unix stream using a fixed buffer
+and an absolute deadline across all fragments and mandatory write-half EOF.
+Truncated, overlong, malformed and stalled streams fail closed; no listener,
+privileged socket path, OS credential authorization or response protocol is
+introduced. Success retains the same connection for future response delivery;
+admission and caller authentication must precede invocation.
