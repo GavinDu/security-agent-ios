@@ -36,6 +36,46 @@ enum PeerPSKBindingPolicy {
         let presharedKey: Data
     }
 
+    enum StageError: Error, Equatable { case invalidInput, conflict, missingWinner }
+    struct StageReceipt: Equatable, Sendable {
+        let serverPublicKey: String
+        let requirement: PeerPSKRequirement
+    }
+
+    /// Local insert-only initial provisioning stage; caller must authenticate
+    /// the exchange and serialize it with profile/identity/rotation changes.
+    /// The staging account is never selected by transport. No secret receipt,
+    /// committed key replacement, profile mutation, or remote proof.
+    static func stageInitial(serverPublicKey: String, requirement: PeerPSKRequirement,
+                             secret: Data, verifyLocalState: () throws -> Void,
+                             readStage: () throws -> Data?,
+                             insertIfAbsent: (Data) throws -> Void) throws -> StageReceipt {
+        guard requirement.isValid(serverPublicKey: serverPublicKey),
+              secret.count == 32, secret.contains(where: { $0 != 0 }) else {
+            throw StageError.invalidInput
+        }
+        let record = Record(version: 2, serverPublicKey: serverPublicKey,
+                            clientPublicKey: requirement.clientPublicKey,
+                            transactionID: requirement.transactionID, presharedKey: secret)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let expected = try encoder.encode(record)
+        guard (1...2048).contains(expected.count) else { throw StageError.invalidInput }
+        try verifyLocalState()
+        if let existing = try readStage() {
+            guard existing == expected else { throw StageError.conflict }
+        } else {
+            try verifyLocalState()
+            try insertIfAbsent(expected)
+        }
+        // Verify a persisted winner after both retry and atomic insert.
+        // A conflicting/absent winner must not be replaced or activated.
+        guard let winner = try readStage() else { throw StageError.missingWinner }
+        guard winner == expected else { throw StageError.conflict }
+        try verifyLocalState()
+        return StageReceipt(serverPublicKey: serverPublicKey, requirement: requirement)
+    }
+
     static func select(serverPublicKey: String, clientPublicKey: String,
                        legacyPresent: Bool, boundRecord: Data?,
                        requirement: PeerPSKRequirement?) throws -> Data? {

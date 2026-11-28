@@ -35,3 +35,18 @@ verified same-marker settings changes are allowed. Authenticated recovery and
 bilateral commit still required; no provisioning enabled. If an actor can
 rewrite both trusted stores or delete the VPN configuration and all metadata,
 this local binding is not an anti-tamper root of trust.
+
+## Initial local staging (no activation)
+
+A future authenticated provisioning owner can stage an exact server/client/
+transaction/secret in a separate insert-only device-only Keychain account.
+The active identity and existing unmarked public profile must match; a missing
+or protected profile, legacy or committed PSK, or pending identity rotation
+blocks initial staging. The future owner must separately verify native binding. Retry accepts only byte-identical canonical
+records and requires persisted readback; conflicting or missing winners fail.
+Only a public receipt is returned. The stage is never read by the transport,
+and no UI or PacketTunnel caller, committed secret writer, secret deletion,
+profile activation or network exchange is added. The future authenticated
+owner must serialize this with identity and profile changes, recover an
+ambiguous pending stage, and prove both endpoints before enabling a commit.
+A local readback is not remote authorization or evidence of a handshake.

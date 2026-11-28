@@ -21,3 +21,20 @@ class PeerPSKBindingBoundaryTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/validate.yml").read_text()
         self.assertIn("peer_psk_binding_smoke.swift", workflow)
         self.assertTrue((ROOT / "Tests/iOS/PeerPSKBindingPolicyTests.swift").exists())
+
+    def test_initial_stage_is_separate_insert_only_and_not_transport_visible(self):
+        keychain = (ROOT / "Shared/SecretStore.swift").read_text()
+        self.assertIn('pskStageAccount = "wireguard.preSharedKey.stage.v1"', keychain)
+        stage = keychain.split("static func stageInitialPreSharedKey(", 1)[1].split("static func stageRotationCandidate(", 1)[0]
+        for expected in ("read(pskAccount) == nil", "read(boundPSKAccount) == nil",
+                         "read(rotationStageAccount) == nil", "existingIdentity()",
+                         "profile.publicKey == serverPublicKey", "profile.requiredPSK == nil",
+                         "query(pskStageAccount)", "SecItemAdd(", "errSecDuplicateItem",
+                         "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly", "kSecAttrSynchronizable"):
+            self.assertIn(expected, stage)
+        self.assertNotIn("SecItemUpdate(", stage)
+        self.assertNotIn("SecItemDelete(", stage)
+        for path in (ROOT / "ios").rglob("*.swift"):
+            self.assertNotIn("stageInitialPreSharedKey(", path.read_text())
+        select = keychain.split("static func boundPreSharedKey(", 1)[1].split("static func stageInitialPreSharedKey(", 1)[0]
+        self.assertNotIn("read(pskStageAccount)", select)
