@@ -310,4 +310,25 @@ mod tests {
         let exact = UntrustedRequest::decode(&frame(2, 3)).unwrap();
         assert!(matches!(current.propose(&exact), Ok(PeerDelta::Revoke(p)) if p == peer(9, 3)));
     }
+
+    #[test]
+    fn shared_swift_wire_vectors_decode_exactly() {
+        let vectors = include_str!("../../../Tests/build/peer_owner_request_vectors.hex");
+        let lines: Vec<_> = vectors.lines().collect();
+        assert_eq!(lines.len(), 2);
+        for (index, line) in lines.iter().enumerate() {
+            assert_eq!(line.len(), FRAME_LEN * 2);
+            let bytes: Vec<u8> = (0..line.len()).step_by(2)
+                .map(|i| u8::from_str_radix(&line[i..i + 2], 16).unwrap()).collect();
+            let decoded = UntrustedRequest::decode(&bytes).unwrap();
+            assert_eq!(decoded.request_id(), std::array::from_fn(|i| i as u8 + 1));
+            assert_eq!(decoded.generation(), std::array::from_fn(|i| i as u8 + 17));
+            assert_eq!(decoded.epoch(), std::array::from_fn(|i| i as u8 + 33));
+            assert_eq!(decoded.revision(), 0x8123456789abcdef);
+            assert_eq!(decoded.server(), std::array::from_fn(|i| i as u8 + 49));
+            assert_eq!(decoded.client(), std::array::from_fn(|i| i as u8 + 81));
+            assert_eq!(decoded.operation(), if index == 0 { Operation::Enroll }
+                else { Operation::Revoke { slot: 254 } });
+        }
+    }
 }

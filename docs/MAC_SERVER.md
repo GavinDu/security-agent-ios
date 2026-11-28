@@ -221,3 +221,11 @@ Other platforms fail closed; Linux exercises that rejection and macOS CI
 exercises real socketpair credentials. This does not establish application
 code identity, user presence, remote identity, real approval issuance,
 listener admission, durable replay or the live BoringTun adapter.
+
+### Swift/Rust owner request encoding (#20 / #27)
+
+A public Swift encoder now matches the Rust 129-byte v1 frame; shared golden
+vectors verify UUID ordering, unsigned big-endian revisions, keys and exact
+operation/slot on both sides. This does not authorize the request or connect
+the companion to the daemon. Native client address receipt binding remains
+separate.
