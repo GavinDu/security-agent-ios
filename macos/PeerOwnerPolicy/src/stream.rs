@@ -8,7 +8,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
-const MAX_BUDGET: Duration = Duration::from_secs(5);
+pub(crate) const MAX_BUDGET: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadError {

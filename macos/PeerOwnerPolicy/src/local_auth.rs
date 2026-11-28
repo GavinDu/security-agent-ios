@@ -70,6 +70,9 @@ impl AuthorizedRequest {
 pub fn authorize(stream: UnixStream, grant: LocalGrant, budget: Duration)
     -> Result<AuthorizedRequest, AuthError>
 {
+    if budget.is_zero() || budget > stream::MAX_BUDGET {
+        return Err(AuthError::Frame(stream::ReadError::InvalidBudget));
+    }
     let remaining = grant.expires.checked_duration_since(Instant::now())
         .filter(|d| !d.is_zero()).ok_or(AuthError::Expired)?;
     if peer_identity(&stream)? != grant.peer {
@@ -107,6 +110,14 @@ mod darwin {
 
     unsafe extern "C" {
         fn getpeereid(socket: c_int, euid: *mut u32, egid: *mut u32) -> c_int;
+        #[cfg(test)] fn geteuid() -> u32;
+        #[cfg(test)] fn getegid() -> u32;
+    }
+
+    #[cfg(test)]
+    pub(super) fn current_identity() -> PeerIdentity {
+        // SAFETY: these Darwin functions take no pointers and return scalar IDs.
+        unsafe { PeerIdentity { uid: geteuid(), gid: getegid() } }
     }
 
     pub(super) fn peer_identity(stream: &UnixStream) -> Result<PeerIdentity, AuthError> {
@@ -159,6 +170,17 @@ mod tests {
         assert!(matches!(authorize(reader, grant, Duration::from_secs(1)), Err(AuthError::Expired)));
     }
 
+    #[test]
+    fn invalid_budget_never_clamped_into_valid_approval() {
+        for budget in [Duration::ZERO, Duration::from_secs(6)] {
+            let (reader, _writer) = UnixStream::pair().unwrap();
+            let grant = LocalGrant::from_trusted_approval(PeerIdentity { uid: 1, gid: 1 },
+                request(), Duration::from_secs(2)).unwrap();
+            assert!(matches!(authorize(reader, grant, budget),
+                Err(AuthError::Frame(stream::ReadError::InvalidBudget))));
+        }
+    }
+
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn unsupported_platform_fails_closed() {
@@ -174,6 +196,7 @@ mod tests {
         let (reader, mut writer) = UnixStream::pair().unwrap();
         let peer = peer_identity(&reader).unwrap();
         assert_eq!(peer, peer_identity(&writer).unwrap());
+        assert_eq!(peer, darwin::current_identity());
         let grant = LocalGrant::from_trusted_approval(peer, request(), Duration::from_secs(5)).unwrap();
         writer.write_all(&frame()).unwrap();
         writer.shutdown(Shutdown::Write).unwrap();
@@ -201,12 +224,15 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn same_uid_cannot_substitute_any_request_field() {
-        for offset in [8, 24, 40, 63, 64, 96] {
+        for offset in [5, 8, 24, 40, 63, 64, 96] {
             let (reader, mut writer) = UnixStream::pair().unwrap();
             let peer = peer_identity(&reader).unwrap();
             let grant = LocalGrant::from_trusted_approval(peer, request(), Duration::from_secs(5)).unwrap();
             let mut changed = frame();
-            changed[offset] ^= 1;
+            if offset == 5 {
+                changed[5] = 2;
+                changed[128] = 2;
+            } else { changed[offset] ^= 1; }
             writer.write_all(&changed).unwrap();
             writer.shutdown(Shutdown::Write).unwrap();
             assert!(matches!(authorize(reader, grant, Duration::from_secs(2)), Err(AuthError::WrongIntent)));

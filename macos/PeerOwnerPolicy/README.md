@@ -77,3 +77,9 @@ remote iPhone authentication. Trusted approval issuance, durable replay,
 listener admission limits, authenticated response, daemon fencing and live
 BoringTun mutation remain unimplemented. The grant constructor is trusted
 in-process only; never mint a grant from incoming client fields.
+
+The native test compares connected peer IDs with real process effective IDs;
+invalid budgets and expired approval are refused before reading. Same-UID
+request substitution tests include operation, request/generation/epoch IDs,
+revision and both keys. A trusted grant issuer must prevent duplicate grants
+and protect approval from other processes running under the same account.
