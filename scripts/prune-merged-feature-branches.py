@@ -18,6 +18,8 @@ REPOSITORY = "GavinDu/security-agent-ios"
 # Add further branches only in a reviewed PR with exact merge/tree evidence.
 CANDIDATES = (
     ("feature/peer-roster-readback-gate", 229),
+    ("feature/psk-peer-binding", 228),
+    ("feature/identity-rotation-staging", 226),
     ("feature/peer-public-inventory", 225),
     ("fix/ios-underlay-dns-host-155", 156),
     ("fix/ios-pairing-confirmation-157", 158),

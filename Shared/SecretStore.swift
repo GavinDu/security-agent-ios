@@ -8,18 +8,22 @@ enum SharedKeychain {
     private static let service = "com.gavindu.securityagent.wireguard"
     private static let identityAccount = "iphone.privateKey"
     private static let pskAccount = "wireguard.preSharedKey"
+    private static let boundPSKAccount = "wireguard.preSharedKey.bound.v1"
+    private static let rotationStageAccount = "iphone.rotation.stage.v1"
 
     enum KeychainError: LocalizedError {
         case missingAccessGroup
         case missingSecret
         case invalidSecret
+        case unboundPreSharedKey
         case osStatus(OSStatus)
 
         var errorDescription: String? {
             switch self {
             case .missingAccessGroup: return "Shared Keychain entitlement is missing or unexpanded."
             case .missingSecret: return "WireGuard identity not found; open the app to pair."
-            case .invalidSecret: return "Invalid WireGuard key stored in Keychain."
+            case .invalidSecret: return "Invalid or mismatched WireGuard key stored in Keychain."
+            case .unboundPreSharedKey: return "Legacy preshared key is not bound to this peer. Authenticated reprovisioning is required; no automatic no-PSK fallback is permitted."
             case .osStatus(let status): return "Keychain error \(status)."
             }
         }
@@ -49,7 +53,8 @@ enum SharedKeychain {
         let status = SecItemCopyMatching(q as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else { throw KeychainError.osStatus(status) }
-        return item as? Data
+        guard let data = item as? Data else { throw KeychainError.invalidSecret }
+        return data
     }
 
     static func existingIdentity() throws -> Data {
@@ -102,7 +107,7 @@ enum SharedKeychain {
         return key.publicKey.rawRepresentation.base64EncodedString()
     }
 
-    static func optionalPreSharedKey() throws -> Data? {
+    private static func optionalPreSharedKey() throws -> Data? {
         guard let data = try read(pskAccount) else { return nil }
         guard data.count == 32 else { throw KeychainError.invalidSecret }
         // A present but all-zero PSK is the neutral/default key, not an
@@ -112,6 +117,53 @@ enum SharedKeychain {
             throw KeychainError.invalidSecret
         }
         return data
+    }
+
+    /// Only the exact client identity already selected for this codec can
+    /// select a bound PSK. The legacy account is validated but never used.
+    static func boundPreSharedKey(serverPublicKey: String, clientPrivateKey: Data) throws -> Data? {
+        guard WireGuardPrivateIdentityPolicy.accepts(clientPrivateKey) else { throw KeychainError.invalidSecret }
+        let clientPublicKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: clientPrivateKey)
+            .publicKey.rawRepresentation.base64EncodedString()
+        let legacyPresent = try optionalPreSharedKey() != nil
+        guard !legacyPresent else { throw KeychainError.unboundPreSharedKey }
+        let record = try read(boundPSKAccount)
+        do {
+            return try PeerPSKBindingPolicy.select(serverPublicKey: serverPublicKey,
+                clientPublicKey: clientPublicKey, legacyPresent: legacyPresent, boundRecord: record)
+        } catch {
+            throw KeychainError.invalidSecret
+        }
+    }
+
+    /// Future rotation owner only; not called by UI or PacketTunnel.
+    /// The active identity remains immutable. No candidate can be activated
+    /// or discarded until the authenticated rotation protocol is implemented.
+    static func stageRotationCandidate(binding: IdentityRotationStagePolicy.Binding)
+        throws -> IdentityRotationStagePolicy.Receipt {
+        func publicKey(_ secret: Data) throws -> String {
+            try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secret)
+                .publicKey.rawRepresentation.base64EncodedString()
+        }
+        return try IdentityRotationStagePolicy.stage(
+            binding: binding,
+            readActivePublicKey: { try publicKey(existingIdentity()) },
+            readStage: { try read(rotationStageAccount) },
+            generateCandidate: { Curve25519.KeyAgreement.PrivateKey().rawRepresentation },
+            derivePublicKey: publicKey,
+            insertIfAbsent: { bytes in
+                var q = try query(rotationStageAccount)
+                q[kSecValueData as String] = bytes
+                q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                q[kSecAttrSynchronizable as String] = false
+                let status = SecItemAdd(q as CFDictionary, nil)
+                switch status {
+                case errSecSuccess: return .inserted
+                case errSecDuplicateItem: return .alreadyExists
+                default: throw KeychainError.osStatus(status)
+                }
+            }
+        )
     }
 
     // PSKs must be provisioned to BOTH ends over an authenticated channel.

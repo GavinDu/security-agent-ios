@@ -123,7 +123,9 @@ final class BoringTunTransport {
                 throw AgentConfigurationError.unsafeUnderlayEndpoint
             }
             let secret = try SharedKeychain.existingIdentity()
-            let psk = try SharedKeychain.optionalPreSharedKey()
+            let psk = try SharedKeychain.boundPreSharedKey(
+                serverPublicKey: profile.publicKey, clientPrivateKey: secret
+            )
             codec = try BoringTunCodec(
                 privateKey: secret, serverKey: profile.publicKey, presharedKey: psk
             )
