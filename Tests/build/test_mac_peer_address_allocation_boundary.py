@@ -58,6 +58,24 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         self.assertIn("testDurableRosterRejectsUnknownFieldsAndWrongLockMode", NATIVE)
         self.assertNotIn("MacPeerRosterJournal", MAC)
 
+    def test_executor_isolated_and_requires_durable_prepare_and_terminal_readback(self):
+        executor = POLICY.split("actor MacPeerMutationExecutor", 1)[1]
+        self.assertIn("guard !busy else", executor)
+        self.assertIn("MacPeerRosterCoordinator(journal: journal)", executor)
+        self.assertLess(executor.index("coordinator.prepare("), executor.index("owner.apply("))
+        self.assertLess(executor.index("owner.terminalInventory("), executor.index("coordinator.resolve("))
+        self.assertIn("observation.lease == lease", executor)
+        self.assertIn("observation.transactionID == transactionID", executor)
+        self.assertIn("await owner.release(lease: lease)", executor)
+        recovery = executor.split("case let .recover(transactionID):", 1)[1].split("private func valid", 1)[0]
+        self.assertNotIn("owner.apply(", recovery)
+        self.assertNotIn("bootstrap(", executor)
+        self.assertNotIn("MacPeerMutationExecutor", MAC)
+        for path in (ROOT / "ios").rglob("*.swift"):
+            self.assertNotIn("MacPeerMutationExecutor", path.read_text())
+        self.assertIn("Fenced peer executor durable dispatch and readback-only recovery passed", SWIFT)
+        self.assertIn("testExecutorDoesNotInferRollbackFromApplyError", NATIVE)
+
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):
         self.assertIn("This UI does not run sudo", MAC)
         self.assertIn("Shared/MacPeerAddressAllocationPolicy.swift", WF)

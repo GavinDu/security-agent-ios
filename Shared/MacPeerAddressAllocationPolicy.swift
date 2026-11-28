@@ -66,7 +66,7 @@ struct MacPeerRosterSnapshot: Codable, Equatable, Sendable {
     let revision: UInt64
     let peers: [MacPeerAddressReservation]
 }
-enum MacPeerRosterMutation: Sendable {
+enum MacPeerRosterMutation: Equatable, Sendable {
     case enroll(publicKey: String)
     case revoke(MacPeerAddressReservation)
 }
@@ -362,5 +362,130 @@ struct MacPeerRosterJournal: Sendable {
         guard fd >= 0 else { throw JournalError.io }
         defer { _ = close(fd) }
         guard fsync(fd) == 0 else { throw JournalError.io }
+    }
+}
+
+
+/// Public intent, not authorization. Never decode a daemon capability from a
+/// network request. Only the future trusted, OS-authenticated owner may issue
+/// a lease after authorizing this exact intent.
+enum MacPeerMutationIntent: Equatable, Sendable {
+    case mutate(expected: MacPeerRosterSnapshot, mutation: MacPeerRosterMutation)
+    case recover(transactionID: UUID)
+}
+
+struct MacPeerMutationLease: Equatable, Sendable {
+    let id: UUID
+    let daemonGeneration: UUID
+    let serverPublicKey: String
+    let intent: MacPeerMutationIntent
+}
+
+struct MacPeerMutationObservation: Sendable {
+    let lease: MacPeerMutationLease
+    let transactionID: UUID?
+    let inventory: MacPeerPublicInventory.Snapshot
+}
+
+/// Trusted in-process adapter contract for the future privileged Rust owner
+/// (#27). No implementation may expose this as an unauthenticated RPC.
+/// acquire must authenticate the caller, authorize the exact intent, exclude
+/// alternate writers and fence earlier operations. Both capture methods must
+/// capture a complete bounded public inventory from the same verified daemon
+/// generation while holding the lease. terminal must additionally fence all
+/// writes for the exact transaction, even after cancellation or apply failure.
+/// release must preserve containment if outstanding writes cannot be fenced;
+/// a later acquire must never bypass that containment. Returning these Swift
+/// values alone is not evidence that any of those guarantees hold.
+protocol MacPeerMutationOwner: Sendable {
+    func acquire(serverPublicKey: String, intent: MacPeerMutationIntent) async throws -> MacPeerMutationLease
+    func initialInventory(lease: MacPeerMutationLease) async throws -> MacPeerMutationObservation
+    func apply(plan: MacPeerRosterPlan, lease: MacPeerMutationLease) async throws
+    func terminalInventory(lease: MacPeerMutationLease, transactionID: UUID) async throws -> MacPeerMutationObservation
+    func release(lease: MacPeerMutationLease) async
+}
+
+enum MacPeerMutationExecution: Equatable, Sendable {
+    case busy, refused, unverified
+    case settled(transactionID: UUID, resolution: MacPeerRosterResolution)
+}
+
+/// Testable orchestration only. The companion UI and PacketTunnel must not
+/// instantiate a live owner. This actor prevents reentrant mutation within
+/// one executor; cross-process exclusion and authenticated authorization
+/// remain the trusted Rust adapter's obligation. Reopen the durable journal
+/// under the lease for every operation; never bootstrap during execution.
+actor MacPeerMutationExecutor {
+    private let journal: MacPeerRosterJournal
+    private let owner: any MacPeerMutationOwner
+    private var busy = false
+
+    init(journal: MacPeerRosterJournal, owner: any MacPeerMutationOwner) {
+        self.journal = journal
+        self.owner = owner
+    }
+
+    func execute(_ intent: MacPeerMutationIntent) async -> MacPeerMutationExecution {
+        guard !busy else { return .busy }
+        guard !Task.isCancelled else { return .refused }
+        busy = true
+        defer { busy = false }
+        let lease: MacPeerMutationLease
+        do {
+            lease = try await owner.acquire(serverPublicKey: journal.serverPublicKey, intent: intent)
+        } catch { return .refused }
+        let result = await underLease(lease, intent: intent)
+        // Always release exactly the acquired lease, including errors and
+        // cancellation. The trusted owner must quarantine unfenced writes.
+        await owner.release(lease: lease)
+        return result
+    }
+
+    private func underLease(_ lease: MacPeerMutationLease,
+                            intent: MacPeerMutationIntent) async -> MacPeerMutationExecution {
+        guard lease.serverPublicKey == journal.serverPublicKey, lease.intent == intent,
+              lease.id.uuidString != "00000000-0000-0000-0000-000000000000",
+              lease.daemonGeneration.uuidString != "00000000-0000-0000-0000-000000000000",
+              let coordinator = MacPeerRosterCoordinator(journal: journal) else { return .unverified }
+        switch intent {
+        case let .mutate(expected, mutation):
+            guard !Task.isCancelled, await coordinator.pendingPlan() == nil,
+                  await coordinator.snapshot() == expected else { return .refused }
+            guard let before = try? await owner.initialInventory(lease: lease),
+                  valid(before, lease: lease, transactionID: nil),
+                  !Task.isCancelled else { return .unverified }
+            // Prepare must durably succeed before dispatch. Nil may indicate
+            // an ambiguous journal write; never interpret it as safe rollback.
+            guard let plan = await coordinator.prepare(mutation, expected: expected,
+                  readback: before.inventory, terminalWriteFenced: true) else { return .unverified }
+            if !Task.isCancelled {
+                // Even a thrown apply can have changed the daemon. Never
+                // redispatch or infer rollback from an error/exit status.
+                do { try await owner.apply(plan: plan, lease: lease) } catch {}
+            }
+            return await settle(plan, lease: lease, coordinator: coordinator)
+        case let .recover(transactionID):
+            guard let plan = await coordinator.pendingPlan(), plan.id == transactionID else {
+                return .refused
+            }
+            // Recovery is terminal readback only, never another apply.
+            return await settle(plan, lease: lease, coordinator: coordinator)
+        }
+    }
+
+    private func valid(_ observation: MacPeerMutationObservation,
+                       lease: MacPeerMutationLease, transactionID: UUID?) -> Bool {
+        observation.lease == lease && observation.transactionID == transactionID &&
+        observation.inventory.serverPublicKey == journal.serverPublicKey
+    }
+
+    private func settle(_ plan: MacPeerRosterPlan, lease: MacPeerMutationLease,
+                        coordinator: MacPeerRosterCoordinator) async -> MacPeerMutationExecution {
+        guard let observation = try? await owner.terminalInventory(lease: lease, transactionID: plan.id),
+              valid(observation, lease: lease, transactionID: plan.id) else { return .unverified }
+        let resolution = await coordinator.resolve(id: plan.id, readback: observation.inventory,
+                                                    terminalWriteFenced: true)
+        guard resolution == .committed || resolution == .rolledBack else { return .unverified }
+        return .settled(transactionID: plan.id, resolution: resolution)
     }
 }

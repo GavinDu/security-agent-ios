@@ -126,3 +126,21 @@ approval for a public configuration preview, not proof of possession, daemon
 authorization, address availability, or successful enrollment. The administrator
 must still verify the actual Rust daemon and slot ownership; no sudo or live
 mutation is invoked by this UI.
+
+### Fenced mutation executor contract (#20)
+
+A non-reentrant actor now sequences an injected trusted owner's exact-intent
+lease, same-generation initial public inventory, durable journal prepare,
+one apply attempt, terminal inventory and durable settlement. Failed or
+canceled dispatch cannot imply rollback; missing, stale or divergent terminal
+evidence preserves pending state. Recovery is terminal readback only and does
+not apply again. The lease is always released through its owner, whose
+contract requires quarantine of outstanding writes before future acquisition.
+The executor reopens the journal under the lease, never bootstraps on failure,
+and exposes no private material. Native and compiled Swift fixtures exercise
+authorization rejection, stale observations, prepare-before-apply and
+readback-only recovery. The fixture is not a privileged Rust daemon, actual
+OS authentication, or a cryptographic receipt. #27 must implement the trusted
+owner with real authorization, exclusive cross-process fencing and bounded
+same-daemon captures; #20 still owns authenticated client address binding.
+No UI or PacketTunnel live caller and no second device enabled.

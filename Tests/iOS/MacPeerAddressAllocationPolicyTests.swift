@@ -310,4 +310,108 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertNil(staleObservation)
         XCTAssertNil(try journal.load().pending)
     }
+
+    func testExecutorRequiresDurablePrepareAndRecoversWithoutRedispatch() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let initial = try journal.load()
+        let intent = MacPeerMutationIntent.mutate(expected: initial.current, mutation: .enroll(publicKey: key(7)))
+        await owner.setMode(.deny)
+        let denied = await executor.execute(intent)
+        XCTAssertEqual(denied, .refused)
+        await owner.setMode(.staleInitial)
+        let badInitial = await executor.execute(intent)
+        XCTAssertEqual(badInitial, .unverified)
+        XCTAssertNil(try journal.load().pending)
+        await owner.setMode(.staleTerminal)
+        let unknown = await executor.execute(intent)
+        XCTAssertEqual(unknown, .unverified)
+        let plan = try XCTUnwrap(journal.load().pending)
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 1)
+        XCTAssertTrue(counts.2)
+        let blocked = await executor.execute(intent)
+        XCTAssertEqual(blocked, .refused)
+        await owner.setMode(.normal)
+        let wrong = await executor.execute(.recover(transactionID: UUID()))
+        XCTAssertEqual(wrong, .refused)
+        let recovered = await executor.execute(.recover(transactionID: plan.id))
+        XCTAssertEqual(recovered, .settled(transactionID: plan.id, resolution: .committed))
+        let finalCounts = await owner.counts()
+        XCTAssertEqual(finalCounts.0, 1)
+        XCTAssertEqual(finalCounts.1, 5)
+        XCTAssertNil(try journal.load().pending)
+        XCTAssertEqual(try journal.load().current.peers, plan.after)
+    }
+
+    func testExecutorDoesNotInferRollbackFromApplyError() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        await owner.setMode(.applyThenThrow)
+        let initial = try journal.load().current
+        let applied = await executor.execute(.mutate(expected: initial, mutation: .enroll(publicKey: key(7))))
+        guard case .settled(_, .committed) = applied else { return XCTFail("apply error was not resolved by terminal observation") }
+        let latest = try journal.load().current
+        XCTAssertEqual(latest.peers.count, 1)
+        await owner.setMode(.noWriteThenThrow)
+        let rolledBack = await executor.execute(.mutate(expected: latest, mutation: .revoke(latest.peers[0])))
+        guard case .settled(_, .rolledBack) = rolledBack else { return XCTFail("terminal unchanged roster not settled") }
+        XCTAssertEqual(try journal.load().current.peers, latest.peers)
+        XCTAssertEqual(try journal.load().current.revision, latest.revision + 1)
+        XCTAssertNil(try journal.load().pending)
+    }
+}
+
+private actor MutationOwnerFixture: MacPeerMutationOwner {
+    enum Failure: Error { case denied, ambiguous }
+    enum Mode { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial }
+    let journal: MacPeerRosterJournal
+    var mode: Mode = .normal
+    var peers: [MacPeerAddressReservation] = []
+    var applies = 0
+    var releases = 0
+    var pendingWasDurable = false
+
+    init(journal: MacPeerRosterJournal) { self.journal = journal }
+    func setMode(_ mode: Mode) { self.mode = mode }
+    func counts() -> (Int, Int, Bool) { (applies, releases, pendingWasDurable) }
+    func acquire(serverPublicKey: String, intent: MacPeerMutationIntent) async throws -> MacPeerMutationLease {
+        if mode == .deny { throw Failure.denied }
+        return MacPeerMutationLease(id: UUID(), daemonGeneration: UUID(), serverPublicKey: serverPublicKey, intent: intent)
+    }
+    private func observation(_ lease: MacPeerMutationLease, _ transactionID: UUID?) -> MacPeerMutationObservation {
+        let key = lease.serverPublicKey
+        let peerText = peers.map { $0.publicKey + "\n" }.joined()
+        let routes = peers.map { $0.publicKey + "\t" + $0.ipv4CIDR + " " + $0.ipv6CIDR + "\n" }.joined()
+        let inventory = MacPeerPublicInventory.decode(expectedServerKey: key,
+            publicKeyOutput: Data((key + "\n").utf8), peersOutput: Data(peerText.utf8),
+            allowedIPsOutput: Data(routes.utf8))!
+        return MacPeerMutationObservation(lease: lease, transactionID: transactionID, inventory: inventory)
+    }
+    func initialInventory(lease: MacPeerMutationLease) async throws -> MacPeerMutationObservation {
+        observation(lease, mode == .staleInitial ? UUID() : nil)
+    }
+    func apply(plan: MacPeerRosterPlan, lease: MacPeerMutationLease) async throws {
+        applies += 1
+        pendingWasDurable = (try journal.load().pending == plan)
+        if mode == .noWriteThenThrow { throw Failure.ambiguous }
+        peers = plan.after
+        if mode == .applyThenThrow { throw Failure.ambiguous }
+    }
+    func terminalInventory(lease: MacPeerMutationLease, transactionID: UUID) async throws -> MacPeerMutationObservation {
+        observation(lease, mode == .staleTerminal ? UUID() : transactionID)
+    }
+    func release(lease: MacPeerMutationLease) async { releases += 1 }
 }

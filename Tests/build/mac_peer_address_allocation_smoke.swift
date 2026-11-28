@@ -168,5 +168,84 @@ struct MacPeerAddressAllocationSmoke {
         precondition(completed == .committed)
         print("Durable peer roster journal restart and fenced readback passed")
         print("Persistent peer roster fresh same-server inventory gate passed")
+
+        let executorDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try! FileManager.default.createDirectory(at: executorDirectory, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: executorDirectory) }
+        let executorJournal = MacPeerRosterJournal(directory: executorDirectory, serverPublicKey: key(42))
+        try! executorJournal.bootstrap(observed: [])
+        let daemon = MutationOwnerFixture(journal: executorJournal)
+        let executor = MacPeerMutationExecutor(journal: executorJournal, owner: daemon)
+        let initialRecord = try! executorJournal.load()
+        let intent = MacPeerMutationIntent.mutate(expected: initialRecord.current, mutation: .enroll(publicKey: key(7)))
+        await daemon.setMode(.deny)
+        let denied = await executor.execute(intent)
+        precondition(denied == .refused)
+        await daemon.setMode(.staleInitial)
+        let badInitial = await executor.execute(intent)
+        precondition(badInitial == .unverified)
+        precondition((try! executorJournal.load()).pending == nil)
+        await daemon.setMode(.staleTerminal)
+        let unknown = await executor.execute(intent)
+        precondition(unknown == .unverified)
+        let pending = try! executorJournal.load().pending!
+        let counts = await daemon.counts()
+        precondition(counts.0 == 1 && counts.1 == 2 && counts.2)
+        let blocked = await executor.execute(intent)
+        precondition(blocked == .refused)
+        await daemon.setMode(.normal)
+        let wrongRecovery = await executor.execute(.recover(transactionID: UUID()))
+        precondition(wrongRecovery == .refused)
+        let recoveredResult = await executor.execute(.recover(transactionID: pending.id))
+        precondition(recoveredResult == .settled(transactionID: pending.id, resolution: .committed))
+        let finalCounts = await daemon.counts()
+        precondition(finalCounts.0 == 1 && finalCounts.1 == 5)
+        let settledRecord = try! executorJournal.load()
+        precondition(settledRecord.pending == nil && settledRecord.current.peers == pending.after)
+        print("Fenced peer executor durable dispatch and readback-only recovery passed")
+
     }
+}
+
+private actor MutationOwnerFixture: MacPeerMutationOwner {
+    enum Failure: Error { case denied, ambiguous }
+    enum Mode { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial }
+    let journal: MacPeerRosterJournal
+    var mode: Mode = .normal
+    var peers: [MacPeerAddressReservation] = []
+    var applies = 0
+    var releases = 0
+    var pendingWasDurable = false
+
+    init(journal: MacPeerRosterJournal) { self.journal = journal }
+    func setMode(_ mode: Mode) { self.mode = mode }
+    func counts() -> (Int, Int, Bool) { (applies, releases, pendingWasDurable) }
+    func acquire(serverPublicKey: String, intent: MacPeerMutationIntent) async throws -> MacPeerMutationLease {
+        if mode == .deny { throw Failure.denied }
+        return MacPeerMutationLease(id: UUID(), daemonGeneration: UUID(), serverPublicKey: serverPublicKey, intent: intent)
+    }
+    private func observation(_ lease: MacPeerMutationLease, _ transactionID: UUID?) -> MacPeerMutationObservation {
+        let key = lease.serverPublicKey
+        let peerText = peers.map { $0.publicKey + "\n" }.joined()
+        let routes = peers.map { $0.publicKey + "\t" + $0.ipv4CIDR + " " + $0.ipv6CIDR + "\n" }.joined()
+        let inventory = MacPeerPublicInventory.decode(expectedServerKey: key,
+            publicKeyOutput: Data((key + "\n").utf8), peersOutput: Data(peerText.utf8),
+            allowedIPsOutput: Data(routes.utf8))!
+        return MacPeerMutationObservation(lease: lease, transactionID: transactionID, inventory: inventory)
+    }
+    func initialInventory(lease: MacPeerMutationLease) async throws -> MacPeerMutationObservation {
+        observation(lease, mode == .staleInitial ? UUID() : nil)
+    }
+    func apply(plan: MacPeerRosterPlan, lease: MacPeerMutationLease) async throws {
+        applies += 1
+        pendingWasDurable = (try journal.load().pending == plan)
+        if mode == .noWriteThenThrow { throw Failure.ambiguous }
+        peers = plan.after
+        if mode == .applyThenThrow { throw Failure.ambiguous }
+    }
+    func terminalInventory(lease: MacPeerMutationLease, transactionID: UUID) async throws -> MacPeerMutationObservation {
+        observation(lease, mode == .staleTerminal ? UUID() : transactionID)
+    }
+    func release(lease: MacPeerMutationLease) async { releases += 1 }
 }
