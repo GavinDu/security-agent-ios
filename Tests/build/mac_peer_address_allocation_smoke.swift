@@ -210,7 +210,7 @@ struct MacPeerAddressAllocationSmoke {
 
 private actor MutationOwnerFixture: MacPeerMutationOwner {
     enum Failure: Error { case denied, ambiguous }
-    enum Mode { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial }
+    enum Mode: Equatable { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial }
     let journal: MacPeerRosterJournal
     var mode: Mode = .normal
     var peers: [MacPeerAddressReservation] = []
