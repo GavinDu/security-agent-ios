@@ -170,6 +170,17 @@ enum SharedKeychain {
             })
     }
 
+    /// Local readback gate only. Rotation of PSK-protected peers requires
+    /// a coordinated authenticated protocol, not this unprotected stage.
+    private static func rotationActivePublicKey(binding: IdentityRotationStagePolicy.Binding) throws -> String {
+        guard let profile = SharedProfileStore.load(),
+              profile.publicKey == binding.serverPublicKey, profile.requiredPSK == nil,
+              try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
+              try read(pskStageAccount) == nil else { throw KeychainError.invalidSecret }
+        return try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
+            .publicKey.rawRepresentation.base64EncodedString()
+    }
+
     /// Future rotation owner only; not called by UI or PacketTunnel.
     /// The active identity remains immutable. No candidate can be activated
     /// or discarded until the authenticated rotation protocol is implemented.
@@ -181,7 +192,7 @@ enum SharedKeychain {
         }
         return try IdentityRotationStagePolicy.stage(
             binding: binding,
-            readActivePublicKey: { try publicKey(existingIdentity()) },
+            readActivePublicKey: { try rotationActivePublicKey(binding: binding) },
             readStage: { try read(rotationStageAccount) },
             generateCandidate: { Curve25519.KeyAgreement.PrivateKey().rawRepresentation },
             derivePublicKey: publicKey,
@@ -198,6 +209,19 @@ enum SharedKeychain {
                 }
             }
         )
+    }
+
+    /// Read only, no candidate generation or Keychain mutation. The caller
+    /// must still hold the authenticated cross-store transaction lease.
+    static func recoverRotationCandidate(binding: IdentityRotationStagePolicy.Binding)
+        throws -> IdentityRotationStagePolicy.Receipt {
+        try IdentityRotationStagePolicy.recover(binding: binding,
+            readActivePublicKey: { try rotationActivePublicKey(binding: binding) },
+            readStage: { try read(rotationStageAccount) },
+            derivePublicKey: { secret in
+                try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secret)
+                    .publicKey.rawRepresentation.base64EncodedString()
+            })
     }
 
     // PSKs must be provisioned to BOTH ends over an authenticated channel.

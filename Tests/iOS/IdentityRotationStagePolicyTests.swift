@@ -107,4 +107,62 @@ final class IdentityRotationStagePolicyTests: XCTestCase {
         stored = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         XCTAssertThrowsError(try stage())
     }
+
+    func testRecoveryIsReadOnlyExactAndFailsClosed() throws {
+        let active = try derive(Data(repeating: 3, count: 32))
+        let binding = IdentityRotationStagePolicy.Binding(transactionID: UUID(),
+            serverPublicKey: key(42), activePublicKey: active)
+        var stored: Data?
+        let initial = try IdentityRotationStagePolicy.stage(binding: binding,
+            readActivePublicKey: { active }, readStage: { stored },
+            generateCandidate: { Data(repeating: 7, count: 32) },
+            derivePublicKey: derive, insertIfAbsent: { stored = $0; return .inserted })
+        let original = stored
+        func recover(_ request: IdentityRotationStagePolicy.Binding) throws -> IdentityRotationStagePolicy.Receipt {
+            try IdentityRotationStagePolicy.recover(binding: request,
+                readActivePublicKey: { active }, readStage: { stored }, derivePublicKey: derive)
+        }
+        XCTAssertEqual(try recover(binding), initial)
+        for request in [
+            IdentityRotationStagePolicy.Binding(transactionID: UUID(), serverPublicKey: key(42), activePublicKey: active),
+            IdentityRotationStagePolicy.Binding(transactionID: binding.transactionID, serverPublicKey: key(43), activePublicKey: active)
+        ] {
+            XCTAssertThrowsError(try recover(request)) {
+                XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .conflict)
+            }
+        }
+        XCTAssertEqual(stored, original)
+        var checks = 0
+        XCTAssertThrowsError(try IdentityRotationStagePolicy.recover(binding: binding,
+            readActivePublicKey: { checks += 1; return checks == 1 ? active : self.key(9) },
+            readStage: { stored }, derivePublicKey: derive)) {
+            XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .activeChanged)
+        }
+        stored = nil
+        XCTAssertThrowsError(try recover(binding)) {
+            XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .missingWinner)
+        }
+        stored = Data("invalid".utf8)
+        XCTAssertThrowsError(try recover(binding)) {
+            XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .invalidRecord)
+        }
+    }
+
+    func testReservedTransactionRejectedBeforeAnyStoreAccess() throws {
+        let binding = IdentityRotationStagePolicy.Binding(
+            transactionID: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+            serverPublicKey: key(42), activePublicKey: key(7))
+        XCTAssertThrowsError(try IdentityRotationStagePolicy.stage(binding: binding,
+            readActivePublicKey: { XCTFail("read active"); return "" },
+            readStage: { XCTFail("read stage"); return nil },
+            generateCandidate: { XCTFail("generated"); return Data() },
+            derivePublicKey: derive, insertIfAbsent: { _ in XCTFail("inserted"); return .inserted })) {
+                XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .invalidBinding)
+            }
+        XCTAssertThrowsError(try IdentityRotationStagePolicy.recover(binding: binding,
+            readActivePublicKey: { XCTFail("read active"); return "" },
+            readStage: { XCTFail("read stage"); return nil }, derivePublicKey: derive)) {
+                XCTAssertEqual($0 as? IdentityRotationStagePolicy.StageError, .invalidBinding)
+            }
+    }
 }

@@ -23,6 +23,20 @@ struct IdentityRotationStageSmoke {
             _ = try stage(.init(transactionID: UUID(), serverPublicKey: key(42), activePublicKey: key(3)))
             preconditionFailure("different transaction adopted")
         } catch IdentityRotationStagePolicy.StageError.conflict {}
+        let recovered = try IdentityRotationStagePolicy.recover(binding: binding,
+            readActivePublicKey: { key(3) }, readStage: { stored }, derivePublicKey: derive)
+        precondition(recovered == first && inserts == 1)
+        do {
+            _ = try IdentityRotationStagePolicy.recover(binding: binding,
+                readActivePublicKey: { key(3) }, readStage: { nil }, derivePublicKey: derive)
+            preconditionFailure("missing recovery accepted")
+        } catch IdentityRotationStagePolicy.StageError.missingWinner {}
+        let zero = IdentityRotationStagePolicy.Binding(
+            transactionID: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+            serverPublicKey: key(42), activePublicKey: key(3))
+        do { _ = try stage(zero); preconditionFailure("reserved transaction accepted") }
+        catch IdentityRotationStagePolicy.StageError.invalidBinding {}
+        precondition(inserts == 1)
         stored = Data("corrupt".utf8)
         do { _ = try stage(binding); preconditionFailure("corrupt stage adopted") }
         catch IdentityRotationStagePolicy.StageError.invalidRecord {}

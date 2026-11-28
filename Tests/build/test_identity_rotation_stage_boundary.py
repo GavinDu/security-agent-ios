@@ -12,7 +12,8 @@ class IdentityRotationStageBoundaryTests(unittest.TestCase):
         self.assertIn("query(rotationStageAccount)", stage)
         self.assertIn("SecItemAdd(", stage)
         self.assertIn("errSecDuplicateItem", stage)
-        self.assertIn("existingIdentity()", stage)
+        self.assertIn("existingIdentity()", source)
+        self.assertIn("rotationActivePublicKey(binding: binding)", stage)
         self.assertNotIn("SecItemUpdate", source)
         self.assertNotIn("SecItemDelete", stage)
         self.assertNotIn("UserDefaults(", source)
@@ -23,3 +24,18 @@ class IdentityRotationStageBoundaryTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/validate.yml").read_text()
         self.assertIn("identity_rotation_stage_smoke.swift", workflow)
         self.assertTrue((ROOT / "Tests/iOS/IdentityRotationStagePolicyTests.swift").exists())
+
+    def test_recovery_cannot_write_and_both_paths_gate_psk_and_profile(self):
+        source = (ROOT / "Shared/SecretStore.swift").read_text()
+        gate = source.split("private static func rotationActivePublicKey", 1)[1].split("static func stageRotationCandidate", 1)[0]
+        for expected in ("SharedProfileStore.load()", "profile.publicKey == binding.serverPublicKey",
+                         "profile.requiredPSK == nil", "read(pskAccount) == nil",
+                         "read(boundPSKAccount) == nil", "read(pskStageAccount) == nil"):
+            self.assertIn(expected, gate)
+        recovery = source.split("static func recoverRotationCandidate", 1)[1]
+        self.assertIn("IdentityRotationStagePolicy.recover(", recovery)
+        self.assertIn("rotationActivePublicKey(binding: binding)", recovery)
+        self.assertNotIn("SecItemAdd(", recovery)
+        self.assertNotIn("generateCandidate:", recovery)
+        for path in (ROOT / "ios").rglob("*.swift"):
+            self.assertNotIn("recoverRotationCandidate(", path.read_text())
