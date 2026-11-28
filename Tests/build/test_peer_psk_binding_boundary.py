@@ -28,6 +28,7 @@ class PeerPSKBindingBoundaryTests(unittest.TestCase):
         stage = keychain.split("static func stageInitialPreSharedKey(", 1)[1].split("static func stageRotationCandidate(", 1)[0]
         for expected in ("read(pskAccount) == nil", "read(boundPSKAccount) == nil",
                          "read(rotationStageAccount) == nil", "existingIdentity()",
+                         "profile.publicKey == serverPublicKey", "profile.requiredPSK == nil",
                          "query(pskStageAccount)", "SecItemAdd(", "errSecDuplicateItem",
                          "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly", "kSecAttrSynchronizable"):
             self.assertIn(expected, stage)

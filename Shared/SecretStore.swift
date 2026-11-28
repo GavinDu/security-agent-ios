@@ -152,6 +152,8 @@ enum SharedKeychain {
                 let active = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
                     .publicKey.rawRepresentation.base64EncodedString()
                 guard active == requirement.clientPublicKey,
+                      let profile = SharedProfileStore.load(),
+                      profile.publicKey == serverPublicKey, profile.requiredPSK == nil,
                       try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
                       try read(rotationStageAccount) == nil else { throw KeychainError.invalidSecret }
             },

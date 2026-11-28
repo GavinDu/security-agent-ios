@@ -40,8 +40,9 @@ this local binding is not an anti-tamper root of trust.
 
 A future authenticated provisioning owner can stage an exact server/client/
 transaction/secret in a separate insert-only device-only Keychain account.
-The active identity must match; a legacy or committed PSK or pending identity
-rotation blocks initial staging. Retry accepts only byte-identical canonical
+The active identity and existing unmarked public profile must match; a missing
+or protected profile, legacy or committed PSK, or pending identity rotation
+blocks initial staging. The future owner must separately verify native binding. Retry accepts only byte-identical canonical
 records and requires persisted readback; conflicting or missing winners fail.
 Only a public receipt is returned. The stage is never read by the transport,
 and no UI or PacketTunnel caller, committed secret writer, secret deletion,
