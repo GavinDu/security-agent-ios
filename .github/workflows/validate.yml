@@ -111,6 +111,10 @@ jobs:
             Shared/MacPeerAddressAllocationPolicy.swift Shared/MacPeerPublicInventory.swift \
             Tests/build/mac_peer_address_allocation_smoke.swift
           "$RUNNER_TEMP/mac-peer-allocation-tests"
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/peer-owner-frame-tests" \
+            Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
+            Shared/MacPeerOwnerRequestFrame.swift Tests/build/peer_owner_request_frame_smoke.swift
+          "$RUNNER_TEMP/peer-owner-frame-tests"
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-inventory-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
             Shared/MacPeerAddressAllocationPolicy.swift Shared/MacPeerPublicInventory.swift \

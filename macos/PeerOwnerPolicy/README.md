@@ -83,3 +83,11 @@ invalid budgets and expired approval are refused before reading. Same-UID
 request substitution tests include operation, request/generation/epoch IDs,
 revision and both keys. A trusted grant issuer must prevent duplicate grants
 and protect approval from other processes running under the same account.
+
+## Swift/Rust wire compatibility
+
+The Swift companion-side encoder emits the exact v1 public frame with explicit
+UUID tuple byte order and unsigned big-endian revision. Linux Swift and the
+Rust decoder consume the same two golden vectors in Tests/build; native
+XCTest checks the same literal vectors and invalid inputs. No UI, socket
+caller, privileged grant issuance or mutation is wired to the encoder.
