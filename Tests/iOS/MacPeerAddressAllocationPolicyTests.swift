@@ -350,6 +350,38 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertEqual(try journal.load().current.peers, plan.after)
     }
 
+    func testExecutorRejectsReentrantMutationAndWrongGeneration() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let initial = try journal.load().current
+        let intent = MacPeerMutationIntent.mutate(expected: initial, mutation: .enroll(publicKey: key(7)))
+        await owner.setMode(.wrongGeneration)
+        await owner.pauseNextTerminal()
+        let running = Task { await executor.execute(intent) }
+        await owner.waitForTerminal()
+        let concurrent = await executor.execute(intent)
+        XCTAssertEqual(concurrent, .busy)
+        await owner.resumeTerminal()
+        let unknown = await running.value
+        XCTAssertEqual(unknown, .unverified)
+        let pending = try XCTUnwrap(journal.load().pending)
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 1)
+        XCTAssertEqual(counts.1, 1)
+        await owner.setMode(.normal)
+        let result = await executor.execute(.recover(transactionID: pending.id))
+        XCTAssertEqual(result, .settled(transactionID: pending.id, resolution: .committed))
+        let after = await owner.counts()
+        XCTAssertEqual(after.0, 1)
+        XCTAssertNil(try journal.load().pending)
+    }
+
     func testExecutorDoesNotInferRollbackFromApplyError() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
@@ -376,17 +408,26 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
 
 private actor MutationOwnerFixture: MacPeerMutationOwner {
     enum Failure: Error { case denied, ambiguous }
-    enum Mode: Equatable { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial }
+    enum Mode: Equatable { case normal, deny, staleTerminal, applyThenThrow, noWriteThenThrow, staleInitial, wrongGeneration }
     let journal: MacPeerRosterJournal
     var mode: Mode = .normal
     var peers: [MacPeerAddressReservation] = []
     var applies = 0
     var releases = 0
     var pendingWasDurable = false
+    private var pauseTerminal = false
+    private var terminalWaiter: CheckedContinuation<Void, Never>?
+    private var arrivalWaiter: CheckedContinuation<Void, Never>?
 
     init(journal: MacPeerRosterJournal) { self.journal = journal }
     func setMode(_ mode: Mode) { self.mode = mode }
     func counts() -> (Int, Int, Bool) { (applies, releases, pendingWasDurable) }
+    func pauseNextTerminal() { pauseTerminal = true }
+    func waitForTerminal() async {
+        if terminalWaiter != nil { return }
+        await withCheckedContinuation { arrivalWaiter = $0 }
+    }
+    func resumeTerminal() { terminalWaiter?.resume(); terminalWaiter = nil }
     func acquire(serverPublicKey: String, intent: MacPeerMutationIntent) async throws -> MacPeerMutationLease {
         if mode == .deny { throw Failure.denied }
         return MacPeerMutationLease(id: UUID(), daemonGeneration: UUID(), serverPublicKey: serverPublicKey, intent: intent)
@@ -411,7 +452,20 @@ private actor MutationOwnerFixture: MacPeerMutationOwner {
         if mode == .applyThenThrow { throw Failure.ambiguous }
     }
     func terminalInventory(lease: MacPeerMutationLease, transactionID: UUID) async throws -> MacPeerMutationObservation {
-        observation(lease, mode == .staleTerminal ? UUID() : transactionID)
+        if pauseTerminal {
+            pauseTerminal = false
+            await withCheckedContinuation { continuation in
+                terminalWaiter = continuation
+                arrivalWaiter?.resume()
+                arrivalWaiter = nil
+            }
+        }
+        if mode == .wrongGeneration {
+            let wrong = MacPeerMutationLease(id: lease.id, daemonGeneration: UUID(),
+                serverPublicKey: lease.serverPublicKey, intent: lease.intent)
+            return observation(wrong, transactionID)
+        }
+        return observation(lease, mode == .staleTerminal ? UUID() : transactionID)
     }
     func release(lease: MacPeerMutationLease) async { releases += 1 }
 }

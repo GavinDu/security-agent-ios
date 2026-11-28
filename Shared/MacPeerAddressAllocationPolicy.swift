@@ -390,7 +390,9 @@ struct MacPeerMutationObservation: Sendable {
 /// Trusted in-process adapter contract for the future privileged Rust owner
 /// (#27). No implementation may expose this as an unauthenticated RPC.
 /// acquire must authenticate the caller, authorize the exact intent, exclude
-/// alternate writers and fence earlier operations. Both capture methods must
+/// alternate writers and fence earlier operations. A throwing acquire must
+/// leave no usable lease and retain containment if acquisition was ambiguous.
+/// Both capture methods must
 /// capture a complete bounded public inventory from the same verified daemon
 /// generation while holding the lease. terminal must additionally fence all
 /// writes for the exact transaction, even after cancellation or apply failure.
