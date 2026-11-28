@@ -8,7 +8,7 @@ use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
-const MAX_BUDGET: Duration = Duration::from_secs(5);
+pub(crate) const MAX_BUDGET: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -24,9 +24,9 @@ pub enum ReadError {
 /// interpret trailing bytes as a second request. The sender must shut down
 /// its write half after exactly FRAME_LEN bytes. The EOF check is part of
 /// the same absolute deadline, not a new timeout. No frame-sized allocation
-/// depends on remote input. Closing the stream on every return is intended:
-/// this is a one-way request ingress, not an end-to-end RPC protocol.
-/// A future authenticated response path requires a separate reviewed design.
+/// depends on remote input. Errors close the stream; success returns the
+/// same owned connection for a future bounded response. No response
+/// protocol is implemented here.
 pub fn read_single_request(mut stream: UnixStream, budget: Duration)
     -> Result<(UntrustedRequest, UnixStream), ReadError>
 {
