@@ -76,6 +76,20 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
         self.assertIn("Fenced peer executor durable dispatch and readback-only recovery passed", SWIFT)
         self.assertIn("testExecutorDoesNotInferRollbackFromApplyError", NATIVE)
 
+    def test_receipt_is_public_candidate_only_and_not_profile_activation(self):
+        receipt = POLICY.split("struct MacEnrollmentAddressReceipt", 1)[1]
+        for token in ["settled.pending == nil", "settled.current.revision == expected.revision + 1",
+                      "plan.before == expected", "settled.current.peers == plan.after",
+                      "receipt.canonicalBytes() == bytes", "matchesUntrustedContext",
+                      "MacPeerAddressAllocationPolicy.nextReservation"]:
+            self.assertIn(token, receipt)
+        self.assertIn("case let .enroll(requestID, expected, clientPublicKey) = lease.intent", POLICY)
+        self.assertNotIn("MacEnrollmentAddressReceipt", MAC)
+        for path in (ROOT / "ios").rglob("*.swift"):
+            self.assertNotIn("MacEnrollmentAddressReceipt", path.read_text())
+        self.assertIn("Committed enrollment public receipt and exact request context passed", SWIFT)
+        self.assertIn("testEnrollmentRecoveryNeverIssuesReceiptWithoutOriginalRequestBinding", NATIVE)
+
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):
         self.assertIn("This UI does not run sudo", MAC)
         self.assertIn("Shared/MacPeerAddressAllocationPolicy.swift", WF)

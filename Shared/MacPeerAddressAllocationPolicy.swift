@@ -371,6 +371,8 @@ struct MacPeerRosterJournal: Sendable {
 /// a lease after authorizing this exact intent.
 enum MacPeerMutationIntent: Equatable, Sendable {
     case mutate(expected: MacPeerRosterSnapshot, mutation: MacPeerRosterMutation)
+    // Explicit request identity is part of the trusted owner's authorization.
+    case enroll(requestID: UUID, expected: MacPeerRosterSnapshot, clientPublicKey: String)
     case recover(transactionID: UUID)
 }
 
@@ -410,6 +412,8 @@ protocol MacPeerMutationOwner: Sendable {
 enum MacPeerMutationExecution: Equatable, Sendable {
     case busy, refused, unverified
     case settled(transactionID: UUID, resolution: MacPeerRosterResolution)
+    // Public candidate only. No authenticated delivery or activation implied.
+    case enrollmentCommitted(MacEnrollmentAddressReceipt)
 }
 
 /// Testable orchestration only. The companion UI and PacketTunnel must not
@@ -430,6 +434,13 @@ actor MacPeerMutationExecutor {
     func execute(_ intent: MacPeerMutationIntent) async -> MacPeerMutationExecution {
         guard !busy else { return .busy }
         guard !Task.isCancelled else { return .refused }
+        if case let .enroll(requestID, _, clientPublicKey) = intent {
+            guard MacEnrollmentAddressReceipt.validID(requestID),
+                  clientPublicKey != journal.serverPublicKey,
+                  IPhonePairingImportPolicy.validatedPublicKey(clientPublicKey) != nil else {
+                return .refused
+            }
+        }
         busy = true
         defer { busy = false }
         let lease: MacPeerMutationLease
@@ -450,7 +461,19 @@ actor MacPeerMutationExecutor {
               lease.daemonGeneration.uuidString != "00000000-0000-0000-0000-000000000000",
               let coordinator = MacPeerRosterCoordinator(journal: journal) else { return .unverified }
         switch intent {
-        case let .mutate(expected, mutation):
+        case .mutate, .enroll:
+            let expected: MacPeerRosterSnapshot
+            let mutation: MacPeerRosterMutation
+            switch intent {
+            case let .mutate(snapshot, delta):
+                expected = snapshot
+                mutation = delta
+            case let .enroll(_, snapshot, clientPublicKey):
+                expected = snapshot
+                mutation = .enroll(publicKey: clientPublicKey)
+            case .recover:
+                return .refused
+            }
             guard !Task.isCancelled, await coordinator.pendingPlan() == nil,
                   await coordinator.snapshot() == expected else { return .refused }
             guard let before = try? await owner.initialInventory(lease: lease),
@@ -488,6 +511,126 @@ actor MacPeerMutationExecutor {
         let resolution = await coordinator.resolve(id: plan.id, readback: observation.inventory,
                                                     terminalWriteFenced: true)
         guard resolution == .committed || resolution == .rolledBack else { return .unverified }
+        // Issue only under the same lease, after journal settlement and
+        // a second exact durable readback. A failure here cannot undo a
+        // committed mutation or authorize a second dispatch.
+        if resolution == .committed,
+           case let .enroll(requestID, expected, clientPublicKey) = lease.intent,
+           let record = try? journal.load(),
+           let candidate = MacEnrollmentAddressReceipt.candidate(requestID: requestID,
+                serverPublicKey: lease.serverPublicKey, clientPublicKey: clientPublicKey,
+                expected: expected, plan: plan, settled: record) {
+            return .enrollmentCommitted(candidate)
+        }
+        // Recovery or a lost candidate is NOT a license to enroll again.
+        // Durable request/receipt replay is a separate protocol requirement.
         return .settled(transactionID: plan.id, resolution: resolution)
+    }
+}
+
+
+/// A versioned public-only enrollment receipt CANDIDATE. WireGuard X25519
+/// keys are not signature keys. Canonical bytes and matching context are
+/// structural checks, not proof of authenticity, freshness or possession.
+/// Do not write a native profile or activate a slot from this value.
+struct MacEnrollmentAddressReceipt: Codable, Equatable, Sendable {
+    private let version: Int
+    private let kind: String
+    let requestID: UUID
+    let transactionID: UUID
+    let serverPublicKey: String
+    let clientPublicKey: String
+    let rosterEpoch: UUID
+    let revision: UInt64
+    let slot: UInt8
+
+    static let maxBytes = 2048
+
+    private init(requestID: UUID, transactionID: UUID, serverPublicKey: String,
+                 clientPublicKey: String, rosterEpoch: UUID, revision: UInt64, slot: UInt8) {
+        version = 1
+        kind = "enrollment-committed"
+        self.requestID = requestID
+        self.transactionID = transactionID
+        self.serverPublicKey = serverPublicKey
+        self.clientPublicKey = clientPublicKey
+        self.rosterEpoch = rosterEpoch
+        self.revision = revision
+        self.slot = slot
+    }
+
+    fileprivate static func validID(_ id: UUID) -> Bool {
+        id.uuidString != "00000000-0000-0000-0000-000000000000"
+    }
+
+    private var isValid: Bool {
+        version == 1 && kind == "enrollment-committed" &&
+        Self.validID(requestID) && Self.validID(transactionID) && Self.validID(rosterEpoch) &&
+        serverPublicKey != clientPublicKey &&
+        IPhonePairingImportPolicy.validatedPublicKey(serverPublicKey) != nil &&
+        IPhonePairingImportPolicy.validatedPublicKey(clientPublicKey) != nil &&
+        revision > 0 && (2...254).contains(Int(slot))
+    }
+
+    /// Host routes are derived exclusively from the allocated slot.
+    var publicReservation: MacPeerAddressReservation {
+        MacPeerAddressReservation(publicKey: clientPublicKey, slot: slot)
+    }
+
+    /// The executor supplies a durably settled record under its trusted
+    /// lease. Internal construction is structural and cannot authenticate a
+    /// caller-provided record. Refuse rollback, revocation and later revision.
+    fileprivate static func candidate(requestID: UUID, serverPublicKey: String,
+        clientPublicKey: String, expected: MacPeerRosterSnapshot,
+        plan: MacPeerRosterPlan, settled: MacPeerRosterRecord) -> Self? {
+        guard plan.before == expected, expected.revision < UInt64.max,
+              settled.isValid, settled.serverPublicKey == serverPublicKey,
+              settled.pending == nil, settled.current.epoch == expected.epoch,
+              settled.current.revision == expected.revision + 1,
+              settled.current.peers == plan.after,
+              MacPeerRosterCoordinator.canonicalRoster(expected.peers) == expected.peers,
+              !expected.peers.contains(where: { $0.publicKey == serverPublicKey }),
+              let peer = MacPeerAddressAllocationPolicy.nextReservation(
+                publicKey: clientPublicKey, existing: expected.peers),
+              plan.after == (expected.peers + [peer]).sorted(by: { $0.slot < $1.slot }) else { return nil }
+        let receipt = Self(requestID: requestID, transactionID: plan.id,
+            serverPublicKey: serverPublicKey, clientPublicKey: clientPublicKey,
+            rosterEpoch: expected.epoch, revision: settled.current.revision, slot: peer.slot)
+        return receipt.isValid ? receipt : nil
+    }
+
+    func canonicalBytes() -> Data? {
+        guard isValid else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let bytes = try? encoder.encode(self), bytes.count <= Self.maxBytes else { return nil }
+        return bytes
+    }
+
+    /// Only an UNTRUSTED candidate. Exact canonical roundtrip rejects
+    /// unknown/duplicate fields, alternate spellings and arbitrary routes.
+    static func decodeUntrusted(_ bytes: Data) -> Self? {
+        guard !bytes.isEmpty, bytes.count <= maxBytes,
+              let receipt = try? JSONDecoder().decode(Self.self, from: bytes),
+              receipt.canonicalBytes() == bytes else { return nil }
+        return receipt
+    }
+
+    /// The future authenticated control channel supplies this context from
+    /// the exact authorized request and committed transaction, not the
+    /// decoded receipt. Durable one-time consumption remains mandatory.
+    struct Expected: Equatable, Sendable {
+        let requestID: UUID
+        let transactionID: UUID
+        let serverPublicKey: String
+        let clientPublicKey: String
+        let rosterEpoch: UUID
+        let revision: UInt64
+    }
+
+    func matchesUntrustedContext(_ expected: Expected) -> Bool {
+        isValid && requestID == expected.requestID && transactionID == expected.transactionID &&
+        serverPublicKey == expected.serverPublicKey && clientPublicKey == expected.clientPublicKey &&
+        rosterEpoch == expected.rosterEpoch && revision == expected.revision
     }
 }

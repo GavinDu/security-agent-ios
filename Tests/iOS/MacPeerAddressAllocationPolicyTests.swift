@@ -382,6 +382,100 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertNil(try journal.load().pending)
     }
 
+
+    func testEnrollmentReceiptRequiresCommittedExactRequestAndCanonicalBytes() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let expected = try journal.load().current
+        let request = UUID()
+        let intent = MacPeerMutationIntent.enroll(requestID: request, expected: expected, clientPublicKey: key(7))
+        await owner.setMode(.noWriteThenThrow)
+        let rollback = await executor.execute(intent)
+        guard case .settled(_, .rolledBack) = rollback else { return XCTFail("rollback issued receipt") }
+        let fresh = try journal.load().current
+        await owner.setMode(.normal)
+        let result = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
+        guard case let .enrollmentCommitted(receipt) = result else { return XCTFail("no committed candidate") }
+        XCTAssertEqual(receipt.slot, 2)
+        XCTAssertEqual(receipt.publicReservation.allowedIPs, "10.8.0.2/32, fd86:ea04:1111::2/128")
+        XCTAssertNil(try journal.load().pending)
+        XCTAssertEqual(try journal.load().current.revision, receipt.revision)
+        let bytes = try XCTUnwrap(receipt.canonicalBytes())
+        XCTAssertEqual(MacEnrollmentAddressReceipt.decodeUntrusted(bytes), receipt)
+        let context = MacEnrollmentAddressReceipt.Expected(requestID: request,
+            transactionID: receipt.transactionID, serverPublicKey: key(42), clientPublicKey: key(7),
+            rosterEpoch: fresh.epoch, revision: fresh.revision + 1)
+        XCTAssertTrue(receipt.matchesUntrustedContext(context))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: UUID(),
+            transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
+            transactionID: UUID(), serverPublicKey: context.serverPublicKey,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
+            transactionID: context.transactionID, serverPublicKey: key(43),
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
+            transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
+            clientPublicKey: key(9), rosterEpoch: context.rosterEpoch, revision: context.revision)))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
+            transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: UUID(), revision: context.revision)))
+        XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
+            transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision + 1)))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        for (field, invalid) in [("slot", 1 as Any), ("slot", 255 as Any), ("version", 2 as Any),
+                                 ("kind", "revoked" as Any), ("ipv4CIDR", "0.0.0.0/0" as Any),
+                                 ("requestID", "00000000-0000-0000-0000-000000000000" as Any)] {
+            var altered = object
+            altered[field] = invalid
+            let data = try JSONSerialization.data(withJSONObject: altered, options: [.sortedKeys])
+            XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(data))
+        }
+        // Syntactically valid alternative slot is not authenticated by this
+        // structural policy. The future channel must authenticate exact bytes.
+        object["slot"] = 3
+        let forged = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        XCTAssertNotEqual(MacEnrollmentAddressReceipt.decodeUntrusted(forged), receipt)
+        XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(Data(repeating: 65, count: 2049)))
+        let replay = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
+        XCTAssertEqual(replay, .refused)
+        let zero = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        let invalid = await executor.execute(.enroll(requestID: zero,
+            expected: try journal.load().current, clientPublicKey: key(9)))
+        XCTAssertEqual(invalid, .refused)
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 2)
+    }
+
+    func testEnrollmentRecoveryNeverIssuesReceiptWithoutOriginalRequestBinding() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        await owner.setMode(.staleTerminal)
+        let result = await executor.execute(.enroll(requestID: UUID(),
+            expected: try journal.load().current, clientPublicKey: key(7)))
+        XCTAssertEqual(result, .unverified)
+        let plan = try XCTUnwrap(journal.load().pending)
+        await owner.setMode(.normal)
+        let recovered = await executor.execute(.recover(transactionID: plan.id))
+        XCTAssertEqual(recovered, .settled(transactionID: plan.id, resolution: .committed))
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 1)
+    }
+
     func testExecutorDoesNotInferRollbackFromApplyError() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
