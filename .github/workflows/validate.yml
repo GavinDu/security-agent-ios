@@ -436,6 +436,15 @@ jobs:
           set -euo pipefail
           rustup toolchain install 1.90.0 --profile minimal
           CARGO_TARGET_DIR="$RUNNER_TEMP/peer-owner-policy" cargo +1.90.0 test --locked --offline --manifest-path macos/PeerOwnerPolicy/Cargo.toml
+      - name: Execute Mac enrollment signer custody policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-enrollment-signer-tests" \
+            Shared/CanonicalWireGuardPublicKeyPolicy.swift \
+            macos/AgentMac/MacEnrollmentSignerPolicy.swift \
+            Tests/build/mac_enrollment_signer_smoke.swift
+          "$RUNNER_TEMP/mac-enrollment-signer-tests"
       - name: Generate clean macOS project
         shell: bash
         run: |

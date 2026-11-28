@@ -259,3 +259,7 @@ fingerprint from a trusted separate display; supplying the same value from
 an incoming message is not authentication. No automatic signer rotation or
 re-pair with changed identity, no profile activation. Recovery and actual
 signed transport remain outstanding.
+
+### Mac-only enrollment signing identity custody (#20/#27)
+
+Explicit first-time commissioning generates a separate Ed25519 seed, binds its public identity to the verified WireGuard server, persists a canonical record via insert-only non-synchronizable data-protection Keychain and returns only the exact winner's public identity. Established lookup requires an independently retained expected signing public key and is read-only; missing, corrupt, replaced or wrong-server record fails closed. Never call commissioning as recovery. Mac data-protection Keychain requires appropriate signed access; no legacy fallback, no iOS App Group, no UI or live daemon caller, no arbitrary signing operation. Trusted server readback and first-commission authorization are future owner contracts; this does not prove daemon custody, process exclusion, user presence, anti-rollback or real signed Keychain access. Native macOS smoke executes actual CryptoKit with injected persistence faults, not physical Keychain acceptance. Do not enable signer or peer activation until authenticated owner and storage ownership are established.
