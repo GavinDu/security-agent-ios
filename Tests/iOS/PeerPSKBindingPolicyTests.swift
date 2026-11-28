@@ -109,7 +109,7 @@ final class PeerPSKBindingPolicyTests: XCTestCase {
     }
 
     func testInitialStageReadbackAndLocalStateFailure() throws {
-        enum Local: Error { case changed }
+        enum Local: Error, Equatable { case changed }
         let secret = Data(repeating: 8, count: 32), server = key(42)
         var checks = 0
         var stored: Data?

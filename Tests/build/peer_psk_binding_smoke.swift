@@ -57,19 +57,19 @@ struct PeerPSKBindingSmoke {
             candidate: requirement, candidateServer: server, nativeRequiresPSK: true, priorVerified: true))
         var staged: Data?
         var inserts = 0
-        func stage(_ candidate: Data, _ marker: PeerPSKRequirement = requirement) throws -> PeerPSKBindingPolicy.StageReceipt {
+        func stage(_ candidate: Data, _ marker: PeerPSKRequirement) throws -> PeerPSKBindingPolicy.StageReceipt {
             try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server, requirement: marker, secret: candidate,
                 verifyLocalState: {}, readStage: { staged }, insertIfAbsent: { bytes in
                     inserts += 1
                     if staged == nil { staged = bytes }
                 })
         }
-        let receipt = try stage(secret)
+        let receipt = try stage(secret, requirement)
         precondition(receipt.requirement == requirement && receipt.serverPublicKey == server)
-        let retry = try stage(secret)
+        let retry = try stage(secret, requirement)
         precondition(retry == receipt && inserts == 1)
         do {
-            _ = try stage(Data(repeating: 9, count: 32))
+            _ = try stage(Data(repeating: 9, count: 32), requirement)
             preconditionFailure("different staged secret accepted")
         } catch PeerPSKBindingPolicy.StageError.conflict {}
         do {
@@ -77,7 +77,7 @@ struct PeerPSKBindingSmoke {
             preconditionFailure("different transaction accepted")
         } catch PeerPSKBindingPolicy.StageError.conflict {}
         do {
-            _ = try stage(Data(repeating: 0, count: 32))
+            _ = try stage(Data(repeating: 0, count: 32), requirement)
             preconditionFailure("zero secret accepted")
         } catch PeerPSKBindingPolicy.StageError.invalidInput {}
         do {
