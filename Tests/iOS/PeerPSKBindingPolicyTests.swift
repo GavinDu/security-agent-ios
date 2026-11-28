@@ -87,4 +87,51 @@ final class PeerPSKBindingPolicyTests: XCTestCase {
                 clientPublicKey: client, legacyPresent: false, boundRecord: bound, requirement: wrong))
         }
     }
+
+    func testInitialStageRetryAndConflictingSecret() throws {
+        let server = key(42), secret = Data(repeating: 8, count: 32)
+        var stored: Data?
+        var writes = 0
+        func stage(_ value: Data, _ marker: PeerPSKRequirement) throws -> PeerPSKBindingPolicy.StageReceipt {
+            try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server, requirement: marker,
+                secret: value, verifyLocalState: {}, readStage: { stored },
+                insertIfAbsent: { bytes in writes += 1; if stored == nil { stored = bytes } })
+        }
+        let receipt = try stage(secret, requirement)
+        XCTAssertEqual(receipt.serverPublicKey, server)
+        XCTAssertEqual(receipt.requirement, requirement)
+        XCTAssertEqual(try stage(secret, requirement), receipt)
+        XCTAssertEqual(writes, 1)
+        XCTAssertThrowsError(try stage(Data(repeating: 9, count: 32), requirement))
+        XCTAssertThrowsError(try stage(secret, .init(transactionID: UUID(), clientPublicKey: key(7))))
+        XCTAssertThrowsError(try stage(Data(repeating: 0, count: 32), requirement))
+        XCTAssertEqual(writes, 1)
+    }
+
+    func testInitialStageReadbackAndLocalStateFailure() throws {
+        enum Local: Error, Equatable { case changed }
+        let secret = Data(repeating: 8, count: 32), server = key(42)
+        var checks = 0
+        var stored: Data?
+        XCTAssertThrowsError(try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server,
+            requirement: requirement, secret: secret, verifyLocalState: {
+                checks += 1
+                if checks == 3 { throw Local.changed }
+            }, readStage: { stored }, insertIfAbsent: { stored = $0 })) {
+                XCTAssertEqual($0 as? Local, .changed)
+        }
+        XCTAssertNotNil(stored) // fail closed; no silent cleanup or activation
+        XCTAssertThrowsError(try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server,
+            requirement: requirement, secret: secret, verifyLocalState: {},
+            readStage: { nil }, insertIfAbsent: { _ in })) {
+                XCTAssertEqual($0 as? PeerPSKBindingPolicy.StageError, .missingWinner)
+        }
+        var reads = 0
+        XCTAssertThrowsError(try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server,
+            requirement: requirement, secret: secret, verifyLocalState: {},
+            readStage: { reads += 1; return reads == 1 ? nil : Data("other".utf8) },
+            insertIfAbsent: { _ in })) {
+                XCTAssertEqual($0 as? PeerPSKBindingPolicy.StageError, .conflict)
+        }
+    }
 }

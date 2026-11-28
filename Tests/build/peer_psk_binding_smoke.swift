@@ -55,6 +55,37 @@ struct PeerPSKBindingSmoke {
             candidate: nil, candidateServer: server, nativeRequiresPSK: true, priorVerified: false))
         precondition(PeerPSKRequirement.permitsOrdinarySave(prior: requirement, priorServer: server,
             candidate: requirement, candidateServer: server, nativeRequiresPSK: true, priorVerified: true))
-        print("Peer-bound PSK selection and legacy fail-closed policy passed")
+        var staged: Data?
+        var inserts = 0
+        func stage(_ candidate: Data, _ marker: PeerPSKRequirement) throws -> PeerPSKBindingPolicy.StageReceipt {
+            try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server, requirement: marker, secret: candidate,
+                verifyLocalState: {}, readStage: { staged }, insertIfAbsent: { bytes in
+                    inserts += 1
+                    if staged == nil { staged = bytes }
+                })
+        }
+        let receipt = try stage(secret, requirement)
+        precondition(receipt.requirement == requirement && receipt.serverPublicKey == server)
+        let retry = try stage(secret, requirement)
+        precondition(retry == receipt && inserts == 1)
+        do {
+            _ = try stage(Data(repeating: 9, count: 32), requirement)
+            preconditionFailure("different staged secret accepted")
+        } catch PeerPSKBindingPolicy.StageError.conflict {}
+        do {
+            _ = try stage(secret, PeerPSKRequirement(transactionID: UUID(), clientPublicKey: client))
+            preconditionFailure("different transaction accepted")
+        } catch PeerPSKBindingPolicy.StageError.conflict {}
+        do {
+            _ = try stage(Data(repeating: 0, count: 32), requirement)
+            preconditionFailure("zero secret accepted")
+        } catch PeerPSKBindingPolicy.StageError.invalidInput {}
+        do {
+            _ = try PeerPSKBindingPolicy.stageInitial(serverPublicKey: server, requirement: requirement,
+                secret: secret, verifyLocalState: {}, readStage: { nil }, insertIfAbsent: { _ in })
+            preconditionFailure("missing persisted winner accepted")
+        } catch PeerPSKBindingPolicy.StageError.missingWinner {}
+        precondition(inserts == 1)
+        print("Peer-bound PSK selection, initial staging and legacy fail-closed policy passed")
     }
 }
