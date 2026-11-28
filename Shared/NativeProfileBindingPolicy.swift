@@ -6,17 +6,24 @@ import Foundation
 /// data only; secret WireGuard keys remain exclusively in shared Keychain.
 enum NativeProfileBindingPolicy {
     static let requiredVersion = 2
+    static let pskRequiredVersion = 3
     private static let digestField = "publicProfileDigest"
     private static let versionField = "profileVersion"
 
-    static func metadata(for digest: String) -> [String: Any] {
-        [versionField: requiredVersion, digestField: digest]
+    static func metadata(for digest: String, version: Int = requiredVersion) -> [String: Any] {
+        [versionField: version, digestField: digest]
     }
 
-    static func allowsStart(metadata: [String: Any]?, profileDigest: String?) -> Bool {
-        guard let metadata,
+    static func requiresPSK(metadata: [String: Any]?) -> Bool {
+        metadata?[versionField] as? Int == pskRequiredVersion
+    }
+
+    static func allowsStart(metadata: [String: Any]?, profileDigest: String?,
+                            expectedVersion: Int = requiredVersion) -> Bool {
+        guard expectedVersion == requiredVersion || expectedVersion == pskRequiredVersion,
+              let metadata,
               let version = metadata[versionField] as? Int,
-              version == requiredVersion,
+              version == expectedVersion,
               let stored = metadata[digestField] as? String,
               let expected = profileDigest,
               let decoded = Data(base64Encoded: expected),

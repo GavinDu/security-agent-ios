@@ -121,7 +121,8 @@ enum SharedKeychain {
 
     /// Only the exact client identity already selected for this codec can
     /// select a bound PSK. The legacy account is validated but never used.
-    static func boundPreSharedKey(serverPublicKey: String, clientPrivateKey: Data) throws -> Data? {
+    static func boundPreSharedKey(serverPublicKey: String, clientPrivateKey: Data,
+                                  requirement: PeerPSKRequirement?) throws -> Data? {
         guard WireGuardPrivateIdentityPolicy.accepts(clientPrivateKey) else { throw KeychainError.invalidSecret }
         let clientPublicKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: clientPrivateKey)
             .publicKey.rawRepresentation.base64EncodedString()
@@ -130,7 +131,8 @@ enum SharedKeychain {
         let record = try read(boundPSKAccount)
         do {
             return try PeerPSKBindingPolicy.select(serverPublicKey: serverPublicKey,
-                clientPublicKey: clientPublicKey, legacyPresent: legacyPresent, boundRecord: record)
+                clientPublicKey: clientPublicKey, legacyPresent: legacyPresent, boundRecord: record,
+                requirement: requirement)
         } catch {
             throw KeychainError.invalidSecret
         }

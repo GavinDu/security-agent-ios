@@ -221,7 +221,8 @@ final class TunnelManager: NSObject, ObservableObject {
             ), expectedBundleID: AgentConstants.tunnelBundleID,
             expectedServerAddress: profile.endpoint,
             expectedProfileDigest: digest,
-            expectedOnDemand: profile.onDemand
+            expectedOnDemand: profile.onDemand,
+            expectedProfileVersion: profile.nativeBindingVersion
         )
     }
 
@@ -299,7 +300,8 @@ final class TunnelManager: NSObject, ObservableObject {
            native.serverAddress == profile.endpoint,
            NativeProfileBindingPolicy.allowsStart(
             metadata: native.providerConfiguration,
-            profileDigest: try? profile.publicProfileDigest()
+            profileDigest: try? profile.publicProfileDigest(),
+                    expectedVersion: profile.nativeBindingVersion
            ) {
             verifiedRouteIsFull = profile.routeMode == .full
         }
@@ -413,6 +415,26 @@ final class TunnelManager: NSObject, ObservableObject {
             errorMessage = AgentConfigurationError.unverifiedFullTunnel.localizedDescription
             return
         }
+        // An ordinary save cannot downgrade a committed PSK requirement,
+        // even when the public profile is missing but native V3 remains.
+        let persistedPrior = nativeIO.loadProfile()
+        let nativeMetadata = (manager?.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
+        let priorVerified: Bool
+        if let prior = profile, let manager, persistedPrior == prior {
+            priorVerified = nativeMatches(manager, prior)
+        } else {
+            priorVerified = false
+        }
+        guard PeerPSKRequirement.permitsOrdinarySave(
+            prior: persistedPrior?.requiredPSK ?? profile?.requiredPSK,
+            priorServer: persistedPrior?.publicKey ?? profile?.publicKey,
+            candidate: validated.requiredPSK, candidateServer: validated.publicKey,
+            nativeRequiresPSK: NativeProfileBindingPolicy.requiresPSK(metadata: nativeMetadata),
+            priorVerified: priorVerified
+        ) else {
+            errorMessage = "Protected VPN pairing requires authenticated PSK recovery or migration."
+            return
+        }
         // Pairing and on-demand changes also enter this generic save method,
         // not just the route editor. Never change the system VPN profile while
         // an old Rust BoringTun session may still own its peer or routes.
@@ -456,7 +478,7 @@ final class TunnelManager: NSObject, ObservableObject {
         // Only the versioned SHA-256 of validated public metadata; never
         // include the private WireGuard key or preshared key here.
         configuration.providerConfiguration =
-            NativeProfileBindingPolicy.metadata(for: bindingDigest)
+            NativeProfileBindingPolicy.metadata(for: bindingDigest, version: validated.nativeBindingVersion)
         selected.protocolConfiguration = configuration
         selected.localizedDescription = "Security Agent VPN"
         selected.isEnabled = true
@@ -492,7 +514,8 @@ final class TunnelManager: NSObject, ObservableObject {
                             expectedBundleID: AgentConstants.tunnelBundleID,
                             expectedServerAddress: validated.endpoint,
                             expectedProfileDigest: bindingDigest,
-                            expectedOnDemand: validated.onDemand
+                            expectedOnDemand: validated.onDemand,
+                            expectedProfileVersion: validated.nativeBindingVersion
                         ) else {
                             callback(AgentConfigurationError.nativeProfileMismatch)
                             return
@@ -593,7 +616,8 @@ final class TunnelManager: NSObject, ObservableObject {
               native.serverAddress == profile.endpoint,
               NativeProfileBindingPolicy.allowsStart(
                 metadata: native.providerConfiguration,
-                profileDigest: try? profile.publicProfileDigest()
+                profileDigest: try? profile.publicProfileDigest(),
+                    expectedVersion: profile.nativeBindingVersion
               ) else {
             errorMessage = AgentConfigurationError.nativeProfileMismatch.localizedDescription
             return
@@ -772,7 +796,7 @@ final class TunnelManager: NSObject, ObservableObject {
         nativeInventoryTrust.beginWrite()
         // Update only the public binding and on-demand settings; retain the
         // exact native protocol, peer, bundle, and enabled state.
-        native.providerConfiguration = NativeProfileBindingPolicy.metadata(for: digest)
+        native.providerConfiguration = NativeProfileBindingPolicy.metadata(for: digest, version: candidate.nativeBindingVersion)
         manager.protocolConfiguration = native
         manager.isOnDemandEnabled = false
         manager.onDemandRules = []
@@ -859,7 +883,8 @@ final class TunnelManager: NSObject, ObservableObject {
                 native.serverAddress == profile.endpoint &&
                 NativeProfileBindingPolicy.allowsStart(
                     metadata: native.providerConfiguration,
-                    profileDigest: try? profile.publicProfileDigest()
+                    profileDigest: try? profile.publicProfileDigest(),
+                    expectedVersion: profile.nativeBindingVersion
                 )
         } else {
             isValidSplitProfile = false
