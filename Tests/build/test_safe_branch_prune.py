@@ -41,7 +41,58 @@ def setup():
     return [BRANCH, pull, reference, main, feature, changed, []]
 
 
+def history_proof(feature_sha="a" * 40, main_sha="b" * 40):
+    return {
+        "url": f"https://api.github.com/repos/GavinDu/security-agent-ios/compare/{feature_sha}...{main_sha}",
+        "base_commit": {"sha": feature_sha},
+        "merge_base_commit": {"sha": feature_sha},
+        "status": "ahead",
+        "behind_by": 0,
+        "ahead_by": 2,
+    }
+
+
 class SafeBranchPrunePolicyTests(unittest.TestCase):
+    def test_exact_ancestor_allows_later_reviewed_blob_changes(self):
+        args = setup()
+        args[3]["tree"][0]["sha"] = "later-main"
+        self.assertFalse(eligible(*args))
+        self.assertTrue(eligible(*args, history_proof(), "b" * 40))
+
+    def test_bad_ancestry_cannot_replace_byte_proof(self):
+        args = setup()
+        args[3]["tree"][0]["sha"] = "later-main"
+        for changes in (
+            {"status": "diverged"},
+            {"behind_by": 1},
+            {"behind_by": False},
+            {"ahead_by": 0},
+            {"ahead_by": True},
+            {"base_commit": {"sha": "c" * 40}},
+            {"merge_base_commit": {"sha": "c" * 40}},
+            {"merge_base_commit": []},
+            {"url": "https://api.github.com/repos/GavinDu/security-agent-ios/compare/feature...main"},
+        ):
+            proof = history_proof()
+            proof.update(changes)
+            self.assertFalse(eligible(*args, proof, "b" * 40))
+        self.assertFalse(eligible(*args, history_proof(), "c" * 40))
+        self.assertFalse(eligible(*args, None, "b" * 40))
+
+    def test_ancestry_does_not_override_other_deletion_guards(self):
+        for modify in (
+            lambda a: a[1].update(merged_at=None),
+            lambda a: a[2]["object"].update(sha="c" * 40),
+            lambda a: a[6].append({"number": 99}),
+            lambda a: a[4].update(truncated=True),
+            lambda a: a[5].clear(),
+            lambda a: a[4]["tree"].append({"path": "unique.swift", "type": "blob", "sha": "4"}),
+        ):
+            args = setup()
+            args[3]["tree"][0]["sha"] = "later-main"
+            modify(args)
+            self.assertFalse(eligible(*args, history_proof(), "b" * 40))
+
     def test_squash_merged_branch_safe_even_after_main_has_advanced(self):
         self.assertTrue(eligible(*setup()))
 
