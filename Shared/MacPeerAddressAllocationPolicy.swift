@@ -74,7 +74,15 @@ struct MacPeerRosterPlan: Codable, Equatable, Sendable {
     let id: UUID
     let before: MacPeerRosterSnapshot
     let after: [MacPeerAddressReservation]
-    var enrollmentRequestID: UUID? = nil
+    let enrollmentRequestID: UUID?
+
+    init(id: UUID, before: MacPeerRosterSnapshot, after: [MacPeerAddressReservation],
+         enrollmentRequestID: UUID? = nil) {
+        self.id = id
+        self.before = before
+        self.after = after
+        self.enrollmentRequestID = enrollmentRequestID
+    }
 }
 enum MacPeerRosterResolution: Equatable, Sendable {
     case committed, rolledBack, unverified, stale
@@ -302,7 +310,8 @@ struct MacPeerRosterRecord: Codable, Equatable, Sendable {
         if let requestID = pending.enrollmentRequestID {
             guard enrollmentLedger?.usedRequestIDs.last == requestID else { return false }
         }
-        guard pending.before == current, current.revision < UInt64.max,
+        guard MacEnrollmentAddressReceipt.validID(pending.id),
+              pending.before == current, current.revision < UInt64.max,
               !pending.after.contains(where: { $0.publicKey == serverPublicKey }),
               MacPeerRosterCoordinator.canonicalRoster(pending.after) == pending.after else {
             return false

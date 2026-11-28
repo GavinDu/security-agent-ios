@@ -506,6 +506,51 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertEqual(altered, .refused)
     }
 
+    func testLedgerCapacityAndLegacyJournalFailClosedWithoutDispatch() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let file = directory.appendingPathComponent("peer-roster-v1.json")
+        let legacy = try Data(contentsOf: file)
+        let old = try journal.load()
+        XCTAssertEqual(old.version, 1)
+        XCTAssertNil(old.enrollmentLedger)
+        let legacyObject = try XCTUnwrap(JSONSerialization.jsonObject(with: legacy) as? [String: Any])
+        XCTAssertEqual(Set(legacyObject.keys), Set(["version", "serverPublicKey", "current"]))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        XCTAssertEqual(try encoder.encode(old), legacy)
+
+        // Synthetic, canonical full ledger on a settled roster. The
+        // production journal still rejects duplicates and oversize data.
+        let ids = (1...MacEnrollmentLedger.maxRequests).map { _ in UUID() }
+        let snapshot = MacPeerRosterSnapshot(epoch: old.current.epoch,
+            revision: UInt64(ids.count), peers: [])
+        let full = MacPeerRosterRecord(serverPublicKey: key(42), current: snapshot,
+            pending: nil, enrollmentLedger: .init(usedRequestIDs: ids, latestReceipt: nil))
+        let fullBytes = try encoder.encode(full)
+        try fullBytes.write(to: file)
+        XCTAssertEqual(try journal.load(), full)
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let refused = await executor.execute(.enroll(requestID: UUID(), expected: snapshot, clientPublicKey: key(7)))
+        XCTAssertEqual(refused, .refused)
+        let reused = await executor.execute(.enroll(requestID: ids[0], expected: snapshot, clientPublicKey: key(7)))
+        XCTAssertEqual(reused, .refused)
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 0)
+        XCTAssertEqual(try Data(contentsOf: file), fullBytes)
+        for invalidIDs in [ids + [UUID()], [ids[0], ids[0]], [UUID(uuidString: "00000000-0000-0000-0000-000000000000")!]] {
+            let corrupt = MacPeerRosterRecord(serverPublicKey: key(42), current: snapshot,
+                pending: nil, enrollmentLedger: .init(usedRequestIDs: invalidIDs, latestReceipt: nil))
+            try encoder.encode(corrupt).write(to: file)
+            XCTAssertThrowsError(try journal.load())
+        }
+    }
+
     func testExecutorDoesNotInferRollbackFromApplyError() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
