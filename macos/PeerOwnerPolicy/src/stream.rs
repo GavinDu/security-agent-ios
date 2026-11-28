@@ -28,7 +28,7 @@ pub enum ReadError {
 /// this is a one-way request ingress, not an end-to-end RPC protocol.
 /// A future authenticated response path requires a separate reviewed design.
 pub fn read_single_request(mut stream: UnixStream, budget: Duration)
-    -> Result<UntrustedRequest, ReadError>
+    -> Result<(UntrustedRequest, UnixStream), ReadError>
 {
     if budget.is_zero() || budget > MAX_BUDGET {
         return Err(ReadError::InvalidBudget);
@@ -47,7 +47,8 @@ pub fn read_single_request(mut stream: UnixStream, budget: Duration)
     if read_before(&mut stream, &mut extra, deadline)? != 0 {
         return Err(ReadError::TrailingData);
     }
-    UntrustedRequest::decode(&frame).map_err(|_| ReadError::InvalidFrame)
+    let request = UntrustedRequest::decode(&frame).map_err(|_| ReadError::InvalidFrame)?;
+    Ok((request, stream))
 }
 
 fn read_before(stream: &mut UnixStream, output: &mut [u8], deadline: Instant)
@@ -103,9 +104,13 @@ mod tests {
             writer.write_all(part).unwrap();
         }
         writer.shutdown(Shutdown::Write).unwrap();
-        let request = read_single_request(reader, Duration::from_secs(2)).unwrap();
+        let (request, mut response) = read_single_request(reader, Duration::from_secs(2)).unwrap();
         assert_eq!(request.request_id(), [1; 16]);
         assert_eq!(request.revision(), 7);
+        response.write_all(b"ok").unwrap();
+        let mut reply = [0; 2];
+        writer.read_exact(&mut reply).unwrap();
+        assert_eq!(&reply, b"ok");
     }
 
     #[test]

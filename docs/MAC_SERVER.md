@@ -199,4 +199,5 @@ The Rust policy crate now reads one owned Unix stream using a fixed buffer
 and an absolute deadline across all fragments and mandatory write-half EOF.
 Truncated, overlong, malformed and stalled streams fail closed; no listener,
 privileged socket path, OS credential authorization or response protocol is
-introduced. Admission and caller authentication must precede invocation.
+introduced. Success retains the same connection for future response delivery;
+admission and caller authentication must precede invocation.

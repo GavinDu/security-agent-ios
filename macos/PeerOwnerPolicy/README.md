@@ -44,8 +44,8 @@ Tests: cargo +1.90.0 test --locked --offline --manifest-path macos/PeerOwnerPoli
 `stream::read_single_request` owns a connected UnixStream and reads exactly
 129 bytes plus EOF under one absolute budget (0 < budget <= 5 seconds).
 Truncation, extra bytes, deadline, malformed frame and I/O error are refused.
-It closes the stream on every result; this is deliberately one-way ingress,
-not the final authenticated request/response protocol. No listener is added.
+Errors close the stream; success returns the same owned connection for a
+future bounded authenticated response. No listener is added.
 Caller must authenticate OS peer credentials and authorize the exact request,
 limit concurrent admissions, and design response delivery before live use.
 Five local socket-pair tests run in existing Linux/macOS Rust CI.
