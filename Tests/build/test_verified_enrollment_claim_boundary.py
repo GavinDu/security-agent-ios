@@ -27,3 +27,19 @@ class VerifiedEnrollmentClaimBoundaryTests(unittest.TestCase):
                       "winner == verified.record", "result == .inserted"]:
             self.assertIn(token, source)
         self.assertTrue((ROOT / "Tests/iOS/VerifiedEnrollmentReceiptPolicyTests.swift").exists())
+
+    def test_receipt_claim_rechecks_independent_persisted_signer(self):
+        source = (ROOT / "Shared/SecretStore.swift").read_text()
+        verify = source.split("static func verifyEnrollmentReceipt", 1)[1].split("static func claimVerifiedEnrollmentReceipt", 1)[0]
+        self.assertIn("existingEnrollmentSigningPin(", verify)
+        self.assertIn("trust: .init(signingPublicKey: pin", verify)
+        claim = source.split("static func claimVerifiedEnrollmentReceipt", 1)[1].split("static func boundPreSharedKey", 1)[0]
+        self.assertIn("client: verified.clientPublicKey) == verified.signingPublicKey", claim)
+        pin = source.split("static func installEnrollmentSigningPin", 1)[1].split("private static func existingEnrollmentSigningPin", 1)[0]
+        self.assertIn("SecItemAdd(", pin)
+        self.assertIn("kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly", pin)
+        self.assertNotIn("SecItemUpdate(", pin)
+        self.assertNotIn("SecItemDelete(", pin)
+        for path in (ROOT / "ios").rglob("*.swift"):
+            self.assertNotIn("installEnrollmentSigningPin(", path.read_text())
+        self.assertTrue((ROOT / "Tests/iOS/EnrollmentSigningPinPolicyTests.swift").exists())
