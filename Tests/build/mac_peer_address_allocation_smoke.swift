@@ -6,6 +6,15 @@ struct MacPeerAddressAllocationSmoke {
         func key(_ n: UInt8) -> String {
             Data(repeating: n, count: 32).base64EncodedString()
         }
+        func inventory(_ peers: [MacPeerAddressReservation], server: String? = nil)
+            -> MacPeerPublicInventory.Snapshot {
+            let serverKey = server ?? key(42)
+            let peerText = peers.map { $0.publicKey + "\n" }.joined()
+            let allowedText = peers.map { $0.publicKey + "\t" + $0.ipv4CIDR + " " + $0.ipv6CIDR + "\n" }.joined()
+            return MacPeerPublicInventory.decode(expectedServerKey: serverKey,
+                publicKeyOutput: Data((serverKey + "\n").utf8),
+                peersOutput: Data(peerText.utf8), allowedIPsOutput: Data(allowedText.utf8))!
+        }
         let a = MacPeerAddressAllocationPolicy.nextReservation(publicKey: key(1), existing: [])
         precondition(a?.slot == 2)
         precondition(a?.allowedIPs == "10.8.0.2/32, fd86:ea04:1111::2/128")
@@ -108,16 +117,29 @@ struct MacPeerAddressAllocationSmoke {
         let writer = MacPeerRosterCoordinator(journal: journal)!
         let otherWriter = MacPeerRosterCoordinator(journal: journal)!
         let original = await writer.snapshot()
-        let proposal = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        let missing = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        precondition(missing == nil)
+        let wrongServerRead = await writer.prepare(.enroll(publicKey: key(1)), expected: original,
+                                                   readback: inventory([], server: key(43)), terminalWriteFenced: true)
+        precondition(wrongServerRead == nil)
+        let drift = await writer.prepare(.enroll(publicKey: key(1)), expected: original,
+                                        readback: inventory([a!]), terminalWriteFenced: true)
+        precondition(drift == nil)
+        let proposal = await writer.prepare(.enroll(publicKey: key(1)), expected: original,
+                                            readback: inventory([]), terminalWriteFenced: true)
         precondition(proposal != nil)
-        let conflict = await otherWriter.prepare(.enroll(publicKey: key(2)), expected: original)
+        let conflict = await otherWriter.prepare(.enroll(publicKey: key(2)), expected: original,
+                                                 readback: inventory([]), terminalWriteFenced: true)
         precondition(conflict == nil)
         let reopened = MacPeerRosterCoordinator(journal: journal)!
         let recovered = await reopened.pendingPlan()
         precondition(recovered == proposal)
         let unfenced = await reopened.resolve(id: proposal!.id, observed: [])
         precondition(unfenced == .unverified)
-        let settled = await reopened.resolve(id: proposal!.id, observed: proposal!.after,
+        let wrongSettlement = await reopened.resolve(id: proposal!.id,
+            readback: inventory(proposal!.after, server: key(43)), terminalWriteFenced: true)
+        precondition(wrongSettlement == .unverified)
+        let settled = await reopened.resolve(id: proposal!.id, readback: inventory(proposal!.after),
                                              terminalWriteFenced: true)
         precondition(settled == .committed)
         let verified = try! journal.load()
@@ -127,21 +149,24 @@ struct MacPeerAddressAllocationSmoke {
         precondition(MacPeerRosterCoordinator(journal: wrongServerJournal) == nil)
         let nextWriter = MacPeerRosterCoordinator(journal: journal)!
         let latestSnapshot = await nextWriter.snapshot()
-        let selfPeer = await nextWriter.prepare(.enroll(publicKey: key(42)), expected: latestSnapshot)
+        let selfPeer = await nextWriter.prepare(.enroll(publicKey: key(42)), expected: latestSnapshot,
+                                               readback: inventory(latestSnapshot.peers), terminalWriteFenced: true)
         precondition(selfPeer == nil)
-        let nextPlan = await nextWriter.prepare(.revoke(proposal!.after[0]), expected: latestSnapshot)
+        let nextPlan = await nextWriter.prepare(.revoke(proposal!.after[0]), expected: latestSnapshot,
+                                               readback: inventory(latestSnapshot.peers), terminalWriteFenced: true)
         precondition(nextPlan != nil)
         let file = directory.appendingPathComponent("peer-roster-v1.json")
         let pendingBytes = try! Data(contentsOf: file)
         try! Data("invalid".utf8).write(to: file)
-        let failed = await nextWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        let failed = await nextWriter.resolve(id: nextPlan!.id, readback: inventory([]), terminalWriteFenced: true)
         precondition(failed == .unverified)
         try! pendingBytes.write(to: file)
-        let refusedAfterRepair = await nextWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        let refusedAfterRepair = await nextWriter.resolve(id: nextPlan!.id, readback: inventory([]), terminalWriteFenced: true)
         precondition(refusedAfterRepair == .unverified)
         let recoveredWriter = MacPeerRosterCoordinator(journal: journal)!
-        let completed = await recoveredWriter.resolve(id: nextPlan!.id, observed: [], terminalWriteFenced: true)
+        let completed = await recoveredWriter.resolve(id: nextPlan!.id, readback: inventory([]), terminalWriteFenced: true)
         precondition(completed == .committed)
         print("Durable peer roster journal restart and fenced readback passed")
+        print("Persistent peer roster fresh same-server inventory gate passed")
     }
 }

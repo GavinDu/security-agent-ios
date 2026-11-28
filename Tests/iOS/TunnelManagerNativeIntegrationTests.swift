@@ -51,7 +51,7 @@ private final class FakeNativeVPN {
         configuration.providerBundleIdentifier = AgentConstants.tunnelBundleID
         configuration.serverAddress = profile.endpoint
         configuration.providerConfiguration = NativeProfileBindingPolicy.metadata(
-            for: try profile.publicProfileDigest())
+            for: try profile.publicProfileDigest(), version: profile.nativeBindingVersion)
         manager.protocolConfiguration = configuration
         manager.localizedDescription = "Security Agent VPN"
         manager.isEnabled = true
@@ -88,6 +88,59 @@ final class TunnelManagerNativeIntegrationTests: XCTestCase {
         wait(for: [drained], timeout: 3)
     }
 
+
+    func testProtectedProfileCannotBeDowngradedByOrdinaryPairing() throws {
+        var prior = profile()
+        prior.requiredPSK = .init(transactionID: UUID(),
+            clientPublicKey: Data(repeating: 8, count: 32).base64EncodedString())
+        let fake = try FakeNativeVPN(prior)
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        let installed = try fake.installed(prior)
+        fake.inventories[0]([installed], nil)
+        awaitState("protected inventory") { tunnel.status == .disconnected }
+        tunnel.save(profile())
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertEqual(fake.persisted, prior)
+        XCTAssertEqual(fake.journal.state, .clear)
+        var changed = prior
+        changed.requiredPSK = .init(transactionID: UUID(),
+            clientPublicKey: prior.requiredPSK!.clientPublicKey)
+        tunnel.save(changed)
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertNotNil(tunnel.errorMessage)
+        // Same-marker on-demand change uses the actual native save path.
+        tunnel.setOnDemand(true)
+        XCTAssertEqual(fake.saves.count, 1)
+        var expected = prior
+        expected.onDemand = true
+        XCTAssertTrue(NativeProfileBindingPolicy.allowsStart(
+            metadata: (installed.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
+            profileDigest: try expected.publicProfileDigest(), expectedVersion: 3))
+        fake.saves[0].1(nil)
+        awaitState("protected reload") { fake.reloads.count == 1 }
+        fake.reloads[0].1(nil)
+        awaitState("protected commit") { tunnel.profile == expected }
+        XCTAssertEqual(fake.commits, [expected])
+        XCTAssertEqual(fake.journal.state, .clear)
+    }
+
+    func testNativeV3WithoutPublicProfileCannotBeOverwrittenByPairing() throws {
+        var protected = profile()
+        protected.requiredPSK = .init(transactionID: UUID(),
+            clientPublicKey: Data(repeating: 8, count: 32).base64EncodedString())
+        let fake = try FakeNativeVPN(nil)
+        let tunnel = TunnelManager(nativeIO: fake.operations())
+        let installed = try fake.installed(protected)
+        fake.inventories[0]([installed], nil)
+        awaitState("orphaned protected inventory") { tunnel.status == .disconnected }
+        tunnel.save(profile())
+        XCTAssertTrue(fake.saves.isEmpty)
+        XCTAssertTrue(fake.commits.isEmpty)
+        XCTAssertEqual(fake.journal.state, .clear)
+        XCTAssertNil(fake.persisted)
+        XCTAssertTrue(NativeProfileBindingPolicy.requiresPSK(
+            metadata: (installed.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration))
+    }
 
     func testOnDemandDefaultsOffAndExplicitEnableWaitsForNativeReadback() throws {
         let prior = profile()

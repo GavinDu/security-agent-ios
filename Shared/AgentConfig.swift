@@ -57,10 +57,19 @@ struct ServerProfile: Codable, Equatable {
     let endpoint: String
     var routeMode: RouteMode = .split
     var onDemand = false
+    // Public transaction identity only; never a PSK or a secret digest.
+    var requiredPSK: PeerPSKRequirement? = nil
+
+    var nativeBindingVersion: Int {
+        requiredPSK == nil ? NativeProfileBindingPolicy.requiredVersion : NativeProfileBindingPolicy.pskRequiredVersion
+    }
 
     func validated() throws -> ServerProfile {
         guard CanonicalWireGuardPublicKeyPolicy.accepts(publicKey) else {
             throw AgentConfigurationError.invalidPublicKey
+        }
+        if let requiredPSK, !requiredPSK.isValid(serverPublicKey: publicKey) {
+            throw AgentConfigurationError.invalidProfileData
         }
         // PacketTunnel resolves and pins safe numeric A/AAAA before installing split routes.
         guard !endpoint.isEmpty, !endpoint.contains(where: { $0.isWhitespace || $0.isNewline }),
@@ -91,6 +100,15 @@ struct ServerProfile: Codable, Equatable {
         let onDemand: Bool
     }
 
+    private struct BoundPublicProfileV3: Encodable {
+        let version = 3
+        let publicKey: String
+        let endpoint: String
+        let routeMode: String
+        let onDemand: Bool
+        let requiredPSK: PeerPSKRequirement
+    }
+
     /// Binds the public profile stored by the app to the system VPN profile.
     /// Every target hashes the same validated JSON with sorted keys. The
     /// private WireGuard identity and optional PSK are never in this model.
@@ -104,7 +122,16 @@ struct ServerProfile: Codable, Equatable {
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let bytes = try encoder.encode(bound)
+        let bytes: Data
+        if let requiredPSK = canonical.requiredPSK {
+            bytes = try encoder.encode(BoundPublicProfileV3(
+                publicKey: canonical.publicKey, endpoint: canonical.endpoint,
+                routeMode: canonical.routeMode.rawValue, onDemand: canonical.onDemand,
+                requiredPSK: requiredPSK))
+        } else {
+            // Preserve the exact deployed V2 digest for existing profiles.
+            bytes = try encoder.encode(bound)
+        }
         return Data(SHA256.hash(data: bytes)).base64EncodedString()
     }
 

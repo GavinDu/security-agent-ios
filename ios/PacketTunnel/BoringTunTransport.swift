@@ -124,7 +124,8 @@ final class BoringTunTransport {
             }
             let secret = try SharedKeychain.existingIdentity()
             let psk = try SharedKeychain.boundPreSharedKey(
-                serverPublicKey: profile.publicKey, clientPrivateKey: secret
+                serverPublicKey: profile.publicKey, clientPrivateKey: secret,
+                requirement: profile.requiredPSK
             )
             codec = try BoringTunCodec(
                 privateKey: secret, serverKey: profile.publicKey, presharedKey: psk

@@ -20,7 +20,8 @@ enum NativePreferenceCommitVerifier {
         expectedBundleID: String,
         expectedServerAddress: String,
         expectedProfileDigest: String,
-        expectedOnDemand: Bool
+        expectedOnDemand: Bool,
+        expectedProfileVersion: Int = NativeProfileBindingPolicy.requiredVersion
     ) -> Bool {
         guard native.providerBundleIdentifier == expectedBundleID,
               native.serverAddress == expectedServerAddress,
@@ -32,7 +33,8 @@ enum NativePreferenceCommitVerifier {
         }
         return NativeProfileBindingPolicy.allowsStart(
             metadata: native.metadata,
-            profileDigest: expectedProfileDigest
+            profileDigest: expectedProfileDigest,
+            expectedVersion: expectedProfileVersion
         )
     }
 }

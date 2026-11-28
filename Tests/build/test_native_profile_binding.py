@@ -29,7 +29,7 @@ class NativeProfileBindingBoundaryTests(unittest.TestCase):
         )[0]
         self.assertLess(saving.index("bindingDigest = try validated.publicProfileDigest()"),
                         saving.index("io.save(selected"))
-        self.assertLess(saving.index("NativeProfileBindingPolicy.metadata(for: bindingDigest)"),
+        self.assertLess(saving.index("NativeProfileBindingPolicy.metadata(for: bindingDigest, version: validated.nativeBindingVersion)"),
                         saving.index("io.save(selected"))
         self.assertNotIn('"privateKey"', saving)
         self.assertNotIn('"presharedKey"', saving)
