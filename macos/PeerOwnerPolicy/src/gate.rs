@@ -103,7 +103,7 @@ impl OwnerGate {
 
     /// Invoke only for an OS-authenticated caller authorized for exact request.
     /// The trusted adapter supplies a complete fresh verified roster.
-    pub fn acquire(&mut self, request: UntrustedRequest, before: PublicRoster)
+    fn acquire(&mut self, request: UntrustedRequest, before: PublicRoster)
         -> Result<(Lease, Plan), GateError>
     {
         match self.state {
@@ -131,6 +131,19 @@ impl OwnerGate {
         let lease = Lease { generation: self.generation, serial: self.serial };
         self.state = State::Active(Box::new(Active { lease, plan: plan.clone(), phase: Phase::Acquired }));
         Ok((lease, plan))
+    }
+
+    /// The only public acquisition path on Unix consumes a connection-bound
+    /// authorization. The caller still owes fresh authoritative inventory,
+    /// durable replay checks, and real process exclusion.
+    #[cfg(unix)]
+    pub fn acquire_authorized(&mut self, authorized: crate::local_auth::AuthorizedRequest,
+        before: PublicRoster)
+        -> Result<(Lease, Plan, std::os::unix::net::UnixStream), GateError>
+    {
+        let (request, stream) = authorized.into_parts().ok_or(GateError::InvalidPlan)?;
+        let (lease, plan) = self.acquire(request, before)?;
+        Ok((lease, plan, stream))
     }
 
     fn active(&mut self, lease: Lease) -> Result<&mut Active, GateError> {

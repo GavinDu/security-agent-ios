@@ -210,3 +210,14 @@ revision-incremented durable settlement. Ambiguous release or mismatched
 readback quarantines without reset. This is a trusted adapter contract, not
 a live BoringTun mutation or proof of cross-process exclusion, disk sync,
 OS authorization, or restart recovery. No new privileged caller is wired.
+
+### macOS connected peer authentication (#27)
+
+The Rust owner contract now queries effective UID/GID using Darwin
+`getpeereid` on the same connected UnixStream and requires an independently
+approved exact request with a bounded lifetime before acquisition. A private
+nonserializable authorized value is consumed by the public lease gate.
+Other platforms fail closed; Linux exercises that rejection and macOS CI
+exercises real socketpair credentials. This does not establish application
+code identity, user presence, remote identity, real approval issuance,
+listener admission, durable replay or the live BoringTun adapter.

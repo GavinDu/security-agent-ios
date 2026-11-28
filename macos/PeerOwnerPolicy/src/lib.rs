@@ -1,8 +1,10 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 //! Pure Rust administrative request/plan validation for the future private
-//! BoringTun macOS owner. No sockets, shell commands, secrets, OS credential
-//! checks, durable journal, or live peer mutation. A decoded request is
+//! BoringTun macOS owner. Includes bounded connected-stream ingress and
+//! macOS peer credential checks; no listener, secrets, durable journal or
+//! live peer mutation. A decoded request is
 //! UNTRUSTED: authorization and exclusive daemon fencing must precede use.
 //! These types are not capabilities and must never be exposed as an open RPC.
 
@@ -12,6 +14,9 @@ use std::collections::HashSet;
 pub mod stream;
 
 pub mod gate;
+
+#[cfg(unix)]
+pub mod local_auth;
 
 pub const FRAME_LEN: usize = 129;
 const MAGIC: &[u8; 4] = b"SAPO";
