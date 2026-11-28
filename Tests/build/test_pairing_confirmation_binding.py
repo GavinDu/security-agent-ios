@@ -7,6 +7,7 @@ GATE = (ROOT / "Shared/PairingConfirmationGate.swift").read_text()
 UI = (ROOT / "ios/AgentApp/Pairing/PairingView.swift").read_text()
 TEST = (ROOT / "Tests/build/pairing_confirmation_smoke.swift").read_text()
 IOS = (ROOT / "Tests/iOS/PairingTests.swift").read_text()
+MAC = (ROOT / "macos/AgentMac/MacDashboard.swift").read_text()
 WORKFLOW = (ROOT / ".github/workflows/validate.yml").read_text()
 PROJECT = (ROOT / "Project.swift").read_text()
 
@@ -21,6 +22,24 @@ class PairingConfirmationBindingTests(unittest.TestCase):
         self.assertGreaterEqual(UI.count("confirmation.reset()"), 2)
         self.assertIn("return confirmedProfile == preview", GATE)
         self.assertIn("guard let preview, let confirmedProfile else { return false }", GATE)
+
+    def test_mac_copy_requires_current_exact_mutual_confirmation(self):
+        self.assertIn("PairingConfirmationGate<MacPeerConfirmationContext>()", MAC)
+        self.assertIn("key != profile.publicKey", MAC)
+        self.assertIn("cameraScan == nil, iphonePairingText.isEmpty", MAC)
+        self.assertIn("guard peerPreview == preview else", MAC)
+        self.assertIn("peerConfirmation.setConfirmed(confirmed, for: preview)", MAC)
+        copy = MAC.split('Button("Copy peer configuration")', 1)[1]
+        self.assertLess(copy.index("peerConfirmation.permitsSave(preview)"), copy.index("NSPasteboard.general.clearContents()"))
+        self.assertIn("peerStanza(for: preview)", copy)
+        self.assertIn("guard let preview = peerPreview, peerConfirmation.permitsSave(preview)", MAC)
+        edit = MAC.split("private func editing(", 1)[1].split("var body:", 1)[0]
+        self.assertLess(edit.index("invalidatePeerApproval()"), edit.index("binding.wrappedValue = value"))
+        self.assertIn("previewGeneration = UUID()", MAC)
+        self.assertIn("generation: previewGeneration", MAC)
+        self.assertIn("WireGuardPublicFingerprint.display(for: ownPublicKey)", UI)
+        self.assertIn("WireGuardPublicFingerprint.display(for: preview.clientPublicKey)", MAC)
+        self.assertIn("testMacPeerCopyConfirmationBindsBothIdentitiesAndEndpoint", IOS)
 
     def test_real_linux_and_native_tests_are_wired(self):
         self.assertIn("Tests/build/pairing_confirmation_smoke.swift", WORKFLOW)
