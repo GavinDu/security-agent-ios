@@ -40,6 +40,13 @@ struct NativeProfileBindingSmoke {
         precondition(!NativeProfileBindingPolicy.allowsStart(
             metadata: ["profileVersion": 2, "publicProfileDigest": a + " "], profileDigest: a
         ))
+        let v3 = NativeProfileBindingPolicy.metadata(for: a, version: 3)
+        precondition(NativeProfileBindingPolicy.requiresPSK(metadata: v3))
+        precondition(!NativeProfileBindingPolicy.allowsStart(metadata: v3, profileDigest: a))
+        precondition(!NativeProfileBindingPolicy.allowsStart(metadata: matching, profileDigest: a, expectedVersion: 3))
+        precondition(NativeProfileBindingPolicy.allowsStart(metadata: v3, profileDigest: a, expectedVersion: 3))
+        precondition(!NativeProfileBindingPolicy.allowsStart(metadata: v3, profileDigest: b, expectedVersion: 3))
+        precondition(!NativeProfileBindingPolicy.allowsStart(metadata: v3, profileDigest: a, expectedVersion: 4))
         print("Native/App Group VPN binding: exact match, drift, schema and invalid metadata passed")
     }
 }

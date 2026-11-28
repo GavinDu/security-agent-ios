@@ -40,7 +40,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                   native.serverAddress == profile.endpoint,
                   NativeProfileBindingPolicy.allowsStart(
                     metadata: native.providerConfiguration,
-                    profileDigest: try? profile.publicProfileDigest()
+                    profileDigest: try? profile.publicProfileDigest(),
+                    expectedVersion: profile.nativeBindingVersion
                   ) else {
                 self.ownership.failPreparation()
                 SharedDiagnostics.record("start_failed")
