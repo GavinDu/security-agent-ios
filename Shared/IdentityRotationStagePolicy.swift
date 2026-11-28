@@ -8,6 +8,13 @@ enum IdentityRotationStagePolicy {
         let transactionID: UUID
         let serverPublicKey: String
         let activePublicKey: String
+
+        var isValid: Bool {
+            transactionID.uuidString != "00000000-0000-0000-0000-000000000000" &&
+            CanonicalWireGuardPublicKeyPolicy.accepts(serverPublicKey) &&
+            CanonicalWireGuardPublicKeyPolicy.accepts(activePublicKey) &&
+            serverPublicKey != activePublicKey
+        }
     }
 
     struct Receipt: Equatable, Sendable {
@@ -36,29 +43,13 @@ enum IdentityRotationStagePolicy {
         derivePublicKey: (Data) throws -> String,
         insertIfAbsent: (Data) throws -> ImmutableIdentityInstaller.InsertResult
     ) throws -> Receipt {
-        guard CanonicalWireGuardPublicKeyPolicy.accepts(binding.serverPublicKey),
-              CanonicalWireGuardPublicKeyPolicy.accepts(binding.activePublicKey),
-              binding.serverPublicKey != binding.activePublicKey else { throw StageError.invalidBinding }
+        guard binding.isValid else { throw StageError.invalidBinding }
         guard try readActivePublicKey() == binding.activePublicKey else { throw StageError.activeChanged }
 
-        func verify(_ data: Data) throws -> Receipt {
-            guard data.count > 0, data.count <= maxBytes,
-                  let record = try? JSONDecoder().decode(Record.self, from: data),
-                  record.version == 1,
-                  try encode(record) == data,
-                  WireGuardPrivateIdentityPolicy.accepts(record.candidatePrivateKey),
-                  CanonicalWireGuardPublicKeyPolicy.accepts(record.candidatePublicKey),
-                  record.candidatePublicKey != record.binding.activePublicKey,
-                  record.candidatePublicKey != record.binding.serverPublicKey,
-                  try derivePublicKey(record.candidatePrivateKey) == record.candidatePublicKey else {
-                throw StageError.invalidRecord
-            }
-            guard record.binding == binding else { throw StageError.conflict }
-            guard try readActivePublicKey() == binding.activePublicKey else { throw StageError.activeChanged }
-            return Receipt(binding: binding, candidatePublicKey: record.candidatePublicKey)
+        if let existing = try readStage() {
+            return try verify(existing, binding: binding, readActivePublicKey: readActivePublicKey,
+                              derivePublicKey: derivePublicKey)
         }
-
-        if let existing = try readStage() { return try verify(existing) }
         let candidate = try generateCandidate()
         guard WireGuardPrivateIdentityPolicy.accepts(candidate) else { throw StageError.invalidRecord }
         let publicKey = try derivePublicKey(candidate)
@@ -74,7 +65,39 @@ enum IdentityRotationStagePolicy {
         // Read back on success AND duplicate. An absent or malformed winner
         // is not permission to overwrite or silently generate another key.
         guard let winner = try readStage() else { throw StageError.missingWinner }
-        return try verify(winner)
+        return try verify(winner, binding: binding, readActivePublicKey: readActivePublicKey,
+                          derivePublicKey: derivePublicKey)
+    }
+
+    /// Read-only recovery for an exact authenticated transaction owner.
+    /// Missing data is an error, never permission to create a candidate.
+    static func recover(binding: Binding, readActivePublicKey: () throws -> String,
+                        readStage: () throws -> Data?,
+                        derivePublicKey: (Data) throws -> String) throws -> Receipt {
+        guard binding.isValid else { throw StageError.invalidBinding }
+        guard try readActivePublicKey() == binding.activePublicKey else { throw StageError.activeChanged }
+        guard let existing = try readStage() else { throw StageError.missingWinner }
+        return try verify(existing, binding: binding, readActivePublicKey: readActivePublicKey,
+                          derivePublicKey: derivePublicKey)
+    }
+
+    private static func verify(_ data: Data, binding: Binding,
+                               readActivePublicKey: () throws -> String,
+                               derivePublicKey: (Data) throws -> String) throws -> Receipt {
+        guard data.count > 0, data.count <= maxBytes,
+              let record = try? JSONDecoder().decode(Record.self, from: data),
+              record.version == 1, record.binding.isValid,
+              try encode(record) == data,
+              WireGuardPrivateIdentityPolicy.accepts(record.candidatePrivateKey),
+              CanonicalWireGuardPublicKeyPolicy.accepts(record.candidatePublicKey),
+              record.candidatePublicKey != record.binding.activePublicKey,
+              record.candidatePublicKey != record.binding.serverPublicKey,
+              try derivePublicKey(record.candidatePrivateKey) == record.candidatePublicKey else {
+            throw StageError.invalidRecord
+        }
+        guard record.binding == binding else { throw StageError.conflict }
+        guard try readActivePublicKey() == binding.activePublicKey else { throw StageError.activeChanged }
+        return Receipt(binding: binding, candidatePublicKey: record.candidatePublicKey)
     }
 
     private static func encode(_ record: Record) throws -> Data {
