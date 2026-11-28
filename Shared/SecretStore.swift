@@ -120,6 +120,49 @@ enum SharedKeychain {
         return data
     }
 
+    /// Future authenticated client transaction owner only. No UI or tunnel
+    /// caller. The independently pinned signing identity and expected
+    /// receipt context must already have been established out of band.
+    /// Atomic Keychain claim prevents app/extension racing the same request;
+    /// this is not a native preferences commit or permission to start VPN.
+    static func claimVerifiedEnrollmentReceipt(_ verified: VerifiedEnrollmentReceiptPolicy.Verified)
+        throws -> VerifiedEnrollmentReceiptPolicy.Claim {
+        let account = "wireguard.enrollment.claim.v1." + verified.requestID.uuidString.lowercased()
+        return try VerifiedEnrollmentReceiptPolicy.claim(verified, verifyLocalState: {
+            let active = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
+                .publicKey.rawRepresentation.base64EncodedString()
+            guard active == verified.clientPublicKey,
+                  let profile = SharedProfileStore.load(),
+                  profile.publicKey == verified.serverPublicKey, profile.requiredPSK == nil,
+                  try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
+                  try read(pskStageAccount) == nil, try read(rotationStageAccount) == nil
+                  else { throw KeychainError.invalidSecret }
+        }, readClaim: {
+            // Scope readback to the same non-synchronizable account.
+            var q = try query(account)
+            q[kSecAttrSynchronizable as String] = false
+            q[kSecReturnData as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitOne
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(q as CFDictionary, &item)
+            if status == errSecItemNotFound { return nil }
+            guard status == errSecSuccess else { throw KeychainError.osStatus(status) }
+            guard let data = item as? Data else { throw KeychainError.invalidSecret }
+            return data
+        }, insertIfAbsent: { bytes in
+            var q = try query(account)
+            q[kSecValueData as String] = bytes
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            q[kSecAttrSynchronizable as String] = false
+            let status = SecItemAdd(q as CFDictionary, nil)
+            switch status {
+            case errSecSuccess: return .inserted
+            case errSecDuplicateItem: return .alreadyExists
+            default: throw KeychainError.osStatus(status)
+            }
+        })
+    }
+
     /// Only the exact client identity already selected for this codec can
     /// select a bound PSK. The legacy account is validated but never used.
     static func boundPreSharedKey(serverPublicKey: String, clientPrivateKey: Data,
@@ -222,49 +265,6 @@ enum SharedKeychain {
                 try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secret)
                     .publicKey.rawRepresentation.base64EncodedString()
             })
-    }
-
-    /// Future authenticated client transaction owner only. No UI or tunnel
-    /// caller. The independently pinned signing identity and expected
-    /// receipt context must already have been established out of band.
-    /// Atomic Keychain claim prevents app/extension racing the same request;
-    /// this is not a native preferences commit or permission to start VPN.
-    static func claimVerifiedEnrollmentReceipt(_ verified: VerifiedEnrollmentReceiptPolicy.Verified)
-        throws -> VerifiedEnrollmentReceiptPolicy.Claim {
-        let account = "wireguard.enrollment.claim.v1." + verified.requestID.uuidString.lowercased()
-        return try VerifiedEnrollmentReceiptPolicy.claim(verified, verifyLocalState: {
-            let active = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
-                .publicKey.rawRepresentation.base64EncodedString()
-            guard active == verified.clientPublicKey,
-                  let profile = SharedProfileStore.load(),
-                  profile.publicKey == verified.serverPublicKey, profile.requiredPSK == nil,
-                  try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
-                  try read(pskStageAccount) == nil, try read(rotationStageAccount) == nil
-                  else { throw KeychainError.invalidSecret }
-        }, readClaim: {
-            // Scope readback to the same non-synchronizable account.
-            var q = try query(account)
-            q[kSecAttrSynchronizable as String] = false
-            q[kSecReturnData as String] = true
-            q[kSecMatchLimit as String] = kSecMatchLimitOne
-            var item: CFTypeRef?
-            let status = SecItemCopyMatching(q as CFDictionary, &item)
-            if status == errSecItemNotFound { return nil }
-            guard status == errSecSuccess else { throw KeychainError.osStatus(status) }
-            guard let data = item as? Data else { throw KeychainError.invalidSecret }
-            return data
-        }, insertIfAbsent: { bytes in
-            var q = try query(account)
-            q[kSecValueData as String] = bytes
-            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            q[kSecAttrSynchronizable as String] = false
-            let status = SecItemAdd(q as CFDictionary, nil)
-            switch status {
-            case errSecSuccess: return .inserted
-            case errSecDuplicateItem: return .alreadyExists
-            default: throw KeychainError.osStatus(status)
-            }
-        })
     }
 
     // PSKs must be provisioned to BOTH ends over an authenticated channel.
