@@ -61,8 +61,10 @@ enum VerifiedEnrollmentReceiptPolicy {
     static func verify(receiptBytes: Data, signature: Data, trust: TrustContext) throws -> Verified {
         guard trust.signingPublicKey.count == 32,
               trust.signingPublicKey.contains(where: { $0 != 0 }),
-              trust.signingPublicKey != Data(base64Encoded: trust.expected.serverPublicKey),
-              trust.signingPublicKey != Data(base64Encoded: trust.expected.clientPublicKey),
+              let serverKey = Data(base64Encoded: trust.expected.serverPublicKey),
+              let clientKey = Data(base64Encoded: trust.expected.clientPublicKey),
+              trust.signingPublicKey != serverKey,
+              trust.signingPublicKey != clientKey,
               let signer = try? Curve25519.Signing.PublicKey(rawRepresentation: trust.signingPublicKey)
               else { throw ClaimError.invalidPin }
         guard let receipt = MacEnrollmentAddressReceipt.decodeUntrusted(receiptBytes)

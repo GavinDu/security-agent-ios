@@ -48,10 +48,15 @@ final class VerifiedEnrollmentReceiptPolicyTests: XCTestCase {
             trust: .init(signingPublicKey: x25519Bytes, expected: f.expected))) {
             XCTAssertEqual($0 as? Policy.ClaimError, .invalidPin)
         }
+        let clientKey = try XCTUnwrap(Data(base64Encoded: f.expected.clientPublicKey))
+        XCTAssertThrowsError(try Policy.verify(receiptBytes: f.bytes, signature: signature,
+            trust: .init(signingPublicKey: clientKey, expected: f.expected))) {
+            XCTAssertEqual($0 as? Policy.ClaimError, .invalidPin)
+        }
         let rawSignature = try f.signer.signature(for: f.bytes)
         XCTAssertThrowsError(try Policy.verify(receiptBytes: f.bytes, signature: rawSignature, trust: f.trust))
         XCTAssertThrowsError(try Policy.verify(receiptBytes: f.bytes,
-            signature: signature.dropLast(), trust: f.trust))
+            signature: Data(signature.dropLast()), trust: f.trust))
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: f.bytes) as? [String: Any])
         object["slot"] = 3
         let changed = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
