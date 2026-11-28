@@ -244,3 +244,18 @@ conflicts before/after claim. No native profile write or VPN activation is
 performed. The actual independent pin ceremony, signer/transport, durable
 cross-store recovery, replay retention/epoch migration and anti-rollback
 assumptions remain open. No live caller or signing private key is added.
+
+### Independently confirmed enrollment signing pin (#20)
+
+The public pin policy computes a full domain-separated SHA-256 fingerprint
+of exact server WireGuard, client WireGuard and separate Ed25519 signer keys.
+Confirmation requires the full independently compared lowercase hex digest;
+a canonical device-only nonsynchronizable Keychain record is inserted once
+per server and binds the active client, with no automatic pin replacement.
+Receipt verification loads the stored pin; the one-shot claim rechecks that
+pin and current local state before and after insertion. No actual trusted Mac
+signer, independent display or UI ceremony is wired. The user must obtain
+fingerprint from a trusted separate display; supplying the same value from
+an incoming message is not authentication. No automatic signer rotation or
+re-pair with changed identity, no profile activation. Recovery and actual
+signed transport remain outstanding.

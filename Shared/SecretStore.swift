@@ -120,6 +120,76 @@ enum SharedKeychain {
         return data
     }
 
+    // Pin account scoped by the canonical server key. The stored record
+    // additionally binds the current client identity. A different signer
+    // or client for this server is deliberately NOT an automatic re-pair.
+    private static func enrollmentPinAccount(_ server: String) throws -> String {
+        guard CanonicalWireGuardPublicKeyPolicy.accepts(server) else {
+            throw KeychainError.invalidSecret
+        }
+        return "wireguard.enrollment.signing-pin.v1." + server
+    }
+
+    private static func readDeviceOnlyEnrollmentPin(_ account: String) throws -> Data? {
+        var q = try query(account)
+        q[kSecAttrSynchronizable as String] = false
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(q as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw KeychainError.osStatus(status) }
+        guard let data = item as? Data else { throw KeychainError.invalidSecret }
+        return data
+    }
+
+    /// Future trusted UI only, under the cross-store pairing transaction
+    /// lease. Never call from QR import or automatically from a receipt.
+    static func installEnrollmentSigningPin(_ confirmed: EnrollmentSigningPinPolicy.Confirmed) throws {
+        let account = try enrollmentPinAccount(confirmed.serverPublicKey)
+        try EnrollmentSigningPinPolicy.install(confirmed, verifyLocalState: {
+            let active = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
+                .publicKey.rawRepresentation.base64EncodedString()
+            guard active == confirmed.clientPublicKey,
+                  let profile = SharedProfileStore.load(),
+                  profile.publicKey == confirmed.serverPublicKey, profile.requiredPSK == nil,
+                  try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
+                  try read(pskStageAccount) == nil, try read(rotationStageAccount) == nil
+                  else { throw KeychainError.invalidSecret }
+        }, readPin: {
+            try readDeviceOnlyEnrollmentPin(account)
+        }, insertIfAbsent: { bytes in
+            var q = try query(account)
+            q[kSecValueData as String] = bytes
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            q[kSecAttrSynchronizable as String] = false
+            let status = SecItemAdd(q as CFDictionary, nil)
+            guard status == errSecSuccess || status == errSecDuplicateItem else {
+                throw KeychainError.osStatus(status)
+            }
+        })
+    }
+
+    private static func existingEnrollmentSigningPin(server: String, client: String) throws -> Data {
+        let account = try enrollmentPinAccount(server)
+        guard let pin = EnrollmentSigningPinPolicy.load(try readDeviceOnlyEnrollmentPin(account),
+                serverPublicKey: server, clientPublicKey: client) else {
+            throw KeychainError.invalidSecret
+        }
+        return pin
+    }
+
+    /// Production-side verification reads the independently confirmed pin
+    /// from Keychain, never from a received envelope. Expected transaction
+    /// context still must come from the authenticated control transaction.
+    static func verifyEnrollmentReceipt(receiptBytes: Data, signature: Data,
+        expected: MacEnrollmentAddressReceipt.Expected) throws -> VerifiedEnrollmentReceiptPolicy.Verified {
+        let pin = try existingEnrollmentSigningPin(server: expected.serverPublicKey,
+                                                   client: expected.clientPublicKey)
+        return try VerifiedEnrollmentReceiptPolicy.verify(receiptBytes: receiptBytes, signature: signature,
+            trust: .init(signingPublicKey: pin, expected: expected))
+    }
+
     /// Future authenticated client transaction owner only. No UI or tunnel
     /// caller. The independently pinned signing identity and expected
     /// receipt context must already have been established out of band.
@@ -134,6 +204,8 @@ enum SharedKeychain {
             guard active == verified.clientPublicKey,
                   let profile = SharedProfileStore.load(),
                   profile.publicKey == verified.serverPublicKey, profile.requiredPSK == nil,
+                  try existingEnrollmentSigningPin(server: verified.serverPublicKey,
+                    client: verified.clientPublicKey) == verified.signingPublicKey,
                   try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
                   try read(pskStageAccount) == nil, try read(rotationStageAccount) == nil
                   else { throw KeychainError.invalidSecret }

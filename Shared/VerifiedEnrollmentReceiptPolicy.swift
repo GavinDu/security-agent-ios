@@ -23,6 +23,7 @@ enum VerifiedEnrollmentReceiptPolicy {
     struct Verified {
         fileprivate let receipt: MacEnrollmentAddressReceipt
         fileprivate let record: Data
+        let signingPublicKey: Data
         var requestID: UUID { receipt.requestID }
         var serverPublicKey: String { receipt.serverPublicKey }
         var clientPublicKey: String { receipt.clientPublicKey }
@@ -78,7 +79,7 @@ enum VerifiedEnrollmentReceiptPolicy {
         let record = try encoder.encode(ClaimRecord(version: 1,
             signingPublicKey: trust.signingPublicKey, receiptBytes: receiptBytes, signature: signature))
         guard (1...4096).contains(record.count) else { throw ClaimError.invalidReceipt }
-        return Verified(receipt: receipt, record: record)
+        return Verified(receipt: receipt, record: record, signingPublicKey: trust.signingPublicKey)
     }
 
     /// Insert-only, keyed by request ID across signer/peer/epoch changes.
