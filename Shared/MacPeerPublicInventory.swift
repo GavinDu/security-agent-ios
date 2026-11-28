@@ -12,6 +12,13 @@ enum MacPeerPublicInventory {
     struct Snapshot: Equatable, Sendable {
         let serverPublicKey: String
         let peers: [MacPeerAddressReservation]
+
+        // Only the bounded public parser may construct this shape. This is
+        // structural validation, not a cryptographic attestation.
+        fileprivate init(serverPublicKey: String, peers: [MacPeerAddressReservation]) {
+            self.serverPublicKey = serverPublicKey
+            self.peers = peers
+        }
     }
 
     static func decode(expectedServerKey: String, publicKeyOutput: Data,

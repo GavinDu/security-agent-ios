@@ -108,7 +108,7 @@ jobs:
           # before any future WireGuard server configuration is provisioned.
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-allocation-tests" \
             Shared/UniqueFlatJSONObjectPolicy.swift Shared/IPhonePairingImportPolicy.swift \
-            Shared/MacPeerAddressAllocationPolicy.swift \
+            Shared/MacPeerAddressAllocationPolicy.swift Shared/MacPeerPublicInventory.swift \
             Tests/build/mac_peer_address_allocation_smoke.swift
           "$RUNNER_TEMP/mac-peer-allocation-tests"
           swiftc -swift-version 5 -o "$RUNNER_TEMP/mac-peer-inventory-tests" \

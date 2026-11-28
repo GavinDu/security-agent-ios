@@ -7,6 +7,18 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         Data(repeating: n, count: 32).base64EncodedString()
     }
 
+    private func inventory(_ peers: [MacPeerAddressReservation], server: String? = nil)
+        -> MacPeerPublicInventory.Snapshot {
+        let serverKey = server ?? key(42)
+        let peerText = peers.map { $0.publicKey + "\n" }.joined()
+        let allowedText = peers.map {
+            $0.publicKey + "\t" + $0.ipv4CIDR + " " + $0.ipv6CIDR + "\n"
+        }.joined()
+        return MacPeerPublicInventory.decode(expectedServerKey: serverKey,
+            publicKeyOutput: Data((serverKey + "\n").utf8),
+            peersOutput: Data(peerText.utf8), allowedIPsOutput: Data(allowedText.utf8))!
+    }
+
     func testTwoDifferentCanonicalPeersReceiveDistinctIPv4AndIPv6() {
         let first = MacPeerAddressAllocationPolicy.nextReservation(publicKey: key(1), existing: [])!
         let second = MacPeerAddressAllocationPolicy.nextReservation(publicKey: key(2), existing: [first])!
@@ -145,9 +157,11 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         let first = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
         let staleWriter = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
         let initial = await first.snapshot()
-        let candidate = await first.prepare(.enroll(publicKey: key(1)), expected: initial)
+        let candidate = await first.prepare(.enroll(publicKey: key(1)), expected: initial,
+                                            readback: inventory([]), terminalWriteFenced: true)
         let plan = try XCTUnwrap(candidate)
-        let conflicting = await staleWriter.prepare(.enroll(publicKey: key(2)), expected: initial)
+        let conflicting = await staleWriter.prepare(.enroll(publicKey: key(2)), expected: initial,
+                                                     readback: inventory([]), terminalWriteFenced: true)
         XCTAssertNil(conflicting)
         let restarted = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
         let restored = await restarted.pendingPlan()
@@ -156,11 +170,11 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertEqual(unfenced, .unverified)
         let blocked = await restarted.prepare(.enroll(publicKey: key(2)), expected: initial)
         XCTAssertNil(blocked)
-        let mismatch = await restarted.resolve(id: plan.id, observed: [
+        let mismatch = await restarted.resolve(id: plan.id, readback: inventory([
             MacPeerAddressReservation(publicKey: key(9), slot: 2)
-        ], terminalWriteFenced: true)
+        ]), terminalWriteFenced: true)
         XCTAssertEqual(mismatch, .unverified)
-        let committed = await restarted.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        let committed = await restarted.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: true)
         XCTAssertEqual(committed, .committed)
         let final = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
         let snapshot = await final.snapshot()
@@ -170,9 +184,10 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertNil(pending)
         let wrongServer = MacPeerRosterJournal(directory: directory, serverPublicKey: key(43))
         XCTAssertNil(MacPeerRosterCoordinator(journal: wrongServer))
-        let next = await final.prepare(.revoke(plan.after[0]), expected: snapshot)
+        let next = await final.prepare(.revoke(plan.after[0]), expected: snapshot,
+                                       readback: inventory(snapshot.peers), terminalWriteFenced: true)
         let revoke = try XCTUnwrap(next)
-        let rolledBack = await final.resolve(id: revoke.id, observed: snapshot.peers, terminalWriteFenced: true)
+        let rolledBack = await final.resolve(id: revoke.id, readback: inventory(snapshot.peers), terminalWriteFenced: true)
         XCTAssertEqual(rolledBack, .rolledBack)
         XCTAssertEqual(try journal.load().current.revision, snapshot.revision + 1)
         try Data("corrupt".utf8).write(to: directory.appendingPathComponent("peer-roster-v1.json"))
@@ -209,24 +224,26 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         try journal.bootstrap(observed: [])
         let writer = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
         let original = await writer.snapshot()
-        let selfPeer = await writer.prepare(.enroll(publicKey: server), expected: original)
+        let selfPeer = await writer.prepare(.enroll(publicKey: server), expected: original,
+                                            readback: inventory([]), terminalWriteFenced: true)
         XCTAssertNil(selfPeer)
-        let candidate = await writer.prepare(.enroll(publicKey: key(1)), expected: original)
+        let candidate = await writer.prepare(.enroll(publicKey: key(1)), expected: original,
+                                             readback: inventory([]), terminalWriteFenced: true)
         let plan = try XCTUnwrap(candidate)
         let file = directory.appendingPathComponent("peer-roster-v1.json")
         let pendingBytes = try Data(contentsOf: file)
         try Data("invalid".utf8).write(to: file)
-        let failed = await writer.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        let failed = await writer.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: true)
         XCTAssertEqual(failed, .unverified)
         let stillPending = await writer.pendingPlan()
         XCTAssertEqual(stillPending, plan)
         // Even after the file is externally repaired, a writer that saw an
         // ambiguous IO failure cannot clear its in-memory blocked state.
         try pendingBytes.write(to: file)
-        let refused = await writer.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        let refused = await writer.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: true)
         XCTAssertEqual(refused, .unverified)
         let reopened = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
-        let resolved = await reopened.resolve(id: plan.id, observed: plan.after, terminalWriteFenced: true)
+        let resolved = await reopened.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: true)
         XCTAssertEqual(resolved, .committed)
     }
 
@@ -247,5 +264,50 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         let lock = directory.appendingPathComponent("peer-roster-v1.lock")
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: lock.path)
         XCTAssertNil(MacPeerRosterCoordinator(journal: journal))
+    }
+
+    func testPersistentMutationRequiresSameServerFencedInventoryOnEveryPrepareAndSettlement() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let owner = try XCTUnwrap(MacPeerRosterCoordinator(journal: journal))
+        let initial = await owner.snapshot()
+        let mutation = MacPeerRosterMutation.enroll(publicKey: key(1))
+        let missing = await owner.prepare(mutation, expected: initial)
+        XCTAssertNil(missing)
+        let unfenced = await owner.prepare(mutation, expected: initial, readback: inventory([]))
+        XCTAssertNil(unfenced)
+        let foreign = await owner.prepare(mutation, expected: initial,
+                                         readback: inventory([], server: key(43)), terminalWriteFenced: true)
+        XCTAssertNil(foreign)
+        let drift = await owner.prepare(mutation, expected: initial, readback: inventory([
+            MacPeerAddressReservation(publicKey: key(9), slot: 2)
+        ]), terminalWriteFenced: true)
+        XCTAssertNil(drift)
+        XCTAssertNil(try journal.load().pending)
+        let candidate = await owner.prepare(mutation, expected: initial,
+                                           readback: inventory([]), terminalWriteFenced: true)
+        let plan = try XCTUnwrap(candidate)
+        let raw = await owner.resolve(id: plan.id, observed: plan.after)
+        XCTAssertEqual(raw, .unverified)
+        let wrongServer = await owner.resolve(id: plan.id, readback: inventory(plan.after, server: key(43)),
+                                              terminalWriteFenced: true)
+        XCTAssertEqual(wrongServer, .unverified)
+        let noFence = await owner.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: false)
+        XCTAssertEqual(noFence, .unverified)
+        let pending = await owner.pendingPlan()
+        XCTAssertEqual(pending, plan)
+        let settled = await owner.resolve(id: plan.id, readback: inventory(plan.after), terminalWriteFenced: true)
+        XCTAssertEqual(settled, .committed)
+        let latest = await owner.snapshot()
+        let noFreshObservation = await owner.prepare(.revoke(plan.after[0]), expected: latest)
+        XCTAssertNil(noFreshObservation)
+        let staleObservation = await owner.prepare(.revoke(plan.after[0]), expected: latest,
+                                                  readback: inventory([]), terminalWriteFenced: true)
+        XCTAssertNil(staleObservation)
+        XCTAssertNil(try journal.load().pending)
     }
 }
