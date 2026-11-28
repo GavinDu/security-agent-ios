@@ -8,6 +8,7 @@ enum SharedKeychain {
     private static let service = "com.gavindu.securityagent.wireguard"
     private static let identityAccount = "iphone.privateKey"
     private static let pskAccount = "wireguard.preSharedKey"
+    private static let rotationStageAccount = "iphone.rotation.stage.v1"
 
     enum KeychainError: LocalizedError {
         case missingAccessGroup
@@ -112,6 +113,36 @@ enum SharedKeychain {
             throw KeychainError.invalidSecret
         }
         return data
+    }
+
+    /// Future rotation owner only; not called by UI or PacketTunnel.
+    /// The active identity remains immutable. No candidate can be activated
+    /// or discarded until the authenticated rotation protocol is implemented.
+    static func stageRotationCandidate(binding: IdentityRotationStagePolicy.Binding)
+        throws -> IdentityRotationStagePolicy.Receipt {
+        func publicKey(_ secret: Data) throws -> String {
+            try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secret)
+                .publicKey.rawRepresentation.base64EncodedString()
+        }
+        return try IdentityRotationStagePolicy.stage(
+            binding: binding,
+            readActivePublicKey: { try publicKey(existingIdentity()) },
+            readStage: { try read(rotationStageAccount) },
+            generateCandidate: { Curve25519.KeyAgreement.PrivateKey().rawRepresentation },
+            derivePublicKey: publicKey,
+            insertIfAbsent: { bytes in
+                var q = try query(rotationStageAccount)
+                q[kSecValueData as String] = bytes
+                q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                q[kSecAttrSynchronizable as String] = false
+                let status = SecItemAdd(q as CFDictionary, nil)
+                switch status {
+                case errSecSuccess: return .inserted
+                case errSecDuplicateItem: return .alreadyExists
+                default: throw KeychainError.osStatus(status)
+                }
+            }
+        )
     }
 
     // PSKs must be provisioned to BOTH ends over an authenticated channel.
