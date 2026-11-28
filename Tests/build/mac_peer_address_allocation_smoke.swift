@@ -205,6 +205,30 @@ struct MacPeerAddressAllocationSmoke {
         precondition(settledRecord.pending == nil && settledRecord.current.peers == pending.after)
         print("Fenced peer executor durable dispatch and readback-only recovery passed")
 
+        let receiptRequest = UUID()
+        let receiptExpected = try! executorJournal.load().current
+        let receiptResult = await executor.execute(.enroll(requestID: receiptRequest,
+            expected: receiptExpected, clientPublicKey: key(8)))
+        guard case let .enrollmentCommitted(receipt) = receiptResult else {
+            preconditionFailure("committed enrollment did not produce public candidate")
+        }
+        precondition(receipt.slot == 3 && receipt.requestID == receiptRequest)
+        precondition(receipt.publicReservation.ipv4CIDR == "10.8.0.3/32")
+        let bytes = receipt.canonicalBytes()!
+        precondition(MacEnrollmentAddressReceipt.decodeUntrusted(bytes) == receipt)
+        let context = MacEnrollmentAddressReceipt.Expected(requestID: receiptRequest,
+            transactionID: receipt.transactionID, serverPublicKey: key(42), clientPublicKey: key(8),
+            rosterEpoch: receiptExpected.epoch, revision: receiptExpected.revision + 1, slot: 3)
+        precondition(receipt.matchesUntrustedContext(context))
+        precondition(!receipt.matchesUntrustedContext(.init(requestID: UUID(),
+            transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
+        let receiptReplay = await executor.execute(.enroll(requestID: receiptRequest,
+            expected: receiptExpected, clientPublicKey: key(8)))
+        precondition(receiptReplay == .refused)
+        print("Committed enrollment public receipt and exact request context passed")
+
+
     }
 }
 

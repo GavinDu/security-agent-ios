@@ -144,3 +144,22 @@ OS authentication, or a cryptographic receipt. #27 must implement the trusted
 owner with real authorization, exclusive cross-process fencing and bounded
 same-daemon captures; #20 still owns authenticated client address binding.
 No UI or PacketTunnel live caller and no second device enabled.
+
+### Versioned public enrollment receipt candidate (#20)
+
+An explicit request UUID is part of the trusted owner's exact enrollment
+intent. Only a committed settlement followed by an exact durable journal
+readback under the same lease returns a public receipt candidate. It binds
+request and plan UUIDs, server and client keys, roster epoch, committed
+revision and allocated slot; host routes are derived from that slot.
+A rollback, mismatched record, noncanonical/oversized payload, stale request
+context or reserved UUID does not yield an accepted candidate. Recovery only
+returns settlement, never a receipt reconstructed from a new request ID.
+The current journal does NOT persist the request ID or receipt, so receipt
+loss/restart requires a future durable request/receipt replay protocol; do not
+retry enrollment blindly. Canonical encoding and context comparison do not
+authenticate bytes (including slot). The future authenticated control channel
+must verify the entire exact receipt, independently establish expected
+context including the exact slot and atomically consume its request ID before native binding. No
+secret, QR receipt import, profile write, dynamic tunnel slot, signing with a
+WireGuard key or live daemon owner is introduced.
