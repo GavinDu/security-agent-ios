@@ -17,6 +17,7 @@ import urllib.request
 REPOSITORY = "GavinDu/security-agent-ios"
 # Add further branches only in a reviewed PR with exact merge/tree evidence.
 CANDIDATES = (
+    ("feature/psk-peer-binding", 228),
     ("feature/identity-rotation-staging", 226),
     ("feature/peer-public-inventory", 225),
     ("fix/ios-underlay-dns-host-155", 156),
