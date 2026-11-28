@@ -113,7 +113,17 @@ struct ServerProfile: Codable, Equatable {
     // the user must compare it through a trusted out-of-band channel.
     func publicKeyFingerprint() throws -> String {
         _ = try validated()
-        guard let bytes = Data(base64Encoded: publicKey), bytes.count == 32 else {
+        return try WireGuardPublicFingerprint.display(for: publicKey)
+    }
+}
+
+/// Same full public-key digest on the Mac and iPhone, independent of endpoint.
+/// A fingerprint is a comparison aid; the trusted physical screen is the
+/// source of the administrator's approval, not the scanned QR itself.
+enum WireGuardPublicFingerprint {
+    static func display(for publicKey: String) throws -> String {
+        guard CanonicalWireGuardPublicKeyPolicy.accepts(publicKey),
+              let bytes = Data(base64Encoded: publicKey), bytes.count == 32 else {
             throw AgentConfigurationError.invalidPublicKey
         }
         let digest = Array(SHA256.hash(data: bytes))

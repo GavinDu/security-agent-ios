@@ -100,3 +100,16 @@ inode, supply a complete terminal fenced readback, and never treat a
 caller Boolean as proof of a real Rust daemon fence. Real power-loss,
 permissions, multi-process and hardware acceptance remain outstanding.
 The current UI/PacketTunnel still cannot activate a second client slot.
+
+### Mutual out-of-band public-key confirmation
+
+Before the Mac companion reveals or copies a single-device peer stanza, the
+administrator must compare the full SHA-256 fingerprint with the trusted
+iPhone screen and explicitly confirm the exact client public key, Mac public
+key and endpoint preview. Editing any input or starting/importing/canceling a
+new scan clears approval. A self-peer is refused. The iPhone displays the same
+canonical fingerprint algorithm for its own public key. This is local human
+approval for a public configuration preview, not proof of possession, daemon
+authorization, address availability, or successful enrollment. The administrator
+must still verify the actual Rust daemon and slot ownership; no sudo or live
+mutation is invoked by this UI.

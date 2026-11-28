@@ -19,6 +19,13 @@ struct PairingView: View {
                     Text(ownPublicKey)
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
+                    if let fingerprint = try? WireGuardPublicFingerprint.display(for: ownPublicKey) {
+                        LabeledContent("iPhone SHA-256 key fingerprint", value: fingerprint)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                        Text("Have the Mac administrator compare the entire fingerprint with this trusted iPhone screen before copying the peer configuration.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     ShareLink("Share public key", item: ownPublicKey)
                 } else {
                     ProgressView("Preparing secure identity…")

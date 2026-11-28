@@ -47,6 +47,15 @@ struct PairingConfirmationSmoke {
         gate.setConfirmed(true, for: original)
         gate.reset()
         precondition(!gate.permitsSave(original))
+        let peer = MacPeerConfirmationContext(serverPublicKey: "mac-a", endpoint: "home.example:51820", clientPublicKey: "phone-a")
+        var macGate = PairingConfirmationGate<MacPeerConfirmationContext>()
+        macGate.setConfirmed(true, for: peer)
+        precondition(macGate.permitsSave(peer))
+        precondition(!macGate.permitsSave(MacPeerConfirmationContext(serverPublicKey: "mac-b", endpoint: peer.endpoint, clientPublicKey: peer.clientPublicKey)))
+        precondition(!macGate.permitsSave(MacPeerConfirmationContext(serverPublicKey: peer.serverPublicKey, endpoint: "other.example:51820", clientPublicKey: peer.clientPublicKey)))
+        precondition(!macGate.permitsSave(MacPeerConfirmationContext(serverPublicKey: peer.serverPublicKey, endpoint: peer.endpoint, clientPublicKey: "phone-b")))
+        macGate.reset()
+        precondition(!macGate.permitsSave(peer))
         print("Pairing confirmation exact-snapshot gate passed")
     }
 }

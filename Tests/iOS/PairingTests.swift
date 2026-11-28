@@ -130,4 +130,34 @@ final class PairingTests: XCTestCase {
         }
     }
 
+
+    func testBothDevicesUseSameFullCanonicalFingerprint() throws {
+        let expected = "544E62CE-E8033709-E389E5B2-755343D0-D0FA8C48-50215CFB-6331717E-80D1AEA3"
+        XCTAssertEqual(try WireGuardPublicFingerprint.display(for: validKey), expected)
+        XCTAssertEqual(try ServerProfile(publicKey: validKey, endpoint: "home.example.org:51820")
+            .publicKeyFingerprint(), expected)
+        for bad in ["", validKey + " ", Data(repeating: 0, count: 32).base64EncodedString()] {
+            XCTAssertThrowsError(try WireGuardPublicFingerprint.display(for: bad))
+        }
+    }
+
+    func testMacPeerCopyConfirmationBindsBothIdentitiesAndEndpoint() {
+        let client = Data(repeating: 7, count: 32).base64EncodedString()
+        let original = MacPeerConfirmationContext(serverPublicKey: validKey,
+            endpoint: "home.example.org:51820", clientPublicKey: client)
+        var gate = PairingConfirmationGate<MacPeerConfirmationContext>()
+        XCTAssertFalse(gate.permitsSave(original))
+        gate.setConfirmed(true, for: original)
+        XCTAssertTrue(gate.permitsSave(original))
+        XCTAssertFalse(gate.permitsSave(nil))
+        for changed in [
+            MacPeerConfirmationContext(serverPublicKey: client, endpoint: original.endpoint, clientPublicKey: client),
+            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: "other.example.org:51820", clientPublicKey: client),
+            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: original.endpoint, clientPublicKey: validKey)
+        ] {
+            XCTAssertFalse(gate.permitsSave(changed))
+        }
+        gate.reset()
+        XCTAssertFalse(gate.permitsSave(original), "Returning to an earlier value must require fresh confirmation")
+    }
 }
