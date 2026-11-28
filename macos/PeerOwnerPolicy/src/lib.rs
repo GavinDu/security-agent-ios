@@ -11,6 +11,8 @@ use std::collections::HashSet;
 #[cfg(unix)]
 pub mod stream;
 
+pub mod gate;
+
 pub const FRAME_LEN: usize = 129;
 const MAGIC: &[u8; 4] = b"SAPO";
 const VERSION: u8 = 1;
