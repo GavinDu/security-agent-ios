@@ -160,6 +160,6 @@ loss/restart requires a future durable request/receipt replay protocol; do not
 retry enrollment blindly. Canonical encoding and context comparison do not
 authenticate bytes (including slot). The future authenticated control channel
 must verify the entire exact receipt, independently establish expected
-context and atomically consume its request ID before native binding. No
+context including the exact slot and atomically consume its request ID before native binding. No
 secret, QR receipt import, profile write, dynamic tunnel slot, signing with a
 WireGuard key or live daemon owner is introduced.

@@ -218,14 +218,14 @@ struct MacPeerAddressAllocationSmoke {
         precondition(MacEnrollmentAddressReceipt.decodeUntrusted(bytes) == receipt)
         let context = MacEnrollmentAddressReceipt.Expected(requestID: receiptRequest,
             transactionID: receipt.transactionID, serverPublicKey: key(42), clientPublicKey: key(8),
-            rosterEpoch: receiptExpected.epoch, revision: receiptExpected.revision + 1)
+            rosterEpoch: receiptExpected.epoch, revision: receiptExpected.revision + 1, slot: 3)
         precondition(receipt.matchesUntrustedContext(context))
         precondition(!receipt.matchesUntrustedContext(.init(requestID: UUID(),
             transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
-            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
-        let replay = await executor.execute(.enroll(requestID: receiptRequest,
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
+        let receiptReplay = await executor.execute(.enroll(requestID: receiptRequest,
             expected: receiptExpected, clientPublicKey: key(8)))
-        precondition(replay == .refused)
+        precondition(receiptReplay == .refused)
         print("Committed enrollment public receipt and exact request context passed")
 
 

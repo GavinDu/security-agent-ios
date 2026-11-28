@@ -393,12 +393,13 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         let owner = MutationOwnerFixture(journal: journal)
         let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
         let expected = try journal.load().current
-        let request = UUID()
-        let intent = MacPeerMutationIntent.enroll(requestID: request, expected: expected, clientPublicKey: key(7))
+        let rollbackRequest = UUID()
+        let intent = MacPeerMutationIntent.enroll(requestID: rollbackRequest, expected: expected, clientPublicKey: key(7))
         await owner.setMode(.noWriteThenThrow)
         let rollback = await executor.execute(intent)
         guard case .settled(_, .rolledBack) = rollback else { return XCTFail("rollback issued receipt") }
         let fresh = try journal.load().current
+        let request = UUID()
         await owner.setMode(.normal)
         let result = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
         guard case let .enrollmentCommitted(receipt) = result else { return XCTFail("no committed candidate") }
@@ -410,26 +411,26 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertEqual(MacEnrollmentAddressReceipt.decodeUntrusted(bytes), receipt)
         let context = MacEnrollmentAddressReceipt.Expected(requestID: request,
             transactionID: receipt.transactionID, serverPublicKey: key(42), clientPublicKey: key(7),
-            rosterEpoch: fresh.epoch, revision: fresh.revision + 1)
+            rosterEpoch: fresh.epoch, revision: fresh.revision + 1, slot: 2)
         XCTAssertTrue(receipt.matchesUntrustedContext(context))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: UUID(),
             transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
-            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
             transactionID: UUID(), serverPublicKey: context.serverPublicKey,
-            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
             transactionID: context.transactionID, serverPublicKey: key(43),
-            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision)))
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
             transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
-            clientPublicKey: key(9), rosterEpoch: context.rosterEpoch, revision: context.revision)))
+            clientPublicKey: key(9), rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
             transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
-            clientPublicKey: context.clientPublicKey, rosterEpoch: UUID(), revision: context.revision)))
+            clientPublicKey: context.clientPublicKey, rosterEpoch: UUID(), revision: context.revision, slot: context.slot)))
         XCTAssertFalse(receipt.matchesUntrustedContext(.init(requestID: context.requestID,
             transactionID: context.transactionID, serverPublicKey: context.serverPublicKey,
-            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision + 1)))
+            clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision + 1, slot: context.slot)))
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
         for (field, invalid) in [("slot", 1 as Any), ("slot", 255 as Any), ("version", 2 as Any),
                                  ("kind", "revoked" as Any), ("ipv4CIDR", "0.0.0.0/0" as Any),
@@ -443,7 +444,11 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         // structural policy. The future channel must authenticate exact bytes.
         object["slot"] = 3
         let forged = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-        XCTAssertNotEqual(MacEnrollmentAddressReceipt.decodeUntrusted(forged), receipt)
+        let altered = try XCTUnwrap(MacEnrollmentAddressReceipt.decodeUntrusted(forged))
+        XCTAssertNotEqual(altered, receipt)
+        XCTAssertFalse(altered.matchesUntrustedContext(context))
+        let duplicate = Data(("{\"slot\":2," + String(decoding: bytes.dropFirst(), as: UTF8.self)).utf8)
+        XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(duplicate))
         XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(Data(repeating: 65, count: 2049)))
         let replay = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
         XCTAssertEqual(replay, .refused)

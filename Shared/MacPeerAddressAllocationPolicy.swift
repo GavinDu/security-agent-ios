@@ -626,11 +626,12 @@ struct MacEnrollmentAddressReceipt: Codable, Equatable, Sendable {
         let clientPublicKey: String
         let rosterEpoch: UUID
         let revision: UInt64
+        let slot: UInt8
     }
 
     func matchesUntrustedContext(_ expected: Expected) -> Bool {
         isValid && requestID == expected.requestID && transactionID == expected.transactionID &&
         serverPublicKey == expected.serverPublicKey && clientPublicKey == expected.clientPublicKey &&
-        rosterEpoch == expected.rosterEpoch && revision == expected.revision
+        rosterEpoch == expected.rosterEpoch && revision == expected.revision && slot == expected.slot
     }
 }
