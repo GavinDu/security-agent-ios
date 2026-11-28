@@ -38,8 +38,8 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
 
     def test_durable_roster_blocks_unfenced_recovery_and_stale_writes(self):
         for token in ["MacPeerRosterJournal", "persistenceBlocked = true",
-                      "guard persist(next: current, pending: plan)",
-                      "guard persist(next: next, pending: nil)",
+                      "guard persist(next: current, pending: plan, ledger: ledger)",
+                      "guard persist(next: next, pending: nil, ledger: ledger)",
                       "readback.serverPublicKey == journal.serverPublicKey",
                       "readback.peers == current.peers", "guard journal == nil else",
                       "flock(fd, LOCK_EX | LOCK_NB)", "guard try read() == expected",
@@ -89,6 +89,17 @@ class MacPeerAllocationBoundaryTests(unittest.TestCase):
             self.assertNotIn("MacEnrollmentAddressReceipt", path.read_text())
         self.assertIn("Committed enrollment public receipt and exact request context passed", SWIFT)
         self.assertIn("testEnrollmentRecoveryNeverIssuesReceiptWithoutOriginalRequestBinding", NATIVE)
+
+    def test_enrollment_request_and_receipt_share_atomic_roster_journal(self):
+        for token in ["enrollmentRequestID: enrollmentRequestID", "ledger: ledger",
+                      "MacEnrollmentLedger.maxRequests", "Set(ledger.usedRequestIDs)",
+                      "enrollmentLedger?.usedRequestIDs.contains(id)",
+                      "reread == record", "observation.inventory.peers == record.current.peers"]:
+            self.assertIn(token, POLICY)
+        replay = POLICY.split("private func replayReceipt", 1)[1].split("private func valid", 1)[0]
+        self.assertNotIn("owner.apply(", replay)
+        self.assertNotIn("coordinator.prepare(", replay)
+        self.assertIn("staleReplay", NATIVE)
 
     def test_no_unsafe_mac_provisioning_claim_and_required_swift_tests(self):
         self.assertIn("This UI does not run sudo", MAC)

@@ -451,7 +451,10 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(duplicate))
         XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(Data(repeating: 65, count: 2049)))
         let replay = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
-        XCTAssertEqual(replay, .refused)
+        XCTAssertEqual(replay, .enrollmentCommitted(receipt))
+        let reused = await executor.execute(.enroll(requestID: rollbackRequest,
+            expected: try journal.load().current, clientPublicKey: key(9)))
+        XCTAssertEqual(reused, .refused)
         let zero = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         let invalid = await executor.execute(.enroll(requestID: zero,
             expected: try journal.load().current, clientPublicKey: key(9)))
@@ -470,15 +473,37 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         let owner = MutationOwnerFixture(journal: journal)
         let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
         await owner.setMode(.staleTerminal)
-        let result = await executor.execute(.enroll(requestID: UUID(),
-            expected: try journal.load().current, clientPublicKey: key(7)))
+        let requestID = UUID()
+        let original = try journal.load().current
+        let intent = MacPeerMutationIntent.enroll(requestID: requestID, expected: original, clientPublicKey: key(7))
+        let result = await executor.execute(intent)
         XCTAssertEqual(result, .unverified)
         let plan = try XCTUnwrap(journal.load().pending)
         await owner.setMode(.normal)
-        let recovered = await executor.execute(.recover(transactionID: plan.id))
+        XCTAssertEqual(plan.enrollmentRequestID, requestID)
+        let reopened = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let recovered = await reopened.execute(.recover(transactionID: plan.id))
         XCTAssertEqual(recovered, .settled(transactionID: plan.id, resolution: .committed))
+        let receipt = try XCTUnwrap(journal.load().enrollmentLedger?.latestReceipt)
+        XCTAssertEqual(receipt.requestID, requestID)
+        await owner.setMode(.staleInitial)
+        let stale = await reopened.execute(intent)
+        XCTAssertEqual(stale, .unverified)
+        await owner.setMode(.normal)
+        let replay = await reopened.execute(intent)
+        XCTAssertEqual(replay, .enrollmentCommitted(receipt))
+        let wrong = await reopened.execute(.enroll(requestID: requestID, expected: original, clientPublicKey: key(9)))
+        XCTAssertEqual(wrong, .refused)
         let counts = await owner.counts()
         XCTAssertEqual(counts.0, 1)
+        let current = try journal.load().current
+        let revoked = await reopened.execute(.mutate(expected: current, mutation: .revoke(receipt.publicReservation)))
+        guard case .settled(_, .committed) = revoked else { return XCTFail("revoke failed") }
+        XCTAssertNil(try journal.load().enrollmentLedger?.latestReceipt)
+        let staleReplay = await reopened.execute(intent)
+        XCTAssertEqual(staleReplay, .refused)
+        let altered = await reopened.execute(.enroll(requestID: requestID, expected: try journal.load().current, clientPublicKey: key(7)))
+        XCTAssertEqual(altered, .refused)
     }
 
     func testExecutorDoesNotInferRollbackFromApplyError() async throws {
