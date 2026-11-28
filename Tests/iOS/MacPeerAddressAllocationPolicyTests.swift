@@ -451,7 +451,10 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(duplicate))
         XCTAssertNil(MacEnrollmentAddressReceipt.decodeUntrusted(Data(repeating: 65, count: 2049)))
         let replay = await executor.execute(.enroll(requestID: request, expected: fresh, clientPublicKey: key(7)))
-        XCTAssertEqual(replay, .refused)
+        XCTAssertEqual(replay, .enrollmentCommitted(receipt))
+        let reused = await executor.execute(.enroll(requestID: rollbackRequest,
+            expected: try journal.load().current, clientPublicKey: key(9)))
+        XCTAssertEqual(reused, .refused)
         let zero = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         let invalid = await executor.execute(.enroll(requestID: zero,
             expected: try journal.load().current, clientPublicKey: key(9)))
@@ -470,15 +473,82 @@ final class MacPeerAddressAllocationPolicyTests: XCTestCase {
         let owner = MutationOwnerFixture(journal: journal)
         let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
         await owner.setMode(.staleTerminal)
-        let result = await executor.execute(.enroll(requestID: UUID(),
-            expected: try journal.load().current, clientPublicKey: key(7)))
+        let requestID = UUID()
+        let original = try journal.load().current
+        let intent = MacPeerMutationIntent.enroll(requestID: requestID, expected: original, clientPublicKey: key(7))
+        let result = await executor.execute(intent)
         XCTAssertEqual(result, .unverified)
         let plan = try XCTUnwrap(journal.load().pending)
         await owner.setMode(.normal)
-        let recovered = await executor.execute(.recover(transactionID: plan.id))
+        XCTAssertEqual(plan.enrollmentRequestID, requestID)
+        let reopened = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let recovered = await reopened.execute(.recover(transactionID: plan.id))
         XCTAssertEqual(recovered, .settled(transactionID: plan.id, resolution: .committed))
+        let receipt = try XCTUnwrap(journal.load().enrollmentLedger?.latestReceipt)
+        XCTAssertEqual(receipt.requestID, requestID)
+        await owner.setMode(.staleInitial)
+        let stale = await reopened.execute(intent)
+        XCTAssertEqual(stale, .unverified)
+        await owner.setMode(.normal)
+        let replay = await reopened.execute(intent)
+        XCTAssertEqual(replay, .enrollmentCommitted(receipt))
+        let wrong = await reopened.execute(.enroll(requestID: requestID, expected: original, clientPublicKey: key(9)))
+        XCTAssertEqual(wrong, .refused)
         let counts = await owner.counts()
         XCTAssertEqual(counts.0, 1)
+        let current = try journal.load().current
+        let revoked = await reopened.execute(.mutate(expected: current, mutation: .revoke(receipt.publicReservation)))
+        guard case .settled(_, .committed) = revoked else { return XCTFail("revoke failed") }
+        XCTAssertNil(try journal.load().enrollmentLedger?.latestReceipt)
+        let staleReplay = await reopened.execute(intent)
+        XCTAssertEqual(staleReplay, .refused)
+        let altered = await reopened.execute(.enroll(requestID: requestID, expected: try journal.load().current, clientPublicKey: key(7)))
+        XCTAssertEqual(altered, .refused)
+    }
+
+    func testLedgerCapacityAndLegacyJournalFailClosedWithoutDispatch() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = MacPeerRosterJournal(directory: directory, serverPublicKey: key(42))
+        try journal.bootstrap(observed: [])
+        let file = directory.appendingPathComponent("peer-roster-v1.json")
+        let legacy = try Data(contentsOf: file)
+        let old = try journal.load()
+        XCTAssertEqual(old.version, 1)
+        XCTAssertNil(old.enrollmentLedger)
+        let legacyObject = try XCTUnwrap(JSONSerialization.jsonObject(with: legacy) as? [String: Any])
+        XCTAssertEqual(Set(legacyObject.keys), Set(["version", "serverPublicKey", "current"]))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        XCTAssertEqual(try encoder.encode(old), legacy)
+
+        // Synthetic, canonical full ledger on a settled roster. The
+        // production journal still rejects duplicates and oversize data.
+        let ids = (1...MacEnrollmentLedger.maxRequests).map { _ in UUID() }
+        let snapshot = MacPeerRosterSnapshot(epoch: old.current.epoch,
+            revision: UInt64(ids.count), peers: [])
+        let full = MacPeerRosterRecord(serverPublicKey: key(42), current: snapshot,
+            pending: nil, enrollmentLedger: .init(usedRequestIDs: ids, latestReceipt: nil))
+        let fullBytes = try encoder.encode(full)
+        try fullBytes.write(to: file)
+        XCTAssertEqual(try journal.load(), full)
+        let owner = MutationOwnerFixture(journal: journal)
+        let executor = MacPeerMutationExecutor(journal: journal, owner: owner)
+        let refused = await executor.execute(.enroll(requestID: UUID(), expected: snapshot, clientPublicKey: key(7)))
+        XCTAssertEqual(refused, .refused)
+        let reused = await executor.execute(.enroll(requestID: ids[0], expected: snapshot, clientPublicKey: key(7)))
+        XCTAssertEqual(reused, .refused)
+        let counts = await owner.counts()
+        XCTAssertEqual(counts.0, 0)
+        XCTAssertEqual(try Data(contentsOf: file), fullBytes)
+        for invalidIDs in [ids + [UUID()], [ids[0], ids[0]], [UUID(uuidString: "00000000-0000-0000-0000-000000000000")!]] {
+            let corrupt = MacPeerRosterRecord(serverPublicKey: key(42), current: snapshot,
+                pending: nil, enrollmentLedger: .init(usedRequestIDs: invalidIDs, latestReceipt: nil))
+            try encoder.encode(corrupt).write(to: file)
+            XCTAssertThrowsError(try journal.load())
+        }
     }
 
     func testExecutorDoesNotInferRollbackFromApplyError() async throws {

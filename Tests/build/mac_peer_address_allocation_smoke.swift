@@ -225,7 +225,10 @@ struct MacPeerAddressAllocationSmoke {
             clientPublicKey: context.clientPublicKey, rosterEpoch: context.rosterEpoch, revision: context.revision, slot: context.slot)))
         let receiptReplay = await executor.execute(.enroll(requestID: receiptRequest,
             expected: receiptExpected, clientPublicKey: key(8)))
-        precondition(receiptReplay == .refused)
+        precondition(receiptReplay == .enrollmentCommitted(receipt))
+        let replayCount = await daemon.counts()
+        precondition(replayCount.0 == 2)
+        precondition((try! executorJournal.load()).enrollmentLedger?.latestReceipt == receipt)
         print("Committed enrollment public receipt and exact request context passed")
 
 

@@ -74,6 +74,15 @@ struct MacPeerRosterPlan: Codable, Equatable, Sendable {
     let id: UUID
     let before: MacPeerRosterSnapshot
     let after: [MacPeerAddressReservation]
+    let enrollmentRequestID: UUID?
+
+    init(id: UUID, before: MacPeerRosterSnapshot, after: [MacPeerAddressReservation],
+         enrollmentRequestID: UUID? = nil) {
+        self.id = id
+        self.before = before
+        self.after = after
+        self.enrollmentRequestID = enrollmentRequestID
+    }
 }
 enum MacPeerRosterResolution: Equatable, Sendable {
     case committed, rolledBack, unverified, stale
@@ -85,6 +94,7 @@ enum MacPeerRosterResolution: Equatable, Sendable {
 actor MacPeerRosterCoordinator {
     private var current: MacPeerRosterSnapshot
     private var pending: MacPeerRosterPlan?
+    private var enrollmentLedger: MacEnrollmentLedger?
     private let journal: MacPeerRosterJournal?
     private var persistenceBlocked = false
 
@@ -100,6 +110,7 @@ actor MacPeerRosterCoordinator {
         guard let record = try? journal.load() else { return nil }
         current = record.current
         pending = record.pending
+        enrollmentLedger = record.enrollmentLedger
         self.journal = journal
     }
 
@@ -114,7 +125,8 @@ actor MacPeerRosterCoordinator {
     func prepare(_ mutation: MacPeerRosterMutation,
                  expected: MacPeerRosterSnapshot,
                  readback: MacPeerPublicInventory.Snapshot? = nil,
-                 terminalWriteFenced: Bool = false) -> MacPeerRosterPlan? {
+                 terminalWriteFenced: Bool = false,
+                 enrollmentRequestID: UUID? = nil) -> MacPeerRosterPlan? {
         guard !persistenceBlocked, pending == nil, current == expected, current.revision < UInt64.max else {
             return nil
         }
@@ -122,6 +134,12 @@ actor MacPeerRosterCoordinator {
             guard terminalWriteFenced, let readback,
                   readback.serverPublicKey == journal.serverPublicKey,
                   readback.peers == current.peers else { return nil }
+        }
+        if let requestID = enrollmentRequestID {
+            guard journal != nil, MacEnrollmentAddressReceipt.validID(requestID),
+                  case .enroll = mutation,
+                  !(enrollmentLedger?.usedRequestIDs.contains(requestID) ?? false),
+                  (enrollmentLedger?.usedRequestIDs.count ?? 0) < MacEnrollmentLedger.maxRequests else { return nil }
         }
         var proposed = current.peers
         switch mutation {
@@ -135,8 +153,17 @@ actor MacPeerRosterCoordinator {
             proposed.remove(at: index)
         }
         guard let canonical = Self.canonicalRoster(proposed) else { return nil }
-        let plan = MacPeerRosterPlan(id: UUID(), before: current, after: canonical)
-        guard persist(next: current, pending: plan) else { return nil }
+        let plan = MacPeerRosterPlan(id: UUID(), before: current, after: canonical,
+                                     enrollmentRequestID: enrollmentRequestID)
+        var ledger = enrollmentLedger
+        if let requestID = enrollmentRequestID {
+            var ids = ledger?.usedRequestIDs ?? []
+            ids.append(requestID)
+            ledger = MacEnrollmentLedger(usedRequestIDs: ids, latestReceipt: nil)
+        } else if let existing = ledger {
+            ledger = MacEnrollmentLedger(usedRequestIDs: existing.usedRequestIDs, latestReceipt: nil)
+        }
+        guard persist(next: current, pending: plan, ledger: ledger) else { return nil }
         pending = plan
         return plan
     }
@@ -178,19 +205,35 @@ actor MacPeerRosterCoordinator {
         // Advance even on rollback to invalidate earlier snapshots (ABA).
         let next = MacPeerRosterSnapshot(epoch: current.epoch,
                                          revision: current.revision + 1, peers: canonical)
-        guard persist(next: next, pending: nil) else { return .unverified }
+        var ledger = enrollmentLedger
+        if result == .committed, let requestID = plan.enrollmentRequestID {
+            guard let journal, let existing = ledger,
+                  existing.usedRequestIDs.last == requestID,
+                  let added = plan.after.first(where: { !plan.before.peers.contains($0) }),
+                  let receipt = MacEnrollmentAddressReceipt.candidate(requestID: requestID,
+                      serverPublicKey: journal.serverPublicKey, clientPublicKey: added.publicKey,
+                      expected: plan.before, plan: plan,
+                      settled: MacPeerRosterRecord(serverPublicKey: journal.serverPublicKey,
+                                                    current: next, pending: nil)) else { return .unverified }
+            ledger = MacEnrollmentLedger(usedRequestIDs: existing.usedRequestIDs, latestReceipt: receipt)
+        }
+        guard persist(next: next, pending: nil, ledger: ledger) else { return .unverified }
         current = next
         pending = nil
         return result
     }
 
-    private func persist(next: MacPeerRosterSnapshot, pending nextPlan: MacPeerRosterPlan?) -> Bool {
+    private func persist(next: MacPeerRosterSnapshot, pending nextPlan: MacPeerRosterPlan?,
+                         ledger: MacEnrollmentLedger?) -> Bool {
         guard let journal else { return true }
         do {
             try journal.replace(expected: MacPeerRosterRecord(
-                serverPublicKey: journal.serverPublicKey, current: current, pending: pending),
+                serverPublicKey: journal.serverPublicKey, current: current, pending: pending,
+                enrollmentLedger: enrollmentLedger),
                 with: MacPeerRosterRecord(
-                    serverPublicKey: journal.serverPublicKey, current: next, pending: nextPlan))
+                    serverPublicKey: journal.serverPublicKey, current: next, pending: nextPlan,
+                    enrollmentLedger: ledger))
+            enrollmentLedger = ledger
             return true
         } catch {
             // A failed write could have reached disk. Never dispatch a plan
@@ -217,29 +260,58 @@ actor MacPeerRosterCoordinator {
 }
 
 
+/// Bounded durable enrollment tombstones. Never evict a request ID within
+/// an epoch. Only the latest unchanged committed receipt can be replayed.
+/// Capacity exhaustion refuses new explicit enrollments before dispatch.
+struct MacEnrollmentLedger: Codable, Equatable, Sendable {
+    static let maxRequests = 512
+    let usedRequestIDs: [UUID]
+    let latestReceipt: MacEnrollmentAddressReceipt?
+}
+
 /// Versioned, public-only durable record. No PSK, private key or endpoint.
 struct MacPeerRosterRecord: Codable, Equatable, Sendable {
     let version: Int
     let serverPublicKey: String
     let current: MacPeerRosterSnapshot
     let pending: MacPeerRosterPlan?
+    let enrollmentLedger: MacEnrollmentLedger?
 
-    init(serverPublicKey: String, current: MacPeerRosterSnapshot, pending: MacPeerRosterPlan?) {
-        version = 1
+    init(serverPublicKey: String, current: MacPeerRosterSnapshot, pending: MacPeerRosterPlan?,
+         enrollmentLedger: MacEnrollmentLedger? = nil) {
+        version = enrollmentLedger == nil ? 1 : 2
         self.serverPublicKey = serverPublicKey
         self.current = current
         self.pending = pending
+        self.enrollmentLedger = enrollmentLedger
     }
 
     fileprivate var isValid: Bool {
-        guard version == 1,
+        guard version == (enrollmentLedger == nil ? 1 : 2),
               IPhonePairingImportPolicy.validatedPublicKey(serverPublicKey) != nil,
               !current.peers.contains(where: { $0.publicKey == serverPublicKey }),
               MacPeerRosterCoordinator.canonicalRoster(current.peers) == current.peers else {
             return false
         }
+        if let ledger = enrollmentLedger {
+            guard !ledger.usedRequestIDs.isEmpty,
+                  ledger.usedRequestIDs.count <= MacEnrollmentLedger.maxRequests,
+                  Set(ledger.usedRequestIDs).count == ledger.usedRequestIDs.count,
+                  ledger.usedRequestIDs.allSatisfy(MacEnrollmentAddressReceipt.validID) else { return false }
+            if let receipt = ledger.latestReceipt {
+                guard pending == nil, receipt.canonicalBytes() != nil,
+                      ledger.usedRequestIDs.last == receipt.requestID,
+                      receipt.serverPublicKey == serverPublicKey,
+                      receipt.rosterEpoch == current.epoch, receipt.revision == current.revision,
+                      current.peers.contains(receipt.publicReservation) else { return false }
+            }
+        }
         guard let pending else { return true }
-        guard pending.before == current, current.revision < UInt64.max,
+        if let requestID = pending.enrollmentRequestID {
+            guard enrollmentLedger?.usedRequestIDs.last == requestID else { return false }
+        }
+        guard MacEnrollmentAddressReceipt.validID(pending.id),
+              pending.before == current, current.revision < UInt64.max,
               !pending.after.contains(where: { $0.publicKey == serverPublicKey }),
               MacPeerRosterCoordinator.canonicalRoster(pending.after) == pending.after else {
             return false
@@ -250,7 +322,7 @@ struct MacPeerRosterRecord: Codable, Equatable, Sendable {
             return MacPeerAddressAllocationPolicy.nextReservation(
                 publicKey: added[0].publicKey, existing: current.peers) == added[0]
         }
-        return removed.count == 1 && added.isEmpty
+        return pending.enrollmentRequestID == nil && removed.count == 1 && added.isEmpty
     }
 }
 
@@ -464,13 +536,23 @@ actor MacPeerMutationExecutor {
         case .mutate, .enroll:
             let expected: MacPeerRosterSnapshot
             let mutation: MacPeerRosterMutation
+            let requestID: UUID?
             switch intent {
             case let .mutate(snapshot, delta):
                 expected = snapshot
                 mutation = delta
-            case let .enroll(_, snapshot, clientPublicKey):
+                requestID = nil
+            case let .enroll(id, snapshot, clientPublicKey):
                 expected = snapshot
                 mutation = .enroll(publicKey: clientPublicKey)
+                requestID = id
+                guard let record = try? journal.load() else { return .unverified }
+                if record.enrollmentLedger?.usedRequestIDs.contains(id) == true {
+                    return await replayReceipt(record: record, requestID: id,
+                        expected: snapshot, clientPublicKey: clientPublicKey, lease: lease)
+                }
+                guard (record.enrollmentLedger?.usedRequestIDs.count ?? 0) < MacEnrollmentLedger.maxRequests
+                    else { return .refused }
             case .recover:
                 return .refused
             }
@@ -482,7 +564,8 @@ actor MacPeerMutationExecutor {
             // Prepare must durably succeed before dispatch. Nil may indicate
             // an ambiguous journal write; never interpret it as safe rollback.
             guard let plan = await coordinator.prepare(mutation, expected: expected,
-                  readback: before.inventory, terminalWriteFenced: true) else { return .unverified }
+                  readback: before.inventory, terminalWriteFenced: true,
+                  enrollmentRequestID: requestID) else { return .unverified }
             if !Task.isCancelled {
                 // Even a thrown apply can have changed the daemon. Never
                 // redispatch or infer rollback from an error/exit status.
@@ -496,6 +579,30 @@ actor MacPeerMutationExecutor {
             // Recovery is terminal readback only, never another apply.
             return await settle(plan, lease: lease, coordinator: coordinator)
         }
+    }
+
+    /// Same exact original authorized request only; a fresh complete
+    /// inventory under the lease and unchanged durable record are required.
+    /// A later revision, pending mutation or different client never replays.
+    private func replayReceipt(record: MacPeerRosterRecord, requestID: UUID,
+                               expected: MacPeerRosterSnapshot, clientPublicKey: String,
+                               lease: MacPeerMutationLease) async -> MacPeerMutationExecution {
+        guard record.pending == nil, let receipt = record.enrollmentLedger?.latestReceipt,
+              receipt.requestID == requestID, receipt.clientPublicKey == clientPublicKey,
+              receipt.rosterEpoch == expected.epoch, expected.revision < UInt64.max,
+              receipt.revision == expected.revision + 1,
+              MacPeerRosterCoordinator.canonicalRoster(expected.peers) == expected.peers,
+              MacPeerAddressAllocationPolicy.nextReservation(publicKey: clientPublicKey,
+                  existing: expected.peers) == receipt.publicReservation,
+              record.current.peers == (expected.peers + [receipt.publicReservation]).sorted(by: { $0.slot < $1.slot })
+              else { return .refused }
+        guard !Task.isCancelled,
+              let observation = try? await owner.initialInventory(lease: lease),
+              valid(observation, lease: lease, transactionID: nil),
+              observation.inventory.peers == record.current.peers,
+              !Task.isCancelled, let reread = try? journal.load(), reread == record
+              else { return .unverified }
+        return .enrollmentCommitted(receipt)
     }
 
     private func valid(_ observation: MacPeerMutationObservation,
@@ -517,13 +624,14 @@ actor MacPeerMutationExecutor {
         if resolution == .committed,
            case let .enroll(requestID, expected, clientPublicKey) = lease.intent,
            let record = try? journal.load(),
-           let candidate = MacEnrollmentAddressReceipt.candidate(requestID: requestID,
+           let candidate = record.enrollmentLedger?.latestReceipt,
+           candidate == MacEnrollmentAddressReceipt.candidate(requestID: requestID,
                 serverPublicKey: lease.serverPublicKey, clientPublicKey: clientPublicKey,
                 expected: expected, plan: plan, settled: record) {
             return .enrollmentCommitted(candidate)
         }
-        // Recovery or a lost candidate is NOT a license to enroll again.
-        // Durable request/receipt replay is a separate protocol requirement.
+        // Recovery returns settlement only. The exact original request
+        // can separately retrieve the persisted candidate under a new lease.
         return .settled(transactionID: plan.id, resolution: resolution)
     }
 }
@@ -583,7 +691,7 @@ struct MacEnrollmentAddressReceipt: Codable, Equatable, Sendable {
     fileprivate static func candidate(requestID: UUID, serverPublicKey: String,
         clientPublicKey: String, expected: MacPeerRosterSnapshot,
         plan: MacPeerRosterPlan, settled: MacPeerRosterRecord) -> Self? {
-        guard plan.before == expected, expected.revision < UInt64.max,
+        guard plan.enrollmentRequestID == requestID, plan.before == expected, expected.revision < UInt64.max,
               settled.isValid, settled.serverPublicKey == serverPublicKey,
               settled.pending == nil, settled.current.epoch == expected.epoch,
               settled.current.revision == expected.revision + 1,

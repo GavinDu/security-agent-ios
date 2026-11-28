@@ -173,3 +173,22 @@ revocation. It cannot express global peer replacement, arbitrary routes or
 secret-bearing commands. This is structural policy only, not a privileged
 owner, authenticated transport, private BoringTun socket patch or durable
 replay/fence. See the crate README for the wire layout and remaining gates.
+
+### Durable enrollment request recovery (#20)
+
+V1 public journal records remain readable with their exact original encoding.
+The first explicit enrollment prepares a V2 record that atomically reserves
+the request UUID alongside the pending plan. Committed settlement stores the
+latest public receipt in the same journal replacement; rollback retains the
+request tombstone but no receipt. Recovery settles the original durable plan
+without a second apply, and the exact original authorized request may replay
+only the latest unchanged receipt after fresh fenced inventory and exact journal
+readback. Later preparation invalidates the previous receipt; changed context,
+revocation, pending state and used IDs cannot authorize another dispatch.
+The bounded 512-ID ledger never evicts in an epoch; exhaustion refuses explicit
+enrollment, including after restart. A future reviewed epoch migration/retention
+policy is required for longer operation. V1 has no historic request IDs and
+cannot reconstruct pre-upgrade receipts (no live enrollment was enabled).
+This local trusted journal is not channel authentication, anti-rollback storage,
+client-side receipt consumption, or a real daemon fence. No UI or native profile
+activation is enabled.

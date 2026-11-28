@@ -17,6 +17,7 @@ import urllib.request
 REPOSITORY = "GavinDu/security-agent-ios"
 # Add further branches only in a reviewed PR with exact merge/tree evidence.
 CANDIDATES = (
+    ("feature/durable-enrollment-replay", 239),
     ("feature/rust-peer-owner-contract", 238),
     ("feature/enrollment-address-receipt", 237),
     ("feature/fenced-peer-mutation-executor", 236),
