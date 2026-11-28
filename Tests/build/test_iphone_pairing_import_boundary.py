@@ -11,7 +11,7 @@ class MacPairingImportBoundaryTests(unittest.TestCase):
     def test_mac_uses_same_shared_qr_and_manual_peer_validation(self):
         self.assertRegex(MAC, r"IPhonePairingImportPolicy\.decodePublicKey\(\s*from:\s*iphonePairingText\s*\)")
         self.assertIn("IPhonePairingImportPolicy.validatedPublicKey(iphonePublicKey)", MAC)
-        self.assertIn(".disabled(validatedIPhoneKey == nil)", MAC)
+        self.assertIn(".disabled(!peerConfirmation.permitsSave(peerPreview))", MAC)
         self.assertNotIn("JSONDecoder().decode(", MAC)
         self.assertNotIn("error.localizedDescription", MAC)
     def test_camera_uses_validated_public_key_and_has_cancel_fallback(self):

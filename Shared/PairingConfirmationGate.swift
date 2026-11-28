@@ -1,3 +1,5 @@
+import Foundation
+
 /// Binds an explicit fingerprint-confirmation action to the exact public
 /// Mac profile that was presented to the user. A Boolean alone cannot prove
 /// which QR preview was reviewed if that preview later changes.
@@ -18,4 +20,15 @@ struct PairingConfirmationGate<Profile: Equatable> {
     mutating func reset() {
         confirmedProfile = nil
     }
+}
+
+
+/// The Mac's manual peer preview is bound to BOTH selected peer identities
+/// and the exact endpoint. The surrounding UI validates canonical keys and
+/// endpoint before constructing this public-only context. No daemon authority.
+struct MacPeerConfirmationContext: Equatable {
+    let serverPublicKey: String
+    let endpoint: String
+    let clientPublicKey: String
+    let generation: UUID
 }
