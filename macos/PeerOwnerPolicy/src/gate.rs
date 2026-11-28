@@ -63,6 +63,7 @@ pub struct SettledReadback {
 
 enum Phase {
     Acquired,
+    Preparing(Id),
     Prepared(Id),
     Dispatched(Id),
     Terminal(Id, Resolution, PublicRoster),
@@ -89,6 +90,7 @@ pub struct OwnerGate {
     generation: Id,
     serial: u64,
     state: State,
+    last_settled: Option<PublicRoster>,
 }
 
 impl OwnerGate {
@@ -96,7 +98,7 @@ impl OwnerGate {
     /// alternate writers. No authentication is performed by this constructor.
     pub fn new(generation: Id) -> Result<Self, GateError> {
         if !nonzero(&generation) { return Err(GateError::InvalidPlan); }
-        Ok(Self { generation, serial: 0, state: State::Idle })
+        Ok(Self { generation, serial: 0, state: State::Idle, last_settled: None })
     }
 
     /// Invoke only for an OS-authenticated caller authorized for exact request.
@@ -109,7 +111,8 @@ impl OwnerGate {
             State::Quarantined => return Err(GateError::Quarantined),
             State::Active(_) => return Err(GateError::Busy),
         }
-        if request.generation() != self.generation {
+        if request.generation() != self.generation ||
+            self.last_settled.as_ref().is_some_and(|last| last != &before) {
             return Err(GateError::InvalidPlan);
         }
         let delta = before.propose(&request).map_err(|_| GateError::InvalidPlan)?;
@@ -138,12 +141,22 @@ impl OwnerGate {
         }
     }
 
+    /// Mark before attempting the external journal write. Cancellation
+    /// from this point cannot release an apparently untouched lease.
+    pub fn begin_prepare(&mut self, lease: Lease, transaction: Id) -> Result<(), GateError> {
+        let active = self.active(lease)?;
+        if !matches!(active.phase, Phase::Acquired) { return Err(GateError::WrongPhase); }
+        if !nonzero(&transaction) { return Err(GateError::InvalidPlan); }
+        active.phase = Phase::Preparing(transaction);
+        Ok(())
+    }
+
     /// The adapter must call after durable prepare. An ambiguous/mismatched
     /// prepare readback must quarantine, because disk might contain pending work.
     pub fn prepared(&mut self, lease: Lease, evidence: PreparedReadback) -> Result<(), GateError> {
         let active = self.active(lease)?;
-        if !matches!(active.phase, Phase::Acquired) { return Err(GateError::WrongPhase); }
-        if !nonzero(&evidence.transaction) || evidence.plan != active.plan {
+        let Phase::Preparing(transaction) = active.phase else { return Err(GateError::WrongPhase); };
+        if transaction != evidence.transaction || evidence.plan != active.plan {
             self.state = State::Quarantined;
             return Err(GateError::InvalidEvidence);
         }
@@ -207,6 +220,7 @@ impl OwnerGate {
             return Err(GateError::InvalidEvidence);
         }
         active.phase = Phase::Settled;
+        self.last_settled = Some(evidence.current);
         Ok(())
     }
 
@@ -219,8 +233,8 @@ impl OwnerGate {
     }
 
     /// A failed/canceled lease must not silently become available after prepare.
-    /// Acquired-only release is safe ONLY if no prepare attempt was made or
-    /// the adapter has proven it had no durable side effect; otherwise quarantine.
+    /// The trusted adapter must mark begin_prepare BEFORE any journal write.
+    /// Release during preparing or any unsettled phase quarantines.
     pub fn release(&mut self, lease: Lease) -> Result<(), GateError> {
         let active = self.active(lease)?;
         if !matches!(active.phase, Phase::Acquired | Phase::Settled) {
@@ -261,6 +275,7 @@ mod tests {
     }
 
     fn prepare(gate: &mut OwnerGate, lease: Lease, plan: &Plan) {
+        gate.begin_prepare(lease, [4; 16]).unwrap();
         gate.prepared(lease, PreparedReadback { transaction: [4; 16], plan: plan.clone() }).unwrap();
     }
 
@@ -288,7 +303,14 @@ mod tests {
         }).unwrap(), Resolution::Committed);
         assert!(matches!(gate.acquire(request(), before()), Err(GateError::Busy)));
         finish(&mut gate, lease, &plan, Resolution::Committed);
-        let (next, _) = acquire(&mut gate);
+        assert!(matches!(gate.acquire(request(), before()), Err(GateError::InvalidPlan)));
+        let mut fresh = plan.after.clone();
+        fresh.revision += 1;
+        let mut next_request = request();
+        next_request.revision = fresh.revision;
+        next_request.client = [10; 32];
+        next_request.request_id = [11; 16];
+        let (next, _) = gate.acquire(next_request, fresh).unwrap();
         assert_ne!(next, lease);
         assert_eq!(gate.release(lease), Err(GateError::WrongLease));
         gate.release(next).unwrap();
@@ -367,12 +389,25 @@ mod tests {
     }
 
     #[test]
+    fn prepare_attempt_without_acknowledgement_cannot_release() {
+        let mut gate = OwnerGate::new([2; 16]).unwrap();
+        let (lease, plan) = acquire(&mut gate);
+        assert_eq!(gate.prepared(lease, PreparedReadback { transaction: [4; 16], plan: plan.clone() }),
+            Err(GateError::WrongPhase));
+        gate.begin_prepare(lease, [4; 16]).unwrap();
+        assert!(matches!(gate.take_dispatch(lease, [4; 16]), Err(GateError::WrongPhase)));
+        assert_eq!(gate.release(lease), Err(GateError::Quarantined));
+        assert!(matches!(gate.acquire(request(), before()), Err(GateError::Quarantined)));
+    }
+
+    #[test]
     fn wrong_prepare_or_generation_refused() {
         let mut wrong = OwnerGate::new([7; 16]).unwrap();
         assert!(matches!(wrong.acquire(request(), before()), Err(GateError::InvalidPlan)));
         let mut gate = OwnerGate::new([2; 16]).unwrap();
         let (lease, mut plan) = acquire(&mut gate);
         plan.after.peers.clear();
+        gate.begin_prepare(lease, [4; 16]).unwrap();
         assert_eq!(gate.prepared(lease, PreparedReadback { transaction: [4; 16], plan }),
             Err(GateError::InvalidEvidence));
         assert!(matches!(gate.acquire(request(), before()), Err(GateError::Quarantined)));
