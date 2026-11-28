@@ -10,6 +10,7 @@ enum SharedKeychain {
     private static let pskAccount = "wireguard.preSharedKey"
     private static let boundPSKAccount = "wireguard.preSharedKey.bound.v1"
     private static let rotationStageAccount = "iphone.rotation.stage.v1"
+    private static let pskStageAccount = "wireguard.preSharedKey.stage.v1"
 
     enum KeychainError: LocalizedError {
         case missingAccessGroup
@@ -136,6 +137,35 @@ enum SharedKeychain {
         } catch {
             throw KeychainError.invalidSecret
         }
+    }
+
+    /// Future authenticated provisioning owner only; no UI/transport caller.
+    /// Initial enrollment only, never an automatic legacy migration or rekey.
+    /// The caller must own the cross-store transaction; these local readbacks
+    /// do not prove exclusion of another writer or a remote commit.
+    static func stageInitialPreSharedKey(serverPublicKey: String,
+                                        requirement: PeerPSKRequirement,
+                                        secret: Data) throws -> PeerPSKBindingPolicy.StageReceipt {
+        try PeerPSKBindingPolicy.stageInitial(serverPublicKey: serverPublicKey,
+            requirement: requirement, secret: secret,
+            verifyLocalState: {
+                let active = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: existingIdentity())
+                    .publicKey.rawRepresentation.base64EncodedString()
+                guard active == requirement.clientPublicKey,
+                      try read(pskAccount) == nil, try read(boundPSKAccount) == nil,
+                      try read(rotationStageAccount) == nil else { throw KeychainError.invalidSecret }
+            },
+            readStage: { try read(pskStageAccount) },
+            insertIfAbsent: { bytes in
+                var q = try query(pskStageAccount)
+                q[kSecValueData as String] = bytes
+                q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                q[kSecAttrSynchronizable as String] = false
+                let status = SecItemAdd(q as CFDictionary, nil)
+                guard status == errSecSuccess || status == errSecDuplicateItem else {
+                    throw KeychainError.osStatus(status)
+                }
+            })
     }
 
     /// Future rotation owner only; not called by UI or PacketTunnel.
