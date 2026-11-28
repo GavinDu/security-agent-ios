@@ -49,3 +49,17 @@ future bounded authenticated response. No listener is added.
 Caller must authenticate OS peer credentials and authorize the exact request,
 limit concurrent admissions, and design response delivery before live use.
 Five local socket-pair tests run in existing Linux/macOS Rust CI.
+
+## Exclusive owner transaction gate
+
+`gate::OwnerGate` implements a non-cloneable, single-generation state machine
+for one trusted owner instance. Its local lease binds the exact request and
+before/after roster, marks preparation before any write, accepts exact durable prepare readback, returns the
+single delta only once, requires same-transaction terminal inventory, and
+holds the lease until exact durable settlement with a revision increment.
+Ambiguous preparation, release or mismatched terminal/settlement readback
+quarantines the gate; no reset API. Seven regression tests exercise ordering,
+wrong generation/transaction, cancellation, stale lease and quarantine.
+The trusted adapter still owes real OS authorization, process exclusivity,
+fencing, journal proof, replay persistence and startup reconciliation;
+constructing a new instance does not prove any of those properties.

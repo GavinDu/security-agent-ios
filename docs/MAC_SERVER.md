@@ -201,3 +201,12 @@ Truncated, overlong, malformed and stalled streams fail closed; no listener,
 privileged socket path, OS credential authorization or response protocol is
 introduced. Success retains the same connection for future response delivery;
 admission and caller authentication must precede invocation.
+
+### Rust single-owner mutation gate (#27)
+
+The Rust owner policy has an in-process exclusive lease state machine for
+exact prepared plan, one dispatch, terminal before/after inventory and
+revision-incremented durable settlement. Ambiguous release or mismatched
+readback quarantines without reset. This is a trusted adapter contract, not
+a live BoringTun mutation or proof of cross-process exclusion, disk sync,
+OS authorization, or restart recovery. No new privileged caller is wired.
