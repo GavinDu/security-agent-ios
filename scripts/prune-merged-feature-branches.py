@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prune only explicitly allowlisted, byte-proven merged GitHub feature refs.
+"""Prune only explicitly allowlisted, integration-proven merged GitHub feature refs.
 
 This runs ONLY in the post-success main-branch workflow_run job. Never use a
 personal access token, untrusted PR checkout, git push --delete, or force ref
@@ -17,6 +17,7 @@ import urllib.request
 REPOSITORY = "GavinDu/security-agent-ios"
 # Add further branches only in a reviewed PR with exact merge/tree evidence.
 CANDIDATES = (
+    ("fix/verified-ancestry-branch-prune", 234),
     ("feature/psk-secret-staging", 232),
     ("feature/mutual-pairing-confirmation", 231),
     ("feature/required-psk-profile", 230),
@@ -75,6 +76,29 @@ def _blobs(tree: dict) -> dict[str, str]:
     }
 
 
+def exact_ancestor(compare: object, feature_sha: str, main_sha: str) -> bool:
+    """Accept only GitHub's comparison of immutable SHA pairs, not branch names."""
+    if not all(isinstance(sha, str) and len(sha) == 40 and
+               all(c in "0123456789abcdef" for c in sha)
+               for sha in (feature_sha, main_sha)):
+        return False
+    if not isinstance(compare, dict):
+        return False
+    base = compare.get("base_commit")
+    merge_base = compare.get("merge_base_commit")
+    ahead, behind = compare.get("ahead_by"), compare.get("behind_by")
+    status = compare.get("status")
+    return (
+        compare.get("url") == f"https://api.github.com/repos/{REPOSITORY}/compare/{feature_sha}...{main_sha}"
+        and isinstance(base, dict) and base.get("sha") == feature_sha
+        and isinstance(merge_base, dict) and merge_base.get("sha") == feature_sha
+        and type(behind) is int and behind == 0
+        and type(ahead) is int
+        and ((feature_sha == main_sha and status == "identical" and ahead == 0)
+             or (feature_sha != main_sha and status == "ahead" and ahead > 0))
+    )
+
+
 def safe_to_delete(
     branch: str,
     pull: dict,
@@ -83,6 +107,8 @@ def safe_to_delete(
     feature_tree: dict,
     changed_files: list[dict],
     open_pulls: list[dict],
+    history_comparison: object = None,
+    main_sha: str = "",
 ) -> bool:
     """Conservative pure policy: no unmerged changes, moved ref or open PR."""
     if branch == "main" or branch not in {name for name, _ in CANDIDATES}:
@@ -104,6 +130,7 @@ def safe_to_delete(
     if not changed_files or len(changed_files) >= 100:
         return False
 
+    history_proven = exact_ancestor(history_comparison, expected, main_sha)
     main_blobs, feature_blobs = _blobs(main_tree), _blobs(feature_tree)
     # Never discard any entire branch-only file, even outside the PR file list.
     if not set(feature_blobs).issubset(main_blobs):
@@ -119,9 +146,9 @@ def safe_to_delete(
                 return False
             paths.append(previous)
         for path in paths:
-            # Compare exact Git blob identity (or both absent after removal);
-            # ahead/behind counts are meaningless for squash-merged branches.
-            if feature_blobs.get(path) != main_blobs.get(path):
+            # Prefer exact blob identity. Only a SHA-bound, independently
+            # verified ancestor proof allows subsequent changes to that blob.
+            if feature_blobs.get(path) != main_blobs.get(path) and not history_proven:
                 return False
         if status == "removed" and (filename in main_blobs or filename in feature_blobs):
             return False
@@ -192,8 +219,17 @@ def _candidate(branch: str, number: int, main_sha: str, main_tree: dict, token: 
     )
     open_pulls = _open_pull_requests(branch, token)
     if not safe_to_delete(branch, pull, reference, main_tree, feature_tree, files, open_pulls):
-        print("Not proven integrated, preserving: " + branch)
-        return False
+        # The strict byte proof is still preferred (including squash merges).
+        # For a real merge, a later reviewed main commit may legitimately
+        # change a shared file. Ask GitHub about immutable commit ancestry.
+        feature_sha = reference["object"]["sha"]
+        comparison = _request(
+            f"/repos/{REPOSITORY}/compare/{feature_sha}...{main_sha}", token
+        )
+        if not safe_to_delete(branch, pull, reference, main_tree, feature_tree,
+                              files, open_pulls, comparison, main_sha):
+            print("Not proven integrated, preserving: " + branch)
+            return False
 
     # A newer main push or an edited feature branch invalidates the proof.
     latest_main, latest_feature = _ref("main", token), _ref(branch, token)
