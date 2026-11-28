@@ -229,3 +229,18 @@ vectors verify UUID ordering, unsigned big-endian revisions, keys and exact
 operation/slot on both sides. This does not authorize the request or connect
 the companion to the daemon. Native client address receipt binding remains
 separate.
+
+### Signed client enrollment receipt and one-shot Keychain claim (#20)
+
+The client-side CryptoKit Ed25519 verifier requires an independently trusted
+control-plane signing pin, exact expected request/transaction/server/client/
+epoch/revision/slot context, canonical receipt bytes and a domain-separated
+64-byte signature. WireGuard X25519 keys are not signing pins. An opaque
+verified value may be claimed once using device-only nonsynchronizable
+SecItemAdd, keyed by request UUID; duplicate, conflicting, missing readback
+or ambiguous write refuses another claim. The wrapper checks current client
+identity, matching existing server profile, and absence of PSK/rotation
+conflicts before/after claim. No native profile write or VPN activation is
+performed. The actual independent pin ceremony, signer/transport, durable
+cross-store recovery, replay retention/epoch migration and anti-rollback
+assumptions remain open. No live caller or signing private key is added.
