@@ -163,3 +163,13 @@ must verify the entire exact receipt, independently establish expected
 context including the exact slot and atomically consume its request ID before native binding. No
 secret, QR receipt import, profile write, dynamic tunnel slot, signing with a
 WireGuard key or live daemon owner is introduced.
+
+### Rust administrative request policy (#27 / #20)
+
+The dependency-free `macos/PeerOwnerPolicy` crate independently validates a
+fixed 129-byte public request and exact server/generation/epoch/revision,
+canonical unique roster, lowest free enrollment slot and exact key/slot
+revocation. It cannot express global peer replacement, arbitrary routes or
+secret-bearing commands. This is structural policy only, not a privileged
+owner, authenticated transport, private BoringTun socket patch or durable
+replay/fence. See the crate README for the wire layout and remaining gates.
