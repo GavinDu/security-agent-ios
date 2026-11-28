@@ -12,12 +12,12 @@ final class MacPeerOwnerRequestFrameTests: XCTestCase {
         let client = Data((81...112).map { UInt8($0) }).base64EncodedString()
         let revision: UInt64 = 0x8123456789abcdef
         func encode(_ op: MacPeerOwnerRequestFrame.Operation = .enroll,
-                    requestID: UUID = request, daemonGeneration: UUID = generation,
-                    rosterEpoch: UUID = epoch, expectedRevision: UInt64 = revision,
-                    serverKey: String = server, clientKey: String = client) -> Data? {
-            MacPeerOwnerRequestFrame.encode(requestID: requestID, daemonGeneration: daemonGeneration,
-                rosterEpoch: rosterEpoch, expectedRevision: expectedRevision,
-                serverPublicKey: serverKey, clientPublicKey: clientKey, operation: op)
+                    requestID: UUID? = nil, daemonGeneration: UUID? = nil,
+                    rosterEpoch: UUID? = nil, expectedRevision: UInt64? = nil,
+                    serverKey: String? = nil, clientKey: String? = nil) -> Data? {
+            MacPeerOwnerRequestFrame.encode(requestID: requestID ?? request, daemonGeneration: daemonGeneration ?? generation,
+                rosterEpoch: rosterEpoch ?? epoch, expectedRevision: expectedRevision ?? revision,
+                serverPublicKey: serverKey ?? server, clientPublicKey: clientKey ?? client, operation: op)
         }
         // Identical to Tests/build/peer_owner_request_vectors.hex; Linux
         // Swift and Rust consume that shared fixture directly.
@@ -35,6 +35,6 @@ final class MacPeerOwnerRequestFrameTests: XCTestCase {
         XCTAssertNil(encode(clientKey: server))
         XCTAssertNil(encode(clientKey: "invalid"))
         XCTAssertNil(encode(serverKey: Data(repeating: 0, count: 32).base64EncodedString()))
-        for slot: UInt8 in [0, 1, 255] { XCTAssertNil(encode(.revoke(slot: slot))) }
+        for slot in [UInt8(0), 1, 255] { XCTAssertNil(encode(.revoke(slot: slot))) }
     }
 }

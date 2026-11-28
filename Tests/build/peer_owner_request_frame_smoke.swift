@@ -29,7 +29,7 @@ struct PeerOwnerFrameSmoke {
         precondition(MacPeerOwnerRequestFrame.encode(requestID: request, daemonGeneration: generation,
             rosterEpoch: epoch, expectedRevision: revision, serverPublicKey: server,
             clientPublicKey: server, operation: .enroll) == nil)
-        for slot: UInt8 in [0, 1, 255] {
+        for slot in [UInt8(0), 1, 255] {
             precondition(MacPeerOwnerRequestFrame.encode(requestID: request, daemonGeneration: generation,
                 rosterEpoch: epoch, expectedRevision: revision, serverPublicKey: server,
                 clientPublicKey: client, operation: .revoke(slot: slot)) == nil)
