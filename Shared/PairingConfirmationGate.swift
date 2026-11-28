@@ -1,3 +1,5 @@
+import Foundation
+
 /// Binds an explicit fingerprint-confirmation action to the exact public
 /// Mac profile that was presented to the user. A Boolean alone cannot prove
 /// which QR preview was reviewed if that preview later changes.
@@ -28,4 +30,5 @@ struct MacPeerConfirmationContext: Equatable {
     let serverPublicKey: String
     let endpoint: String
     let clientPublicKey: String
+    let generation: UUID
 }

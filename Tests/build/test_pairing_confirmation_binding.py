@@ -34,7 +34,9 @@ class PairingConfirmationBindingTests(unittest.TestCase):
         self.assertIn("peerStanza(for: preview)", copy)
         self.assertIn("guard let preview = peerPreview, peerConfirmation.permitsSave(preview)", MAC)
         edit = MAC.split("private func editing(", 1)[1].split("var body:", 1)[0]
-        self.assertLess(edit.index("peerConfirmation.reset()"), edit.index("binding.wrappedValue = value"))
+        self.assertLess(edit.index("invalidatePeerApproval()"), edit.index("binding.wrappedValue = value"))
+        self.assertIn("previewGeneration = UUID()", MAC)
+        self.assertIn("generation: previewGeneration", MAC)
         self.assertIn("WireGuardPublicFingerprint.display(for: ownPublicKey)", UI)
         self.assertIn("WireGuardPublicFingerprint.display(for: preview.clientPublicKey)", MAC)
         self.assertIn("testMacPeerCopyConfirmationBindsBothIdentitiesAndEndpoint", IOS)

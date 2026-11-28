@@ -143,20 +143,24 @@ final class PairingTests: XCTestCase {
 
     func testMacPeerCopyConfirmationBindsBothIdentitiesAndEndpoint() {
         let client = Data(repeating: 7, count: 32).base64EncodedString()
+        let generation = UUID()
         let original = MacPeerConfirmationContext(serverPublicKey: validKey,
-            endpoint: "home.example.org:51820", clientPublicKey: client)
+            endpoint: "home.example.org:51820", clientPublicKey: client, generation: generation)
         var gate = PairingConfirmationGate<MacPeerConfirmationContext>()
         XCTAssertFalse(gate.permitsSave(original))
         gate.setConfirmed(true, for: original)
         XCTAssertTrue(gate.permitsSave(original))
         XCTAssertFalse(gate.permitsSave(nil))
         for changed in [
-            MacPeerConfirmationContext(serverPublicKey: client, endpoint: original.endpoint, clientPublicKey: client),
-            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: "other.example.org:51820", clientPublicKey: client),
-            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: original.endpoint, clientPublicKey: validKey)
+            MacPeerConfirmationContext(serverPublicKey: client, endpoint: original.endpoint, clientPublicKey: client, generation: generation),
+            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: "other.example.org:51820", clientPublicKey: client, generation: generation),
+            MacPeerConfirmationContext(serverPublicKey: validKey, endpoint: original.endpoint, clientPublicKey: validKey, generation: generation)
         ] {
             XCTAssertFalse(gate.permitsSave(changed))
         }
+        let sameValuesAfterEdit = MacPeerConfirmationContext(serverPublicKey: original.serverPublicKey,
+            endpoint: original.endpoint, clientPublicKey: original.clientPublicKey, generation: UUID())
+        XCTAssertFalse(gate.permitsSave(sameValuesAfterEdit))
         gate.reset()
         XCTAssertFalse(gate.permitsSave(original), "Returning to an earlier value must require fresh confirmation")
     }

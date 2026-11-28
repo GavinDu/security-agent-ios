@@ -10,6 +10,7 @@ struct MacDashboard: View {
     @State private var iphonePairingText = ""
     @State private var validationMessage: String?
     @State private var cameraScan: CameraScan?
+    @State private var previewGeneration = UUID()
     @State private var peerConfirmation = PairingConfirmationGate<MacPeerConfirmationContext>()
 
     private struct CameraScan: Identifiable {
@@ -29,7 +30,7 @@ struct MacDashboard: View {
               let profile, let key = validatedIPhoneKey,
               key != profile.publicKey else { return nil }
         return MacPeerConfirmationContext(serverPublicKey: profile.publicKey,
-            endpoint: profile.endpoint, clientPublicKey: key)
+            endpoint: profile.endpoint, clientPublicKey: key, generation: previewGeneration)
     }
 
     private var peerStanza: String {
@@ -48,10 +49,15 @@ struct MacDashboard: View {
         """
     }
 
+    private func invalidatePeerApproval() {
+        peerConfirmation.reset()
+        previewGeneration = UUID()
+    }
+
     // Invalidate synchronously before accepting an edit, including A→B→A.
     private func editing(_ binding: Binding<String>) -> Binding<String> {
         Binding(get: { binding.wrappedValue }, set: { value in
-            peerConfirmation.reset()
+            invalidatePeerApproval()
             binding.wrappedValue = value
         })
     }
@@ -69,7 +75,7 @@ struct MacDashboard: View {
                 }
                 Section("iPhone peer registration") {
                     Button("Scan iPhone pairing QR with camera") {
-                        peerConfirmation.reset()
+                        invalidatePeerApproval()
                         iphonePublicKey = ""
                         iphonePairingText = ""
                         validationMessage = nil
@@ -78,7 +84,7 @@ struct MacDashboard: View {
                     TextField("Paste iPhone pairing QR JSON", text: editing($iphonePairingText))
                         .textFieldStyle(.roundedBorder)
                     Button("Import iPhone pairing payload") {
-                        peerConfirmation.reset()
+                        invalidatePeerApproval()
                         if let key = IPhonePairingImportPolicy.decodePublicKey(
                             from: iphonePairingText
                         ) {
@@ -109,7 +115,7 @@ struct MacDashboard: View {
                                 // A delayed event from an old rendered preview
                                 // cannot approve a newer selection.
                                 guard peerPreview == preview else {
-                                    peerConfirmation.reset()
+                                    invalidatePeerApproval()
                                     return
                                 }
                                 peerConfirmation.setConfirmed(confirmed, for: preview)
@@ -169,20 +175,20 @@ struct MacDashboard: View {
             }
         }
         .padding(25)
-        .onChange(of: publicKey) { _, _ in peerConfirmation.reset() }
-        .onChange(of: endpoint) { _, _ in peerConfirmation.reset() }
-        .onChange(of: iphonePublicKey) { _, _ in peerConfirmation.reset() }
-        .onChange(of: iphonePairingText) { _, _ in peerConfirmation.reset() }
+        .onChange(of: publicKey) { _, _ in invalidatePeerApproval() }
+        .onChange(of: endpoint) { _, _ in invalidatePeerApproval() }
+        .onChange(of: iphonePublicKey) { _, _ in invalidatePeerApproval() }
+        .onChange(of: iphonePairingText) { _, _ in invalidatePeerApproval() }
         .sheet(item: $cameraScan) { scan in
             MacPairingCameraView { key in
                 guard cameraScan?.id == scan.id else { return }
-                peerConfirmation.reset()
+                invalidatePeerApproval()
                 iphonePublicKey = key
                 validationMessage = nil
                 cameraScan = nil
             } onCancel: {
                 guard cameraScan?.id == scan.id else { return }
-                peerConfirmation.reset()
+                invalidatePeerApproval()
                 cameraScan = nil
             }
         }
